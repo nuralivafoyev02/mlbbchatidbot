@@ -4,10 +4,14 @@ const test = require("node:test");
 process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
 process.env.SUPPORT_USERNAME = "@Oblto_org";
+process.env.ADMIN_IDS = "5081175125,8500085987";
 
 const handler = require("../api/bot.js");
 const {
+  getResultText,
+  isAdmin,
   isValidWebhookSecret,
+  parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
   parseRequestBody,
@@ -72,6 +76,29 @@ test("sanitizeTelegramUsername removes @ and falls back on invalid names", () =>
   assert.equal(sanitizeTelegramUsername("bad name"), "Oblto_org");
 });
 
+test("admin helpers read comma-separated admin ids", () => {
+  assert.deepEqual(parseIdList("5081175125, 8500085987, nope"), [
+    "5081175125",
+    "8500085987",
+  ]);
+  assert.equal(isAdmin("5081175125"), true);
+  assert.equal(isAdmin("1"), false);
+});
+
+test("result text does not include elapsed time", () => {
+  const text = getResultText({
+    accountId: "1289050",
+    zoneId: "10050",
+    serverType: "Original Server",
+    region: null,
+    nickname: "Player",
+    status: "Profil topildi",
+  });
+
+  assert.doesNotMatch(text, /Vaqt/);
+  assert.match(text, /1289050/);
+});
+
 test("handler rejects POST requests without the configured webhook secret", async () => {
   const res = createRes();
 
@@ -125,6 +152,90 @@ test("callback queries without a message are acknowledged without crashing", asy
     assert.equal(res.body.ok, true);
     assert.equal(calls.length, 1);
     assert.match(calls[0].url, /answerCallbackQuery$/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("non-admin users cannot open stats", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 3,
+          message: {
+            chat: { id: 777, type: "private" },
+            from: { id: 777 },
+            text: "/stats",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].payload.text, /faqat adminlar/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("admin /message creates a confirmation keyboard", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 4,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text: "/message Salom hammaga",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].payload.text, /Hamma foydalanuvchilarga/);
+    assert.match(
+      calls[0].payload.reply_markup.inline_keyboard[0][0].callback_data,
+      /^broadcast_confirm:/
+    );
   } finally {
     global.fetch = originalFetch;
   }

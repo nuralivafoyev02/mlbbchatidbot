@@ -5,6 +5,9 @@ const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 const SUPPORT_USERNAME = sanitizeTelegramUsername(
   process.env.SUPPORT_USERNAME || "Oblto_org"
 );
+const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987");
+const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
+const BROADCAST_TTL_MS = 15 * 60 * 1000;
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -18,14 +21,22 @@ if (!global.__MLBB_BOT_STATS__) {
     successChecks: 0,
     failedChecks: 0,
     users: new Set(),
+    broadcastChats: new Set(BROADCAST_USER_IDS),
+    pendingBroadcasts: new Map(),
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
   };
 }
 
 const stats = global.__MLBB_BOT_STATS__;
+stats.users ||= new Set();
+stats.broadcastChats ||= new Set();
+stats.pendingBroadcasts ||= new Map();
+BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 
 module.exports = async function handler(req, res) {
+  let update = null;
+
   try {
     if (!TELEGRAM_BOT_TOKEN) {
       return res.status(500).json({
@@ -62,12 +73,18 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const update = parseRequestBody(req.body);
+    update = parseRequestBody(req.body);
     await processUpdate(update);
 
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error("[BOT_ERROR]", error);
+
+    const chatId = getChatIdFromUpdate(update);
+
+    if (chatId) {
+      await safeSendMessage(chatId, getErrorText(), mainKeyboard());
+    }
 
     return res.status(200).json({
       ok: false,
@@ -107,12 +124,16 @@ async function handleMessage(message) {
   const text = String(message.text || "").trim();
   const user = message.from || {};
 
-  if (user.id) stats.users.add(user.id);
-  if (!text) return;
+  trackUser(user, message.chat);
+
+  if (!text) {
+    await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
+    return;
+  }
 
   if (isCommand(text, "start")) {
     stats.starts += 1;
-    await sendMessage(chatId, getStartText(user), mainKeyboard());
+    await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     return;
   }
 
@@ -122,7 +143,22 @@ async function handleMessage(message) {
   }
 
   if (isCommand(text, "stat") || isCommand(text, "stats")) {
-    await sendMessage(chatId, getStatsText(), mainKeyboard());
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      return;
+    }
+
+    await sendMessage(chatId, getStatsText(), mainKeyboard(user));
+    return;
+  }
+
+  if (isCommand(text, "message")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleMessageCommand(chatId, user, text);
     return;
   }
 
@@ -130,22 +166,22 @@ async function handleMessage(message) {
     const input = text.replace(/^\/check(@\w+)?/i, "").trim();
 
     if (!input) {
-      await sendMessage(chatId, getCheckPromptText(), checkKeyboard());
+      await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
       return;
     }
 
-    await detectAndReply(chatId, input);
+    await detectAndReply(chatId, input, user);
     return;
   }
 
   const parsed = parseMlbbInput(text);
 
   if (parsed.ok) {
-    await detectAndReply(chatId, text);
+    await detectAndReply(chatId, text, user);
     return;
   }
 
-  await sendMessage(chatId, getUnknownText(), mainKeyboard());
+  await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
 }
 
 async function handleCallbackQuery(callbackQuery) {
@@ -157,7 +193,7 @@ async function handleCallbackQuery(callbackQuery) {
   const chatId = callbackQuery.message?.chat?.id;
   const user = callbackQuery.from || {};
 
-  if (user.id) stats.users.add(user.id);
+  trackUser(user, callbackQuery.message?.chat);
 
   await answerCallbackQuery(callbackQuery.id);
 
@@ -165,24 +201,105 @@ async function handleCallbackQuery(callbackQuery) {
     return;
   }
 
+  if (data.startsWith("broadcast_confirm:")) {
+    await handleBroadcastConfirm(chatId, user, data);
+    return;
+  }
+
+  if (data.startsWith("broadcast_cancel:")) {
+    await handleBroadcastCancel(chatId, user, data);
+    return;
+  }
+
   if (data === "detect_server" || data === "check_again") {
-    await sendMessage(chatId, getCheckPromptText(), checkKeyboard());
+    await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
     return;
   }
 
   if (data === "stats") {
-    await sendMessage(chatId, getStatsText(), mainKeyboard());
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      return;
+    }
+
+    await sendMessage(chatId, getStatsText(), mainKeyboard(user));
     return;
   }
 
   if (data === "menu") {
-    await sendMessage(chatId, getStartText(user), mainKeyboard());
+    await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     return;
   }
 }
 
-async function detectAndReply(chatId, input) {
-  const startedAt = Date.now();
+async function handleMessageCommand(chatId, user, text) {
+  const messageText = text.replace(/^\/message(@\w+)?/i, "").trim();
+
+  if (!messageText) {
+    await sendMessage(chatId, getBroadcastUsageText(), mainKeyboard(user));
+    return;
+  }
+
+  if (messageText.length > 3500) {
+    await sendMessage(chatId, getBroadcastTooLongText(), mainKeyboard(user));
+    return;
+  }
+
+  cleanupPendingBroadcasts();
+
+  const broadcastId = createBroadcastId();
+  stats.pendingBroadcasts.set(broadcastId, {
+    adminId: String(user.id),
+    text: messageText,
+    createdAt: Date.now(),
+  });
+
+  await sendMessage(
+    chatId,
+    getBroadcastConfirmText(messageText),
+    broadcastConfirmKeyboard(broadcastId)
+  );
+}
+
+async function handleBroadcastConfirm(chatId, user, data) {
+  if (!isAdmin(user.id)) {
+    await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+    return;
+  }
+
+  const broadcastId = data.replace("broadcast_confirm:", "");
+  const pending = stats.pendingBroadcasts.get(broadcastId);
+
+  if (!pending || pending.adminId !== String(user.id)) {
+    await sendMessage(chatId, getBroadcastExpiredText(), mainKeyboard(user));
+    return;
+  }
+
+  stats.pendingBroadcasts.delete(broadcastId);
+  await sendMessage(chatId, "📣 <b>Xabar yuborish boshlandi.</b>", mainKeyboard(user));
+
+  const result = await broadcastMessage(pending.text);
+
+  await sendMessage(
+    chatId,
+    getBroadcastResultText(result),
+    mainKeyboard(user)
+  );
+}
+
+async function handleBroadcastCancel(chatId, user, data) {
+  if (!isAdmin(user.id)) {
+    await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+    return;
+  }
+
+  const broadcastId = data.replace("broadcast_cancel:", "");
+  stats.pendingBroadcasts.delete(broadcastId);
+
+  await sendMessage(chatId, "Bekor qilindi.", mainKeyboard(user));
+}
+
+async function detectAndReply(chatId, input, user = {}) {
   const parsed = parseMlbbInput(input);
 
   if (!parsed.ok) {
@@ -200,16 +317,15 @@ async function detectAndReply(chatId, input) {
         "✅ <code>123456789 5009</code>",
         "✅ <code>/check 123456789 5009</code>",
       ].join("\n"),
-      checkKeyboard()
+      checkKeyboard(user)
     );
 
     return;
   }
 
-  await sendChatAction(chatId, "typing");
+  await safeSendChatAction(chatId, "typing");
 
   const lookup = await lookupMlbbAccount(parsed.accountId, parsed.zoneId);
-  const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 0.01).toFixed(2);
 
   stats.checks += 1;
   stats.lastCheckAt = new Date().toISOString();
@@ -219,8 +335,8 @@ async function detectAndReply(chatId, input) {
 
     await sendMessage(
       chatId,
-      getFailedLookupText(parsed, lookup, elapsedSeconds),
-      resultKeyboard()
+      getFailedLookupText(parsed, lookup),
+      resultKeyboard(user)
     );
 
     return;
@@ -238,7 +354,7 @@ async function detectAndReply(chatId, input) {
     rawProvider: lookup.provider,
   };
 
-  await sendMessage(chatId, getResultText(result, elapsedSeconds), resultKeyboard());
+  await sendMessage(chatId, getResultText(result), resultKeyboard(user));
 }
 
 async function lookupMlbbAccount(accountId, zoneId) {
@@ -479,23 +595,46 @@ function validateParsedId(accountId, zoneId) {
   };
 }
 
+async function broadcastMessage(text) {
+  const chatIds = Array.from(stats.broadcastChats);
+  let sent = 0;
+  let failed = 0;
+
+  for (const chunk of chunkArray(chatIds, 20)) {
+    const results = await Promise.allSettled(
+      chunk.map((chatId) => sendMessage(chatId, escapeHtml(text)))
+    );
+
+    results.forEach((result) => {
+      if (result.status === "fulfilled") {
+        sent += 1;
+      } else {
+        failed += 1;
+        console.error("[BROADCAST_ERROR]", result.reason);
+      }
+    });
+  }
+
+  return {
+    total: chatIds.length,
+    sent,
+    failed,
+  };
+}
+
 function getStartText(user) {
   const name = escapeHtml(user.first_name || "do‘stim");
 
   return [
     `Salom, <b>${name}</b>! 👋`,
     "",
-    "Men MLBB akkauntingiz serverini va profil mavjudligini tekshiraman.",
-    "",
-    "<b>Bot funksiyalari:</b>",
-    "🔎 <b>Server aniqlash</b> — Account ID va Server/Zone ID orqali profilni tekshiradi",
-    "👤 <b>Nickname topish</b> — agar API topa olsa, akkaunt nomini chiqaradi",
-    "📊 <b>Statistika</b> — bot ishlash statistikasi",
-    "ℹ️ <b>Yordam</b> — admin profiliga o‘tish",
+    "MLBB Account ID va Server/Zone ID yuboring, men serverini aniqlab beraman.",
     "",
     "<b>Namuna:</b>",
-    "<code>123456789 (5009)</code>",
-    "<code>/check 123456789 5009</code>",
+    "<code>1289050 (10050)</code>",
+    "<code>123456789 5009</code>",
+    "",
+    "Qo‘shimcha funksiyalar uchun pastdagi tugmalardan foydalaning.",
   ].join("\n");
 }
 
@@ -514,7 +653,7 @@ function getCheckPromptText() {
   ].join("\n");
 }
 
-function getResultText(result, elapsedSeconds) {
+function getResultText(result) {
   return [
     "🔍 <b>Server Aniqlash Natijasi</b>",
     "",
@@ -524,11 +663,10 @@ function getResultText(result, elapsedSeconds) {
     result.region ? `📍 <b>Region:</b> ${escapeHtml(result.region)}` : "📍 <b>Region:</b> API qaytarmadi",
     `👤 <b>Nickname:</b> ${escapeHtml(result.nickname)}`,
     `✅ <b>Holat:</b> ${escapeHtml(result.status)}`,
-    `⏱ <b>Vaqt:</b> ${elapsedSeconds} soniya`,
   ].join("\n");
 }
 
-function getFailedLookupText(parsed, lookup, elapsedSeconds) {
+function getFailedLookupText(parsed, lookup) {
   return [
     "❌ <b>Akkaunt tekshirilmadi</b>",
     "",
@@ -541,7 +679,6 @@ function getFailedLookupText(parsed, lookup, elapsedSeconds) {
     "3. Tashqi MLBB lookup API vaqtincha ishlamayapti",
     "",
     `📌 <b>Sabab:</b> ${escapeHtml(lookup.reason || "Noma’lum xatolik")}`,
-    `⏱ <b>Vaqt:</b> ${elapsedSeconds} soniya`,
   ].join("\n");
 }
 
@@ -582,13 +719,80 @@ function getUnknownText() {
     "",
     "Serverni aniqlash uchun quyidagi formatda yuboring:",
     "",
-    "<code>123456789 (5009)</code>",
+    "<code>1289050 (10050)</code>",
     "",
     "Yoki pastdagi tugmalardan foydalaning.",
   ].join("\n");
 }
 
-function mainKeyboard() {
+function getAdminOnlyText() {
+  return "Bu bo‘lim faqat adminlar uchun.";
+}
+
+function getErrorText() {
+  return [
+    "Kutilmagan xatolik bo‘ldi, lekin men ishlayapman.",
+    "",
+    "Iltimos, ID’ni yana shu formatda yuboring:",
+    "<code>1289050 (10050)</code>",
+  ].join("\n");
+}
+
+function getBroadcastUsageText() {
+  return [
+    "📣 <b>Umumiy xabar yuborish</b>",
+    "",
+    "Format:",
+    "<code>/message Sizning xabaringiz</code>",
+    "",
+    "Keyingi qadamda tasdiqlash tugmasi chiqadi.",
+  ].join("\n");
+}
+
+function getBroadcastTooLongText() {
+  return "Xabar juda uzun. Iltimos, 3500 belgidan qisqaroq matn yuboring.";
+}
+
+function getBroadcastExpiredText() {
+  return "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.";
+}
+
+function getBroadcastConfirmText(text) {
+  return [
+    "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
+    "",
+    `Qabul qiluvchilar: <b>${stats.broadcastChats.size}</b>`,
+    "",
+    "<b>Xabar:</b>",
+    escapeHtml(clipText(text, 900)),
+  ].join("\n");
+}
+
+function getBroadcastResultText(result) {
+  return [
+    "📣 <b>Yuborish yakunlandi</b>",
+    "",
+    `Jami: <b>${result.total}</b>`,
+    `Yuborildi: <b>${result.sent}</b>`,
+    `Xato: <b>${result.failed}</b>`,
+  ].join("\n");
+}
+
+function mainKeyboard(user = {}) {
+  const bottomRow = [
+    {
+      text: "ℹ️ Yordam",
+      url: `https://t.me/${SUPPORT_USERNAME}`,
+    },
+  ];
+
+  if (isAdmin(user.id)) {
+    bottomRow.unshift({
+      text: "📊 Statistika",
+      callback_data: "stats",
+    });
+  }
+
   return {
     inline_keyboard: [
       [
@@ -597,21 +801,12 @@ function mainKeyboard() {
           callback_data: "detect_server",
         },
       ],
-      [
-        {
-          text: "📊 Statistika",
-          callback_data: "stats",
-        },
-        {
-          text: "ℹ️ Yordam",
-          url: `https://t.me/${SUPPORT_USERNAME}`,
-        },
-      ],
+      bottomRow,
     ],
   };
 }
 
-function checkKeyboard() {
+function checkKeyboard(user = {}) {
   return {
     inline_keyboard: [
       [
@@ -634,7 +829,21 @@ function checkKeyboard() {
   };
 }
 
-function resultKeyboard() {
+function resultKeyboard(user = {}) {
+  const bottomRow = [
+    {
+      text: "ℹ️ Yordam",
+      url: `https://t.me/${SUPPORT_USERNAME}`,
+    },
+  ];
+
+  if (isAdmin(user.id)) {
+    bottomRow.unshift({
+      text: "📊 Statistika",
+      callback_data: "stats",
+    });
+  }
+
   return {
     inline_keyboard: [
       [
@@ -643,16 +852,7 @@ function resultKeyboard() {
           callback_data: "check_again",
         },
       ],
-      [
-        {
-          text: "📊 Statistika",
-          callback_data: "stats",
-        },
-        {
-          text: "ℹ️ Yordam",
-          url: `https://t.me/${SUPPORT_USERNAME}`,
-        },
-      ],
+      bottomRow,
     ],
   };
 }
@@ -676,6 +876,23 @@ function helpKeyboard() {
   };
 }
 
+function broadcastConfirmKeyboard(broadcastId) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "✅ Tasdiqlash",
+          callback_data: `broadcast_confirm:${broadcastId}`,
+        },
+        {
+          text: "❌ Bekor qilish",
+          callback_data: `broadcast_cancel:${broadcastId}`,
+        },
+      ],
+    ],
+  };
+}
+
 async function sendMessage(chatId, text, replyMarkup) {
   return telegram("sendMessage", {
     chat_id: chatId,
@@ -691,6 +908,24 @@ async function sendChatAction(chatId, action) {
     chat_id: chatId,
     action,
   });
+}
+
+async function safeSendMessage(chatId, text, replyMarkup) {
+  try {
+    return await sendMessage(chatId, text, replyMarkup);
+  } catch (error) {
+    console.error("[SEND_MESSAGE_ERROR]", error);
+    return null;
+  }
+}
+
+async function safeSendChatAction(chatId, action) {
+  try {
+    return await sendChatAction(chatId, action);
+  } catch (error) {
+    console.error("[CHAT_ACTION_ERROR]", error);
+    return null;
+  }
 }
 
 async function answerCallbackQuery(callbackQueryId) {
@@ -799,6 +1034,42 @@ function cleanEnv(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function parseIdList(value) {
+  return cleanEnv(value)
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => /^-?\d+$/.test(id));
+}
+
+function isAdmin(userId) {
+  return ADMIN_IDS.includes(String(userId || ""));
+}
+
+function trackUser(user = {}, chat = {}) {
+  if (user.id) {
+    stats.users.add(String(user.id));
+  }
+
+  if (chat?.id && (!chat.type || chat.type === "private")) {
+    stats.broadcastChats.add(String(chat.id));
+  }
+}
+
+function getChatIdFromUpdate(update) {
+  if (!update || typeof update !== "object") {
+    return null;
+  }
+
+  return (
+    update.message?.chat?.id ||
+    update.edited_message?.chat?.id ||
+    update.channel_post?.chat?.id ||
+    update.edited_channel_post?.chat?.id ||
+    update.callback_query?.message?.chat?.id ||
+    null
+  );
+}
+
 function getFirstHeader(headers, name) {
   if (!headers || typeof headers !== "object") {
     return "";
@@ -842,12 +1113,49 @@ function sanitizeTelegramUsername(value) {
   return "Oblto_org";
 }
 
+function createBroadcastId() {
+  return crypto.randomBytes(8).toString("hex");
+}
+
+function cleanupPendingBroadcasts() {
+  const now = Date.now();
+
+  for (const [broadcastId, pending] of stats.pendingBroadcasts.entries()) {
+    if (now - pending.createdAt > BROADCAST_TTL_MS) {
+      stats.pendingBroadcasts.delete(broadcastId);
+    }
+  }
+}
+
+function chunkArray(values, size) {
+  const chunks = [];
+
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+function clipText(text, maxLength) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength - 3)}...`;
+}
+
 module.exports.__private = {
+  broadcastMessage,
   detectServerType,
+  getResultText,
   isValidWebhookSecret,
+  isAdmin,
   normalizeLookupResponse,
+  parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
   parseRequestBody,
   sanitizeTelegramUsername,
+  trackUser,
 };
