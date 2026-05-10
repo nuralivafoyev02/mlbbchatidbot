@@ -23,12 +23,15 @@ const {
   isKeyboardButton,
   isValidTelegramId,
   mainKeyboard,
+  normalizeSecretEnv,
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
   parseRequestBody,
+  resolveSupabaseConfig,
   sanitizeTelegramUsername,
   trackUser,
+  validateSupabaseServiceKey,
 } = handler.__private;
 
 function createRes() {
@@ -96,6 +99,33 @@ test("admin helpers read comma-separated admin ids", () => {
   ]);
   assert.equal(isAdmin("5081175125"), true);
   assert.equal(isAdmin("1"), false);
+});
+
+test("supabase config helper rejects publishable keys and accepts service role keys", () => {
+  const payload = Buffer.from(
+    JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+  ).toString("base64url");
+  const legacyServiceKey = `header.${payload}.signature`;
+
+  assert.equal(
+    normalizeSecretEnv(`SUPABASE_SERVICE_KEY="Bearer ${legacyServiceKey}"`),
+    legacyServiceKey
+  );
+  assert.equal(
+    validateSupabaseServiceKey("sb_publishable_test_key", "trybbxovootehqvaiydn").ok,
+    false
+  );
+
+  const config = resolveSupabaseConfig(
+    {
+      SUPABASE_SERVICE_ROLE_KEY: "sb_publishable_wrong",
+      SUPABASE_SERVICE_KEY: legacyServiceKey,
+    },
+    "https://trybbxovootehqvaiydn.supabase.co"
+  );
+
+  assert.equal(config.serviceKey, legacyServiceKey);
+  assert.equal(config.error, "");
 });
 
 test("result text does not include elapsed time", () => {

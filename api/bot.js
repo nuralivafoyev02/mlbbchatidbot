@@ -23,9 +23,9 @@ const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, "");
-const SUPABASE_SERVICE_KEY = cleanEnv(
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
-);
+const SUPABASE_CONFIG = resolveSupabaseConfig(process.env, SUPABASE_URL);
+const SUPABASE_SERVICE_KEY = SUPABASE_CONFIG.serviceKey;
+const SUPABASE_KEY_TYPE = SUPABASE_CONFIG.keyType;
 const SUPABASE_TIMEOUT_MS = parseBoundedNumber(
   process.env.SUPABASE_TIMEOUT_MS,
   1500,
@@ -54,6 +54,8 @@ if (!global.__MLBB_BOT_STATS__) {
     errorCounts: {},
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
+    supabaseAuthDisabledUntil: 0,
+    supabaseLastAuthError: null,
   };
 }
 
@@ -63,6 +65,8 @@ stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
 stats.errors ||= [];
 stats.errorCounts ||= {};
+stats.supabaseAuthDisabledUntil ||= 0;
+stats.supabaseLastAuthError ||= null;
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 
 module.exports = async function handler(req, res) {
@@ -1106,6 +1110,10 @@ function getStatsUserLines(dbStats = null) {
     return dbStats.users.map(formatSupabaseUserLine);
   }
 
+  if (dbStats?.configError) {
+    return [`Supabase sozlamasi: ${escapeHtml(dbStats.configError)}`];
+  }
+
   const memoryUsers = Array.from(stats.users || []).slice(-SUPABASE_USER_LIST_LIMIT).reverse();
 
   if (memoryUsers.length) {
@@ -1152,6 +1160,10 @@ function getStatsMonthlyLines(dbStats = null) {
 
       return `${escapeHtml(month)}: <b>${users}</b> user, ${updates} update`;
     });
+  }
+
+  if (dbStats?.configError) {
+    return [`Supabase sozlamasi: ${escapeHtml(dbStats.configError)}`];
   }
 
   if (dbStats?.error) {
@@ -1590,6 +1602,170 @@ function cleanEnv(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeSecretEnv(value) {
+  let text = cleanEnv(value);
+
+  const assignment = text.match(/^[A-Z0-9_]+\s*=\s*(.+)$/i);
+
+  if (assignment) {
+    text = assignment[1].trim();
+  }
+
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'")) ||
+    (text.startsWith("`") && text.endsWith("`"))
+  ) {
+    text = text.slice(1, -1).trim();
+  }
+
+  text = text.replace(/^Bearer\s+/i, "").trim();
+
+  return text.replace(/\s+/g, "");
+}
+
+function resolveSupabaseConfig(env = {}, supabaseUrl = "") {
+  if (!supabaseUrl) {
+    return {
+      serviceKey: "",
+      keyType: "",
+      error: "SUPABASE_URL topilmadi",
+    };
+  }
+
+  const projectRef = extractSupabaseProjectRef(supabaseUrl);
+  const candidates = getSupabaseKeyCandidates(env);
+  const invalidReasons = [];
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    const serviceKey = normalizeSecretEnv(candidate.value);
+
+    if (!serviceKey || seen.has(serviceKey)) {
+      continue;
+    }
+
+    seen.add(serviceKey);
+
+    const validation = validateSupabaseServiceKey(serviceKey, projectRef);
+
+    if (validation.ok) {
+      return {
+        serviceKey,
+        keyType: validation.keyType,
+        source: candidate.name,
+        projectRef,
+        error: "",
+      };
+    }
+
+    invalidReasons.push(`${candidate.name}: ${validation.reason}`);
+  }
+
+  return {
+    serviceKey: "",
+    keyType: "",
+    projectRef,
+    error: invalidReasons.length
+      ? `Supabase service key yaroqsiz (${invalidReasons.join("; ")})`
+      : "SUPABASE_SERVICE_KEY yoki SUPABASE_SERVICE_ROLE_KEY topilmadi",
+  };
+}
+
+function getSupabaseKeyCandidates(env = {}) {
+  return [
+    { name: "SUPABASE_SERVICE_ROLE_KEY", value: env.SUPABASE_SERVICE_ROLE_KEY },
+    { name: "SUPABASE_SERVICE_KEY", value: env.SUPABASE_SERVICE_KEY },
+    { name: "SUPABASE_SECRET_KEY", value: env.SUPABASE_SECRET_KEY },
+    { name: "SUPABASE_SERVICE_ROLE", value: env.SUPABASE_SERVICE_ROLE },
+    { name: "SUPABASE_SERVICE_ROLE_SECRET", value: env.SUPABASE_SERVICE_ROLE_SECRET },
+    { name: "SUPABASE_SERVICE_RELE_KEY", value: env.SUPABASE_SERVICE_RELE_KEY },
+  ];
+}
+
+function validateSupabaseServiceKey(serviceKey, projectRef = "") {
+  if (!serviceKey) {
+    return {
+      ok: false,
+      reason: "bo‘sh qiymat",
+    };
+  }
+
+  if (serviceKey.startsWith("sb_secret_")) {
+    return {
+      ok: true,
+      keyType: "secret",
+    };
+  }
+
+  if (serviceKey.startsWith("sb_publishable_")) {
+    return {
+      ok: false,
+      reason: "publishable key server statistikasi uchun yetarli emas",
+    };
+  }
+
+  const payload = decodeJwtPayload(serviceKey);
+
+  if (!payload) {
+    return {
+      ok: false,
+      reason: "service_role JWT yoki sb_secret formatida emas",
+    };
+  }
+
+  if (payload.role !== "service_role") {
+    return {
+      ok: false,
+      reason: `role=${payload.role || "-"}, service_role kerak`,
+    };
+  }
+
+  if (projectRef && payload.ref && payload.ref !== projectRef) {
+    return {
+      ok: false,
+      reason: `ref=${payload.ref} URL ref=${projectRef} bilan mos emas`,
+    };
+  }
+
+  if (payload.exp && Number(payload.exp) <= Math.floor(Date.now() / 1000)) {
+    return {
+      ok: false,
+      reason: "muddati tugagan",
+    };
+  }
+
+  return {
+    ok: true,
+    keyType: "legacy_service_role",
+  };
+}
+
+function decodeJwtPayload(token) {
+  const [, payload] = String(token || "").split(".");
+
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function extractSupabaseProjectRef(supabaseUrl = "") {
+  try {
+    const hostname = new URL(supabaseUrl).hostname;
+    const match = hostname.match(/^(?:db\.)?([a-z0-9]+)\.supabase\.co$/i);
+
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
 function parseBoundedNumber(value, fallback, min, max) {
   const number = Number(value);
 
@@ -1624,6 +1800,10 @@ function trackUser(user = {}, chat = {}, updateMeta = {}) {
 }
 
 function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
+  if (getSupabaseConfigError() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
   const payload = buildSupabaseTrackPayload(user, chat, updateMeta);
 
   if (!payload) {
@@ -1687,12 +1867,53 @@ function toPgBigint(value) {
 }
 
 function isSupabaseConfigured() {
-  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
+  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY && !SUPABASE_CONFIG.error);
+}
+
+function getSupabaseConfigError() {
+  if (!SUPABASE_URL) {
+    return "SUPABASE_URL topilmadi";
+  }
+
+  if (SUPABASE_CONFIG.error) {
+    return SUPABASE_CONFIG.error;
+  }
+
+  return "";
+}
+
+function isSupabaseAuthTemporarilyDisabled() {
+  return Date.now() < Number(stats.supabaseAuthDisabledUntil || 0);
+}
+
+function rememberSupabaseAuthFailure(message) {
+  const safeMessage = cleanEnv(message) || "Supabase API key yaroqsiz";
+
+  stats.supabaseLastAuthError =
+    "Supabase API key yaroqsiz yoki JWT secret rotate qilingan. Vercel envdagi SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY ni yangilang.";
+  stats.supabaseAuthDisabledUntil = Date.now() + 5 * 60 * 1000;
+  recordError("supabase_auth_failed", safeMessage);
 }
 
 async function getSupabaseStats() {
-  if (!isSupabaseConfigured()) {
-    return null;
+  const configError = getSupabaseConfigError();
+
+  if (configError) {
+    return {
+      error: true,
+      configError,
+      users: [],
+      monthly: [],
+    };
+  }
+
+  if (isSupabaseAuthTemporarilyDisabled()) {
+    return {
+      error: true,
+      configError: stats.supabaseLastAuthError,
+      users: [],
+      monthly: [],
+    };
   }
 
   try {
@@ -1731,15 +1952,18 @@ async function supabaseRpc(functionName, args, options = {}) {
 
 async function supabaseRequest(path, options = {}) {
   if (!isSupabaseConfigured()) {
-    throw new Error("Supabase env sozlanmagan");
+    throw new Error(getSupabaseConfigError() || "Supabase env sozlanmagan");
   }
 
   const { method = "GET", body, prefer } = options;
   const headers = {
     apikey: SUPABASE_SERVICE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
     Accept: "application/json",
   };
+
+  if (SUPABASE_KEY_TYPE !== "secret") {
+    headers.Authorization = `Bearer ${SUPABASE_SERVICE_KEY}`;
+  }
 
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -1760,9 +1984,13 @@ async function supabaseRequest(path, options = {}) {
   const bodyText = await response.text();
 
   if (!response.ok) {
-    throw new Error(
-      `Supabase REST ${method} ${path.split("?")[0]} HTTP ${response.status}: ${clipText(bodyText, 180)}`
-    );
+    const message = `Supabase REST ${method} ${path.split("?")[0]} HTTP ${response.status}: ${clipText(bodyText, 180)}`;
+
+    if (response.status === 401) {
+      rememberSupabaseAuthFailure(message);
+    }
+
+    throw new Error(message);
   }
 
   if (!bodyText) {
@@ -1936,6 +2164,7 @@ module.exports.__private = {
   getTelegramProfileText,
   isSupabaseConfigured,
   mainKeyboard,
+  normalizeSecretEnv,
   isValidWebhookSecret,
   isAdmin,
   isKeyboardButton,
@@ -1945,6 +2174,8 @@ module.exports.__private = {
   parseAdvancedRanges,
   parseMlbbInput,
   parseRequestBody,
+  resolveSupabaseConfig,
   sanitizeTelegramUsername,
   trackUser,
+  validateSupabaseServiceKey,
 };
