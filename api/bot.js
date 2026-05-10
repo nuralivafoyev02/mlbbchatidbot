@@ -8,6 +8,14 @@ const SUPPORT_USERNAME = sanitizeTelegramUsername(
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987");
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
+const BUTTON_CHECK = "🔎 Server aniqlash";
+const BUTTON_TG_PROFILE = "👤 TG profil topish";
+const BUTTON_STATS = "📊 Statistika";
+const BUTTON_BROADCAST = "📣 Xabar yuborish";
+const BUTTON_COMMANDS = "📋 Buyruqlar";
+const BUTTON_HELP = "ℹ️ Yordam";
+const BUTTON_MENU = "🏠 Menyu";
+const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -138,7 +146,12 @@ async function handleMessage(message) {
   }
 
   if (isCommand(text, "help")) {
-    await sendMessage(chatId, getHelpText(), helpKeyboard());
+    await sendMessage(chatId, getHelpText(user), mainKeyboard(user));
+    return;
+  }
+
+  if (isCommand(text, "commands")) {
+    await sendMessage(chatId, getCommandsText(user), mainKeyboard(user));
     return;
   }
 
@@ -162,6 +175,11 @@ async function handleMessage(message) {
     return;
   }
 
+  if (isCommand(text, "tg") || isCommand(text, "user") || isCommand(text, "profile")) {
+    await handleTelegramProfileCommand(chatId, user, text);
+    return;
+  }
+
   if (isCommand(text, "check")) {
     const input = text.replace(/^\/check(@\w+)?/i, "").trim();
 
@@ -171,6 +189,51 @@ async function handleMessage(message) {
     }
 
     await detectAndReply(chatId, input, user);
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_CHECK, BUTTON_CHECK_AGAIN)) {
+    await sendMessage(chatId, getCheckPromptText(), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_TG_PROFILE)) {
+    await sendMessage(chatId, getTelegramProfilePromptText(), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_HELP)) {
+    await sendMessage(chatId, getHelpText(user), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_COMMANDS)) {
+    await sendMessage(chatId, getCommandsText(user), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_MENU)) {
+    await sendMessage(chatId, getStartText(user), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_STATS)) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      return;
+    }
+
+    await sendMessage(chatId, getStatsText(), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_BROADCAST)) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      return;
+    }
+
+    await sendMessage(chatId, getBroadcastUsageText(), mainKeyboard(user));
     return;
   }
 
@@ -261,6 +324,39 @@ async function handleMessageCommand(chatId, user, text) {
   );
 }
 
+async function handleTelegramProfileCommand(chatId, user, text) {
+  const tgId = extractTelegramId(text);
+
+  if (!tgId) {
+    await sendMessage(chatId, getTelegramProfilePromptText(), mainKeyboard(user));
+    return;
+  }
+
+  if (!isValidTelegramId(tgId)) {
+    await sendMessage(chatId, getInvalidTelegramIdText(), mainKeyboard(user));
+    return;
+  }
+
+  await safeSendChatAction(chatId, "typing");
+
+  const profile = await lookupTelegramProfile(tgId);
+
+  if (!profile.ok) {
+    await sendMessage(
+      chatId,
+      getTelegramProfileFailedText(tgId, profile.reason),
+      mainKeyboard(user)
+    );
+    return;
+  }
+
+  await sendMessage(
+    chatId,
+    getTelegramProfileText(profile.data),
+    mainKeyboard(user)
+  );
+}
+
 async function handleBroadcastConfirm(chatId, user, data) {
   if (!isAdmin(user.id)) {
     await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
@@ -313,9 +409,9 @@ async function detectAndReply(chatId, input, user = {}) {
         "Aniq tekshirish uchun MLBB <b>Account ID</b> va <b>Server/Zone ID</b> kerak.",
         "",
         "<b>To‘g‘ri formatlar:</b>",
-        "✅ <code>123456789 (5009)</code>",
-        "✅ <code>123456789 5009</code>",
-        "✅ <code>/check 123456789 5009</code>",
+        "✅ <code>1289050 (10050)</code>",
+        "✅ <code>1289050 10050</code>",
+        "✅ <code>/check 1289050 10050</code>",
       ].join("\n"),
       checkKeyboard(user)
     );
@@ -415,6 +511,24 @@ async function lookupMlbbAccount(accountId, zoneId) {
       ok: false,
       provider: "external_api",
       reason: error.message || "Lookup API ishlamadi",
+    };
+  }
+}
+
+async function lookupTelegramProfile(tgId) {
+  try {
+    const data = await telegram("getChat", {
+      chat_id: tgId,
+    });
+
+    return {
+      ok: true,
+      data: data.result,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: normalizeTelegramError(error.message),
     };
   }
 }
@@ -566,6 +680,20 @@ function parseMlbbInput(input) {
   };
 }
 
+function extractTelegramId(text) {
+  const commandless = String(text || "")
+    .replace(/^\/(?:tg|user|profile)(@\w+)?/i, "")
+    .replace(/\u00A0/g, " ")
+    .trim();
+  const match = commandless.match(/-?\d{5,20}/);
+
+  return match ? match[0] : "";
+}
+
+function isValidTelegramId(tgId) {
+  return /^-?\d{5,20}$/.test(String(tgId || ""));
+}
+
 function validateParsedId(accountId, zoneId) {
   if (!accountId || !zoneId) {
     return {
@@ -629,12 +757,14 @@ function getStartText(user) {
     `Salom, <b>${name}</b>! 👋`,
     "",
     "MLBB Account ID va Server/Zone ID yuboring, men serverini aniqlab beraman.",
+    "TG ID yuborib Telegram profil ma’lumotlarini ham tekshirishingiz mumkin.",
     "",
     "<b>Namuna:</b>",
     "<code>1289050 (10050)</code>",
     "<code>123456789 5009</code>",
+    "<code>/tg 5081175125</code>",
     "",
-    "Qo‘shimcha funksiyalar uchun pastdagi tugmalardan foydalaning.",
+    "Ko‘p ishlatiladigan funksiyalar pastdagi klaviaturada.",
   ].join("\n");
 }
 
@@ -645,9 +775,9 @@ function getCheckPromptText() {
     "Iltimos, MLBB <b>Account ID</b> va <b>Server/Zone ID</b> ni yuboring.",
     "",
     "<b>Namuna:</b>",
-    "<code>123456789 (5009)</code>",
-    "<code>123456789 5009</code>",
-    "<code>/check 123456789 5009</code>",
+    "<code>1289050 (10050)</code>",
+    "<code>1289050 10050</code>",
+    "<code>/check 1289050 10050</code>",
     "",
     "⚠️ Faqat Account ID yuborilsa, serverni aniq topib bo‘lmaydi.",
   ].join("\n");
@@ -682,19 +812,121 @@ function getFailedLookupText(parsed, lookup) {
   ].join("\n");
 }
 
-function getHelpText() {
+function getHelpText(user = {}) {
   return [
     "ℹ️ <b>Yordam</b>",
     "",
-    "MLBB profilida ID odatda shunday ko‘rinadi:",
-    "<code>123456789 (5009)</code>",
+    "<b>1. MLBB server aniqlash</b>",
+    "Account ID va Server/Zone ID ni yuboring. Bot profilni tashqi lookup API orqali tekshiradi va server turini chiqaradi.",
     "",
-    "Bu yerda:",
-    "🆔 <b>123456789</b> — Account ID",
-    "🌐 <b>5009</b> — Server/Zone ID",
+    "<b>Formatlar:</b>",
+    "<code>1289050 (10050)</code>",
+    "<code>1289050 10050</code>",
+    "<code>/check 1289050 10050</code>",
+    "",
+    "<b>2. Telegram profil topish</b>",
+    "TG ID orqali bot ko‘ra oladigan profil ma’lumotlarini chiqaradi.",
+    "<code>/tg 5081175125</code>",
+    "<code>/user 5081175125</code>",
+    "<code>/profile 5081175125</code>",
+    "",
+    "<b>3. Klaviatura</b>",
+    "Pastdagi tugmalar orqali asosiy funksiyalarni command yozmasdan ishlatishingiz mumkin.",
+    "",
+    "<b>4. Cheklovlar</b>",
+    "Faqat Account ID yuborilsa, MLBB serverini aniq topib bo‘lmaydi. TG profil lookup esa Telegram botga ko‘rinadigan public ma’lumotlargina qaytaradi.",
+    "",
+    getCommandsText(user),
     "",
     `Admin bilan bog‘lanish: @${escapeHtml(SUPPORT_USERNAME)}`,
   ].join("\n");
+}
+
+function getCommandsText(user = {}) {
+  const commands = [
+    "📋 <b>Buyruqlar</b>",
+    "",
+    "<code>/start</code> — botni ishga tushirish va klaviaturani chiqarish",
+    "<code>/help</code> — batafsil yordam",
+    "<code>/commands</code> — barcha buyruqlar ro‘yxati",
+    "<code>/check 1289050 10050</code> — MLBB server/profil tekshirish",
+    "<code>/tg 5081175125</code> — Telegram ID orqali profil topish",
+    "<code>/user 5081175125</code> — /tg bilan bir xil",
+    "<code>/profile 5081175125</code> — /tg bilan bir xil",
+  ];
+
+  if (isAdmin(user.id)) {
+    commands.push(
+      "",
+      "<b>Admin buyruqlari:</b>",
+      "<code>/stats</code> yoki <code>/stat</code> — bot statistikasi",
+      "<code>/message Matn</code> — barcha userlarga tasdiq bilan xabar yuborish"
+    );
+  }
+
+  return commands.join("\n");
+}
+
+function getTelegramProfilePromptText() {
+  return [
+    "👤 <b>TG profil topish</b>",
+    "",
+    "Telegram ID yuboring:",
+    "<code>/tg 5081175125</code>",
+    "",
+    "Eslatma: Telegram botlar faqat bot ko‘ra oladigan profil/public chat ma’lumotlarini oladi.",
+  ].join("\n");
+}
+
+function getInvalidTelegramIdText() {
+  return [
+    "TG ID formati noto‘g‘ri.",
+    "",
+    "To‘g‘ri format:",
+    "<code>/tg 5081175125</code>",
+  ].join("\n");
+}
+
+function getTelegramProfileText(profile) {
+  const id = String(profile.id || "");
+  const name = [profile.first_name, profile.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const username = profile.username ? `@${profile.username}` : "Yo‘q";
+  const title = profile.title ? escapeHtml(profile.title) : null;
+  const bio = profile.bio || profile.description;
+
+  return [
+    "👤 <b>Telegram profil</b>",
+    "",
+    `🆔 <b>ID:</b> <code>${escapeHtml(id)}</code>`,
+    name ? `👤 <b>Ism:</b> ${escapeHtml(name)}` : "",
+    title ? `🏷 <b>Nomi:</b> ${title}` : "",
+    `🔗 <b>Username:</b> ${escapeHtml(username)}`,
+    profile.type ? `📌 <b>Turi:</b> ${escapeHtml(profile.type)}` : "",
+    profile.username
+      ? `🌐 <b>Link:</b> https://t.me/${escapeHtml(profile.username)}`
+      : id
+        ? `🌐 <b>Link:</b> <a href="tg://user?id=${escapeHtml(id)}">profilni ochish</a>`
+        : "",
+    bio ? `📝 <b>Bio:</b> ${escapeHtml(clipText(String(bio), 500))}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getTelegramProfileFailedText(tgId, reason) {
+  return [
+    "👤 <b>Profil topilmadi</b>",
+    "",
+    `🆔 <b>TG ID:</b> <code>${escapeHtml(tgId)}</code>`,
+    "",
+    "Sabab: bot bu profilni ko‘ra olmayapti yoki ID noto‘g‘ri.",
+    reason ? `Telegram javobi: ${escapeHtml(reason)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function getStatsText() {
@@ -779,101 +1011,36 @@ function getBroadcastResultText(result) {
 }
 
 function mainKeyboard(user = {}) {
-  const bottomRow = [
-    {
-      text: "ℹ️ Yordam",
-      url: `https://t.me/${SUPPORT_USERNAME}`,
-    },
+  const keyboard = [
+    [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
+    [{ text: BUTTON_COMMANDS }, { text: BUTTON_HELP }],
   ];
 
   if (isAdmin(user.id)) {
-    bottomRow.unshift({
-      text: "📊 Statistika",
-      callback_data: "stats",
-    });
+    keyboard.splice(1, 0, [
+      { text: BUTTON_STATS },
+      { text: BUTTON_BROADCAST },
+    ]);
   }
 
   return {
-    inline_keyboard: [
-      [
-        {
-          text: "🔎 Server aniqlash",
-          callback_data: "detect_server",
-        },
-      ],
-      bottomRow,
-    ],
+    keyboard,
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "1289050 (10050) yoki /tg 5081175125",
   };
 }
 
 function checkKeyboard(user = {}) {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: "🔎 Server aniqlash",
-          callback_data: "detect_server",
-        },
-      ],
-      [
-        {
-          text: "🏠 Menyu",
-          callback_data: "menu",
-        },
-        {
-          text: "ℹ️ Yordam",
-          url: `https://t.me/${SUPPORT_USERNAME}`,
-        },
-      ],
-    ],
-  };
+  return mainKeyboard(user);
 }
 
 function resultKeyboard(user = {}) {
-  const bottomRow = [
-    {
-      text: "ℹ️ Yordam",
-      url: `https://t.me/${SUPPORT_USERNAME}`,
-    },
-  ];
-
-  if (isAdmin(user.id)) {
-    bottomRow.unshift({
-      text: "📊 Statistika",
-      callback_data: "stats",
-    });
-  }
-
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: "🔍 Yana tekshirish",
-          callback_data: "check_again",
-        },
-      ],
-      bottomRow,
-    ],
-  };
+  return mainKeyboard(user);
 }
 
-function helpKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: "🔎 Server aniqlash",
-          callback_data: "detect_server",
-        },
-      ],
-      [
-        {
-          text: `📩 @${SUPPORT_USERNAME}`,
-          url: `https://t.me/${SUPPORT_USERNAME}`,
-        },
-      ],
-    ],
-  };
+function helpKeyboard(user = {}) {
+  return mainKeyboard(user);
 }
 
 function broadcastConfirmKeyboard(broadcastId) {
@@ -976,6 +1143,10 @@ async function fetchWithTimeout(url, options = {}) {
 
 function isCommand(text, command) {
   return new RegExp(`^\\/${command}(?:@\\w+)?(?:\\s|$)`, "i").test(text);
+}
+
+function isKeyboardButton(text, ...buttons) {
+  return buttons.includes(String(text || "").trim());
 }
 
 function parseRequestBody(body) {
@@ -1103,6 +1274,18 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
+function normalizeTelegramError(message) {
+  const text = cleanEnv(message);
+  const telegramBody = text.match(/\{.*\}$/)?.[0];
+  const parsed = telegramBody ? safeJsonParse(telegramBody) : null;
+
+  if (parsed?.description) {
+    return parsed.description;
+  }
+
+  return text;
+}
+
 function sanitizeTelegramUsername(value) {
   const username = cleanEnv(value).replace(/^@+/, "");
 
@@ -1148,9 +1331,14 @@ function clipText(text, maxLength) {
 module.exports.__private = {
   broadcastMessage,
   detectServerType,
+  extractTelegramId,
+  getCommandsText,
   getResultText,
+  getTelegramProfileText,
   isValidWebhookSecret,
   isAdmin,
+  isKeyboardButton,
+  isValidTelegramId,
   normalizeLookupResponse,
   parseIdList,
   parseAdvancedRanges,

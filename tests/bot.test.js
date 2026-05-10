@@ -8,9 +8,14 @@ process.env.ADMIN_IDS = "5081175125,8500085987";
 
 const handler = require("../api/bot.js");
 const {
+  extractTelegramId,
+  getCommandsText,
   getResultText,
+  getTelegramProfileText,
   isAdmin,
   isValidWebhookSecret,
+  isKeyboardButton,
+  isValidTelegramId,
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
@@ -99,6 +104,32 @@ test("result text does not include elapsed time", () => {
   assert.match(text, /1289050/);
 });
 
+test("keyboard helper recognizes reply keyboard labels", () => {
+  assert.equal(isKeyboardButton("🔎 Server aniqlash", "🔎 Server aniqlash"), true);
+  assert.equal(isKeyboardButton("other", "🔎 Server aniqlash"), false);
+});
+
+test("telegram profile helpers parse ids and format profile text", () => {
+  assert.equal(extractTelegramId("/tg 5081175125"), "5081175125");
+  assert.equal(isValidTelegramId("5081175125"), true);
+  assert.equal(isValidTelegramId("abc"), false);
+
+  const text = getTelegramProfileText({
+    id: 5081175125,
+    type: "private",
+    first_name: "Ali",
+    username: "ali_test",
+  });
+
+  assert.match(text, /5081175125/);
+  assert.match(text, /@ali_test/);
+});
+
+test("commands text includes admin commands only for admins", () => {
+  assert.match(getCommandsText({ id: 5081175125 }), /\/message/);
+  assert.doesNotMatch(getCommandsText({ id: 777 }), /\/message/);
+});
+
 test("handler rejects POST requests without the configured webhook secret", async () => {
   const res = createRes();
 
@@ -114,6 +145,47 @@ test("handler rejects POST requests without the configured webhook secret", asyn
 
   assert.equal(res.statusCode, 401);
   assert.equal(res.body.ok, false);
+});
+
+test("/start sends a reply keyboard", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 2,
+          message: {
+            chat: { id: 777, type: "private" },
+            from: { id: 777, first_name: "Ali" },
+            text: "/start",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].payload.reply_markup.keyboard);
+    assert.equal(calls[0].payload.reply_markup.inline_keyboard, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test("callback queries without a message are acknowledged without crashing", async () => {
@@ -152,6 +224,65 @@ test("callback queries without a message are acknowledged without crashing", asy
     assert.equal(res.body.ok, true);
     assert.equal(calls.length, 1);
     assert.match(calls[0].url, /answerCallbackQuery$/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("/tg looks up a Telegram profile with getChat", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+
+    if (url.endsWith("/getChat")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            id: 5081175125,
+            type: "private",
+            first_name: "Ali",
+            username: "ali_test",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5,
+          message: {
+            chat: { id: 777, type: "private" },
+            from: { id: 777 },
+            text: "/tg 5081175125",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    assert.match(calls.at(-1).payload.text, /@ali_test/);
   } finally {
     global.fetch = originalFetch;
   }
