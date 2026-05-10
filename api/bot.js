@@ -19,6 +19,22 @@ const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
+const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, "");
+const SUPABASE_SERVICE_KEY = cleanEnv(
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
+);
+const SUPABASE_TIMEOUT_MS = parseBoundedNumber(
+  process.env.SUPABASE_TIMEOUT_MS,
+  1500,
+  300,
+  5000
+);
+const SUPABASE_USER_LIST_LIMIT = parseBoundedNumber(
+  process.env.SUPABASE_USER_LIST_LIMIT,
+  10,
+  1,
+  25
+);
 
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
@@ -114,24 +130,31 @@ async function processUpdate(update) {
     return;
   }
 
-  const message =
-    update.message ||
-    update.edited_message ||
-    update.channel_post ||
-    update.edited_channel_post;
+  const messageEntry = [
+    ["message", update.message],
+    ["edited_message", update.edited_message],
+    ["channel_post", update.channel_post],
+    ["edited_channel_post", update.edited_channel_post],
+  ].find(([, value]) => value);
 
-  if (message) {
-    await handleMessage(message);
+  if (messageEntry) {
+    await handleMessage(messageEntry[1], {
+      updateId: update.update_id,
+      updateType: messageEntry[0],
+    });
     return;
   }
 
   if (update.callback_query) {
-    await handleCallbackQuery(update.callback_query);
+    await handleCallbackQuery(update.callback_query, {
+      updateId: update.update_id,
+      updateType: "callback_query",
+    });
     return;
   }
 }
 
-async function handleMessage(message) {
+async function handleMessage(message, updateMeta = {}) {
   if (!message?.chat?.id) {
     return;
   }
@@ -140,7 +163,9 @@ async function handleMessage(message) {
   const text = String(message.text || "").trim();
   const user = message.from || {};
 
-  trackUser(user, message.chat);
+  trackUser(user, message.chat, {
+    ...updateMeta,
+  });
 
   if (!text) {
     await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
@@ -169,7 +194,7 @@ async function handleMessage(message) {
       return;
     }
 
-    await sendMessage(chatId, getStatsText(), mainKeyboard(user));
+    await sendMessage(chatId, await getStatsTextAsync(), mainKeyboard(user));
     return;
   }
 
@@ -231,7 +256,7 @@ async function handleMessage(message) {
       return;
     }
 
-    await sendMessage(chatId, getStatsText(), mainKeyboard(user));
+    await sendMessage(chatId, await getStatsTextAsync(), mainKeyboard(user));
     return;
   }
 
@@ -255,7 +280,7 @@ async function handleMessage(message) {
   await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
 }
 
-async function handleCallbackQuery(callbackQuery) {
+async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
   if (!callbackQuery?.id) {
     return;
   }
@@ -264,7 +289,9 @@ async function handleCallbackQuery(callbackQuery) {
   const chatId = callbackQuery.message?.chat?.id;
   const user = callbackQuery.from || {};
 
-  trackUser(user, callbackQuery.message?.chat);
+  trackUser(user, callbackQuery.message?.chat, {
+    ...updateMeta,
+  });
 
   await answerCallbackQuery(callbackQuery.id);
 
@@ -293,7 +320,7 @@ async function handleCallbackQuery(callbackQuery) {
       return;
     }
 
-    await sendMessage(chatId, getStatsText(), mainKeyboard(user));
+    await sendMessage(chatId, await getStatsTextAsync(), mainKeyboard(user));
     return;
   }
 
@@ -1011,8 +1038,16 @@ function getTelegramProfileFailedText(tgId, reason) {
     .join("\n");
 }
 
-function getStatsText() {
+async function getStatsTextAsync() {
+  const dbStats = await getSupabaseStats();
+
+  return getStatsText(dbStats);
+}
+
+function getStatsText(dbStats = null) {
   const errorLines = getStatsErrorLines();
+  const userLines = getStatsUserLines(dbStats);
+  const monthlyLines = getStatsMonthlyLines(dbStats);
 
   return [
     "📊 <b>Bot statistikasi</b>",
@@ -1027,6 +1062,12 @@ function getStatsText() {
     `🕒 <b>Ishga tushgan:</b> ${formatDate(stats.startedAt)}`,
     stats.lastCheckAt ? `✅ <b>Oxirgi tekshiruv:</b> ${formatDate(stats.lastCheckAt)}` : "",
     "",
+    "<b>Joriy userlar:</b>",
+    ...userLines,
+    "",
+    "<b>Oylik aktiv userlar:</b>",
+    ...monthlyLines,
+    "",
     "<b>Xatolik turlari:</b>",
     ...getErrorCountLines(),
     "",
@@ -1035,6 +1076,70 @@ function getStatsText() {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function getStatsUserLines(dbStats = null) {
+  if (Array.isArray(dbStats?.users) && dbStats.users.length) {
+    return dbStats.users.map(formatSupabaseUserLine);
+  }
+
+  const memoryUsers = Array.from(stats.users || []).slice(-SUPABASE_USER_LIST_LIMIT).reverse();
+
+  if (memoryUsers.length) {
+    const suffix = dbStats?.error
+      ? " — Supabase o‘qilmadi, lokal xotiradan"
+      : "";
+
+    return memoryUsers.map((userId, index) => {
+      return `${index + 1}. <code>${escapeHtml(userId)}</code>${suffix}`;
+    });
+  }
+
+  if (dbStats?.error) {
+    return ["Supabase o‘qishda xatolik bor, lokal xotirada user topilmadi."];
+  }
+
+  return ["Hali user qayd etilmagan."];
+}
+
+function formatSupabaseUserLine(user, index) {
+  const userId = user.user_id || user.id || "-";
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  const username = user.username ? `@${user.username}` : "";
+  const name = [fullName, username].filter(Boolean).join(" ");
+  const updates = Number(user.updates_count || 0);
+  const lastSeen = user.last_seen_at ? formatDate(user.last_seen_at) : "-";
+
+  return [
+    `${index + 1}. <code>${escapeHtml(userId)}</code>`,
+    name ? `— ${escapeHtml(clipText(name, 45))}` : "",
+    `— ${updates} update`,
+    `— ${lastSeen}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getStatsMonthlyLines(dbStats = null) {
+  if (Array.isArray(dbStats?.monthly) && dbStats.monthly.length) {
+    return dbStats.monthly.map((row) => {
+      const month = formatMonth(row.month);
+      const users = Number(row.active_users || 0);
+      const updates = Number(row.updates || 0);
+
+      return `${escapeHtml(month)}: <b>${users}</b> user, ${updates} update`;
+    });
+  }
+
+  if (dbStats?.error) {
+    return ["Supabase o‘qishda xatolik bor, oylik statistika vaqtincha olinmadi."];
+  }
+
+  if (!isSupabaseConfigured()) {
+    return [`Supabase ulanmagan. Joriy runtime: <b>${stats.users.size}</b> user.`];
+  }
+
+  return ["Hali oylik aktivlik qayd etilmagan."];
 }
 
 function getErrorCountLines() {
@@ -1328,8 +1433,28 @@ function formatDate(value) {
   });
 }
 
+function formatMonth(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "-").slice(0, 7);
+  }
+
+  return date.toISOString().slice(0, 7);
+}
+
 function cleanEnv(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseBoundedNumber(value, fallback, min, max) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.trunc(number)));
 }
 
 function parseIdList(value) {
@@ -1343,7 +1468,7 @@ function isAdmin(userId) {
   return ADMIN_IDS.includes(String(userId || ""));
 }
 
-function trackUser(user = {}, chat = {}) {
+function trackUser(user = {}, chat = {}, updateMeta = {}) {
   if (user.id) {
     stats.users.add(String(user.id));
   }
@@ -1351,6 +1476,157 @@ function trackUser(user = {}, chat = {}) {
   if (chat?.id && (!chat.type || chat.type === "private")) {
     stats.broadcastChats.add(String(chat.id));
   }
+
+  queueSupabaseUserTrack(user, chat, updateMeta);
+}
+
+function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
+  const payload = buildSupabaseTrackPayload(user, chat, updateMeta);
+
+  if (!payload) {
+    return;
+  }
+
+  void supabaseRpc("track_bot_user", payload, {
+    prefer: "return=minimal",
+  }).catch((error) => {
+    console.error("[SUPABASE_TRACK_ERROR]", error);
+    recordError("supabase_track_failed", error.message, {
+      userId: payload.p_user_id,
+      updateType: payload.p_update_type,
+    });
+  });
+}
+
+function buildSupabaseTrackPayload(user = {}, chat = {}, updateMeta = {}) {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  const userId = toPgBigint(user.id);
+
+  if (!userId) {
+    return null;
+  }
+
+  return {
+    p_user_id: userId,
+    p_chat_id: toPgBigint(chat?.id),
+    p_chat_type: cleanTextValue(chat?.type, 32),
+    p_username: cleanTextValue(user.username, 64),
+    p_first_name: cleanTextValue(user.first_name, 128),
+    p_last_name: cleanTextValue(user.last_name, 128),
+    p_language_code: cleanTextValue(user.language_code, 16),
+    p_is_bot: typeof user.is_bot === "boolean" ? user.is_bot : null,
+    p_update_id: toPgBigint(updateMeta.updateId),
+    p_update_type: cleanTextValue(updateMeta.updateType, 32),
+  };
+}
+
+function cleanTextValue(value, maxLength) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const text = String(value).trim();
+
+  if (!text) {
+    return null;
+  }
+
+  return clipText(text, maxLength);
+}
+
+function toPgBigint(value) {
+  const text = String(value ?? "").trim();
+
+  return /^-?\d{1,19}$/.test(text) ? text : null;
+}
+
+function isSupabaseConfigured() {
+  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
+}
+
+async function getSupabaseStats() {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const [users, monthly] = await Promise.all([
+      supabaseRequest(
+        `/bot_users?select=user_id,username,first_name,last_name,updates_count,last_seen_at&order=last_seen_at.desc&limit=${SUPABASE_USER_LIST_LIMIT}`
+      ),
+      supabaseRequest(
+        "/bot_monthly_active_users?select=month,active_users,updates&order=month.desc&limit=6"
+      ),
+    ]);
+
+    return {
+      users: Array.isArray(users) ? users : [],
+      monthly: Array.isArray(monthly) ? monthly : [],
+    };
+  } catch (error) {
+    console.error("[SUPABASE_STATS_ERROR]", error);
+    recordError("supabase_stats_failed", error.message);
+
+    return {
+      error: true,
+      users: [],
+      monthly: [],
+    };
+  }
+}
+
+async function supabaseRpc(functionName, args, options = {}) {
+  return supabaseRequest(`/rpc/${encodeURIComponent(functionName)}`, {
+    method: "POST",
+    body: args,
+    ...options,
+  });
+}
+
+async function supabaseRequest(path, options = {}) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase env sozlanmagan");
+  }
+
+  const { method = "GET", body, prefer } = options;
+  const headers = {
+    apikey: SUPABASE_SERVICE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+    Accept: "application/json",
+  };
+
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (prefer) {
+    headers.Prefer = prefer;
+  }
+
+  const response = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    keepalive: method === "POST",
+    timeoutMs: SUPABASE_TIMEOUT_MS,
+  });
+
+  const bodyText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Supabase REST ${method} ${path.split("?")[0]} HTTP ${response.status}: ${clipText(bodyText, 180)}`
+    );
+  }
+
+  if (!bodyText) {
+    return null;
+  }
+
+  return safeJsonParse(bodyText) ?? bodyText;
 }
 
 function recordError(type, message, meta = {}) {
@@ -1500,13 +1776,16 @@ function clipText(text, maxLength) {
 
 module.exports.__private = {
   broadcastMessage,
+  buildSupabaseTrackPayload,
   detectServerType,
   extractTelegramId,
   getCommandsText,
   getFailedLookupText,
   getResultText,
   getStatsText,
+  getStatsTextAsync,
   getTelegramProfileText,
+  isSupabaseConfigured,
   mainKeyboard,
   isValidWebhookSecret,
   isAdmin,

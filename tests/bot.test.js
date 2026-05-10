@@ -5,6 +5,9 @@ process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
 process.env.SUPPORT_USERNAME = "@Oblto_org";
 process.env.ADMIN_IDS = "5081175125,8500085987";
+delete process.env.SUPABASE_URL;
+delete process.env.SUPABASE_SERVICE_KEY;
+delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const handler = require("../api/bot.js");
 const {
@@ -24,6 +27,7 @@ const {
   parseMlbbInput,
   parseRequestBody,
   sanitizeTelegramUsername,
+  trackUser,
 } = handler.__private;
 
 function createRes() {
@@ -131,6 +135,19 @@ test("telegram profile helpers parse ids and format profile text", () => {
 test("commands text includes admin commands only for admins", () => {
   assert.match(getCommandsText({ id: 5081175125 }), /\/message/);
   assert.doesNotMatch(getCommandsText({ id: 777 }), /\/message/);
+});
+
+test("stats text includes current users and monthly active section", () => {
+  trackUser({ id: 99001, first_name: "Vali" }, { id: 99001, type: "private" }, {
+    updateId: 9001,
+    updateType: "message",
+  });
+
+  const text = getStatsText();
+
+  assert.match(text, /Joriy userlar/);
+  assert.match(text, /99001/);
+  assert.match(text, /Oylik aktiv userlar/);
 });
 
 test("main keyboard has no placeholder and hides admin buttons from users", () => {
