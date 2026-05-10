@@ -1,6 +1,10 @@
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
-const SUPPORT_USERNAME = (process.env.SUPPORT_USERNAME || "Oblto_org").replace("@", "");
+const crypto = require("node:crypto");
+
+const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
+const SUPPORT_USERNAME = sanitizeTelegramUsername(
+  process.env.SUPPORT_USERNAME || "Oblto_org"
+);
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -45,14 +49,13 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const secretHeader = req.headers["x-telegram-bot-api-secret-token"];
-    const secretQuery = req.query?.secret;
+    const secretHeader = getFirstHeader(
+      req.headers,
+      "x-telegram-bot-api-secret-token"
+    );
+    const secretQuery = getFirstValue(req.query?.secret);
 
-    if (
-      TELEGRAM_WEBHOOK_SECRET &&
-      secretHeader !== TELEGRAM_WEBHOOK_SECRET &&
-      secretQuery !== TELEGRAM_WEBHOOK_SECRET
-    ) {
+    if (TELEGRAM_WEBHOOK_SECRET && !isValidWebhookSecret(secretHeader, secretQuery)) {
       return res.status(401).json({
         ok: false,
         error: "Unauthorized webhook request",
@@ -74,8 +77,18 @@ module.exports = async function handler(req, res) {
 };
 
 async function processUpdate(update) {
-  if (update.message) {
-    await handleMessage(update.message);
+  if (!update || typeof update !== "object") {
+    return;
+  }
+
+  const message =
+    update.message ||
+    update.edited_message ||
+    update.channel_post ||
+    update.edited_channel_post;
+
+  if (message) {
+    await handleMessage(message);
     return;
   }
 
@@ -86,6 +99,10 @@ async function processUpdate(update) {
 }
 
 async function handleMessage(message) {
+  if (!message?.chat?.id) {
+    return;
+  }
+
   const chatId = message.chat.id;
   const text = String(message.text || "").trim();
   const user = message.from || {};
@@ -132,13 +149,21 @@ async function handleMessage(message) {
 }
 
 async function handleCallbackQuery(callbackQuery) {
-  const data = callbackQuery.data;
-  const chatId = callbackQuery.message.chat.id;
+  if (!callbackQuery?.id) {
+    return;
+  }
+
+  const data = String(callbackQuery.data || "");
+  const chatId = callbackQuery.message?.chat?.id;
   const user = callbackQuery.from || {};
 
   if (user.id) stats.users.add(user.id);
 
   await answerCallbackQuery(callbackQuery.id);
+
+  if (!chatId) {
+    return;
+  }
 
   if (data === "detect_server" || data === "check_again") {
     await sendMessage(chatId, getCheckPromptText(), checkKeyboard());
@@ -377,10 +402,17 @@ function parseAdvancedRanges() {
     .map((part) => part.trim())
     .filter(Boolean)
     .map((range) => {
-      const [from, to] = range.split("-").map((num) => Number(num.trim()));
-      return [from, to || from];
+      const [fromRaw, toRaw] = range.split("-");
+      const from = Number(fromRaw.trim());
+      const to = toRaw === undefined || !toRaw.trim() ? from : Number(toRaw.trim());
+
+      if (!Number.isFinite(from) || !Number.isFinite(to)) {
+        return null;
+      }
+
+      return from <= to ? [from, to] : [to, from];
     })
-    .filter(([from, to]) => Number.isFinite(from) && Number.isFinite(to));
+    .filter(Boolean);
 }
 
 function parseMlbbInput(input) {
@@ -668,25 +700,29 @@ async function answerCallbackQuery(callbackQueryId) {
 }
 
 async function telegram(method, payload) {
-  const response = await fetch(`${TG_API}/${method}`, {
+  const response = await fetchWithTimeout(`${TG_API}/${method}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+    timeoutMs: 10000,
   });
 
-  const data = await response.json();
+  const bodyText = await response.text();
+  const data = safeJsonParse(bodyText);
 
-  if (!data.ok) {
-    throw new Error(`Telegram API error: ${JSON.stringify(data)}`);
+  if (!response.ok || !data?.ok) {
+    throw new Error(
+      `Telegram API error: HTTP ${response.status} ${bodyText || response.statusText}`
+    );
   }
 
   return data;
 }
 
 async function fetchWithTimeout(url, options = {}) {
-  const timeoutMs = options.timeoutMs || 10000;
+  const { timeoutMs = 10000, ...fetchOptions } = options;
   const controller = new AbortController();
 
   const timeout = setTimeout(() => {
@@ -695,7 +731,7 @@ async function fetchWithTimeout(url, options = {}) {
 
   try {
     return await fetch(url, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
     });
   } finally {
@@ -714,10 +750,22 @@ function parseRequestBody(body) {
     return safeJsonParse(body) || {};
   }
 
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    return safeJsonParse(Buffer.from(body).toString("utf8")) || {};
+  }
+
+  if (typeof body !== "object") {
+    return {};
+  }
+
   return body;
 }
 
 function safeJsonParse(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
   try {
     return JSON.parse(value);
   } catch {
@@ -746,3 +794,60 @@ function formatDate(value) {
     minute: "2-digit",
   });
 }
+
+function cleanEnv(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getFirstHeader(headers, name) {
+  if (!headers || typeof headers !== "object") {
+    return "";
+  }
+
+  return getFirstValue(headers[name] ?? headers[name.toLowerCase()]);
+}
+
+function getFirstValue(value) {
+  if (Array.isArray(value)) {
+    return cleanEnv(value[0]);
+  }
+
+  return cleanEnv(value);
+}
+
+function isValidWebhookSecret(secretHeader, secretQuery) {
+  return [secretHeader, secretQuery].some((value) => {
+    return safeCompare(value, TELEGRAM_WEBHOOK_SECRET);
+  });
+}
+
+function safeCompare(a, b) {
+  const left = Buffer.from(cleanEnv(a));
+  const right = Buffer.from(cleanEnv(b));
+
+  if (!left.length || left.length !== right.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(left, right);
+}
+
+function sanitizeTelegramUsername(value) {
+  const username = cleanEnv(value).replace(/^@+/, "");
+
+  if (/^[A-Za-z0-9_]{5,32}$/.test(username)) {
+    return username;
+  }
+
+  return "Oblto_org";
+}
+
+module.exports.__private = {
+  detectServerType,
+  isValidWebhookSecret,
+  normalizeLookupResponse,
+  parseAdvancedRanges,
+  parseMlbbInput,
+  parseRequestBody,
+  sanitizeTelegramUsername,
+};
