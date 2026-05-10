@@ -10,12 +10,15 @@ const handler = require("../api/bot.js");
 const {
   extractTelegramId,
   getCommandsText,
+  getFailedLookupText,
   getResultText,
+  getStatsText,
   getTelegramProfileText,
   isAdmin,
   isValidWebhookSecret,
   isKeyboardButton,
   isValidTelegramId,
+  mainKeyboard,
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
@@ -130,6 +133,32 @@ test("commands text includes admin commands only for admins", () => {
   assert.doesNotMatch(getCommandsText({ id: 777 }), /\/message/);
 });
 
+test("main keyboard has no placeholder and hides admin buttons from users", () => {
+  const userKeyboard = mainKeyboard({ id: 777 });
+  const adminKeyboard = mainKeyboard({ id: 5081175125 });
+  const userKeyboardText = JSON.stringify(userKeyboard);
+
+  assert.equal(userKeyboard.input_field_placeholder, undefined);
+  assert.doesNotMatch(userKeyboardText, /📊|📣|Statistika|Xabar yuborish/);
+  assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
+});
+
+test("lookup fallback hides raw provider status from users", () => {
+  const text = getFailedLookupText(
+    { accountId: "1289050", zoneId: "10050" },
+    {
+      ok: false,
+      status: 500,
+      reason:
+        "Tashqi tekshiruv servisi vaqtincha javob bermayapti. ID va serverni tekshirib, birozdan keyin qayta urinib ko‘ring.",
+      technicalReason: "Lookup API HTTP 500",
+    }
+  );
+
+  assert.doesNotMatch(text, /HTTP 500|Lookup API/);
+  assert.match(text, /Profil topilmadi/);
+});
+
 test("handler rejects POST requests without the configured webhook secret", async () => {
   const res = createRes();
 
@@ -183,6 +212,7 @@ test("/start sends a reply keyboard", async () => {
     assert.equal(calls.length, 1);
     assert.ok(calls[0].payload.reply_markup.keyboard);
     assert.equal(calls[0].payload.reply_markup.inline_keyboard, undefined);
+    assert.equal(calls[0].payload.reply_markup.input_field_placeholder, undefined);
   } finally {
     global.fetch = originalFetch;
   }
@@ -288,6 +318,59 @@ test("/tg looks up a Telegram profile with getChat", async () => {
   }
 });
 
+test("MLBB lookup HTTP 500 returns friendly fallback and records details", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    const urlText = String(url);
+
+    if (urlText.startsWith("https://api.telegram.org")) {
+      calls.push({ url: urlText, payload: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ ok: true, result: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("server exploded", {
+      status: 500,
+      headers: { "content-type": "text/plain" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 8,
+          message: {
+            chat: { id: 777, type: "private" },
+            from: { id: 777 },
+            text: "1289050 (10050)",
+          },
+        },
+      },
+      res
+    );
+
+    const finalMessage = calls.at(-1).payload.text;
+
+    assert.equal(res.statusCode, 200);
+    assert.match(finalMessage, /Profil topilmadi/);
+    assert.doesNotMatch(finalMessage, /HTTP 500|Lookup API|server exploded/);
+    assert.match(getStatsText(), /mlbb_lookup_failed/);
+    assert.match(getStatsText(), /status=500/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("non-admin users cannot open stats", async () => {
   const originalFetch = global.fetch;
   const calls = [];
@@ -322,7 +405,8 @@ test("non-admin users cannot open stats", async () => {
 
     assert.equal(res.statusCode, 200);
     assert.equal(calls.length, 1);
-    assert.match(calls[0].payload.text, /faqat adminlar/);
+    assert.doesNotMatch(calls[0].payload.text, /admin|statistika|\/message/i);
+    assert.match(calls[0].payload.text, /tushunmadim/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -363,9 +447,76 @@ test("admin /message creates a confirmation keyboard", async () => {
     assert.equal(res.statusCode, 200);
     assert.equal(calls.length, 1);
     assert.match(calls[0].payload.text, /Hamma foydalanuvchilarga/);
+    assert.match(calls[0].payload.text, /Hali hech kimga yuborilmadi/);
     assert.match(
       calls[0].payload.reply_markup.inline_keyboard[0][0].callback_data,
-      /^broadcast_confirm:/
+      /^broadcast_confirm:[a-f0-9]+:[a-f0-9]+$/
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("broadcast is not sent when confirmation token is invalid", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 6,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text: "/message Maxfiy test broadcast",
+          },
+        },
+      },
+      res
+    );
+
+    const callbackData =
+      calls[0].payload.reply_markup.inline_keyboard[0][0].callback_data;
+    const forgedCallbackData = callbackData.replace(/:[a-f0-9]+$/, ":badtoken");
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 7,
+          callback_query: {
+            id: "callback-id",
+            data: forgedCallbackData,
+            from: { id: 5081175125 },
+            message: { chat: { id: 5081175125, type: "private" } },
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].payload.text, /eskirgan|topilmadi/);
+    assert.equal(
+      calls.some((call) => call.payload.text === "Maxfiy test broadcast"),
+      false
     );
   } finally {
     global.fetch = originalFetch;

@@ -31,6 +31,8 @@ if (!global.__MLBB_BOT_STATS__) {
     users: new Set(),
     broadcastChats: new Set(BROADCAST_USER_IDS),
     pendingBroadcasts: new Map(),
+    errors: [],
+    errorCounts: {},
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
   };
@@ -40,6 +42,8 @@ const stats = global.__MLBB_BOT_STATS__;
 stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
+stats.errors ||= [];
+stats.errorCounts ||= {};
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 
 module.exports = async function handler(req, res) {
@@ -87,6 +91,10 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error("[BOT_ERROR]", error);
+    recordError("bot_error", error.message, {
+      chatId: getChatIdFromUpdate(update),
+      updateId: update?.update_id,
+    });
 
     const chatId = getChatIdFromUpdate(update);
 
@@ -157,7 +165,7 @@ async function handleMessage(message) {
 
   if (isCommand(text, "stat") || isCommand(text, "stats")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
       return;
     }
 
@@ -167,7 +175,7 @@ async function handleMessage(message) {
 
   if (isCommand(text, "message")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
       return;
     }
 
@@ -219,7 +227,7 @@ async function handleMessage(message) {
 
   if (isKeyboardButton(text, BUTTON_STATS)) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
       return;
     }
 
@@ -229,7 +237,7 @@ async function handleMessage(message) {
 
   if (isKeyboardButton(text, BUTTON_BROADCAST)) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
       return;
     }
 
@@ -281,7 +289,7 @@ async function handleCallbackQuery(callbackQuery) {
 
   if (data === "stats") {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
       return;
     }
 
@@ -311,16 +319,20 @@ async function handleMessageCommand(chatId, user, text) {
   cleanupPendingBroadcasts();
 
   const broadcastId = createBroadcastId();
+  const confirmToken = createBroadcastToken();
   stats.pendingBroadcasts.set(broadcastId, {
     adminId: String(user.id),
+    chatId: String(chatId),
     text: messageText,
+    tokenHash: hashBroadcastToken(confirmToken),
     createdAt: Date.now(),
+    status: "pending",
   });
 
   await sendMessage(
     chatId,
     getBroadcastConfirmText(messageText),
-    broadcastConfirmKeyboard(broadcastId)
+    broadcastConfirmKeyboard(broadcastId, confirmToken)
   );
 }
 
@@ -359,18 +371,25 @@ async function handleTelegramProfileCommand(chatId, user, text) {
 
 async function handleBroadcastConfirm(chatId, user, data) {
   if (!isAdmin(user.id)) {
-    await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+    await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
     return;
   }
 
-  const broadcastId = data.replace("broadcast_confirm:", "");
+  const { broadcastId, token } = parseBroadcastCallback(data, "broadcast_confirm");
   const pending = stats.pendingBroadcasts.get(broadcastId);
 
-  if (!pending || pending.adminId !== String(user.id)) {
+  if (
+    !pending ||
+    pending.status !== "pending" ||
+    pending.adminId !== String(user.id) ||
+    pending.chatId !== String(chatId) ||
+    pending.tokenHash !== hashBroadcastToken(token)
+  ) {
     await sendMessage(chatId, getBroadcastExpiredText(), mainKeyboard(user));
     return;
   }
 
+  pending.status = "confirmed";
   stats.pendingBroadcasts.delete(broadcastId);
   await sendMessage(chatId, "📣 <b>Xabar yuborish boshlandi.</b>", mainKeyboard(user));
 
@@ -385,12 +404,16 @@ async function handleBroadcastConfirm(chatId, user, data) {
 
 async function handleBroadcastCancel(chatId, user, data) {
   if (!isAdmin(user.id)) {
-    await sendMessage(chatId, getAdminOnlyText(), mainKeyboard(user));
+    await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
     return;
   }
 
-  const broadcastId = data.replace("broadcast_cancel:", "");
-  stats.pendingBroadcasts.delete(broadcastId);
+  const { broadcastId, token } = parseBroadcastCallback(data, "broadcast_cancel");
+  const pending = stats.pendingBroadcasts.get(broadcastId);
+
+  if (pending?.adminId === String(user.id) && pending.tokenHash === hashBroadcastToken(token)) {
+    stats.pendingBroadcasts.delete(broadcastId);
+  }
 
   await sendMessage(chatId, "Bekor qilindi.", mainKeyboard(user));
 }
@@ -400,6 +423,9 @@ async function detectAndReply(chatId, input, user = {}) {
 
   if (!parsed.ok) {
     stats.failedChecks += 1;
+    recordError("mlbb_input_invalid", parsed.reason, {
+      input: clipText(String(input || ""), 120),
+    });
 
     await sendMessage(
       chatId,
@@ -428,6 +454,11 @@ async function detectAndReply(chatId, input, user = {}) {
 
   if (!lookup.ok) {
     stats.failedChecks += 1;
+    recordError("mlbb_lookup_failed", lookup.technicalReason || lookup.reason, {
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+      status: lookup.status,
+    });
 
     await sendMessage(
       chatId,
@@ -483,7 +514,12 @@ async function lookupMlbbAccount(accountId, zoneId) {
       return {
         ok: false,
         provider: "external_api",
-        reason: `Lookup API HTTP ${response.status}`,
+        reason: getFriendlyLookupReason({
+          status: response.status,
+          data,
+        }),
+        technicalReason: `Lookup API HTTP ${response.status}`,
+        status: response.status,
         data,
       };
     }
@@ -494,7 +530,11 @@ async function lookupMlbbAccount(accountId, zoneId) {
       return {
         ok: false,
         provider: "external_api",
-        reason: normalized.reason || "Akkaunt topilmadi yoki server ID noto‘g‘ri",
+        reason: getFriendlyLookupReason({
+          reason: normalized.reason,
+          data,
+        }),
+        technicalReason: normalized.reason || "Akkaunt topilmadi yoki server ID noto‘g‘ri",
         data,
       };
     }
@@ -510,7 +550,8 @@ async function lookupMlbbAccount(accountId, zoneId) {
     return {
       ok: false,
       provider: "external_api",
-      reason: error.message || "Lookup API ishlamadi",
+      reason: getFriendlyLookupReason({ error }),
+      technicalReason: error.message || "Lookup API ishlamadi",
     };
   }
 }
@@ -606,6 +647,42 @@ function normalizeLookupResponse(data) {
     nickname: String(possibleNickname).trim(),
     region: possibleRegion ? String(possibleRegion).trim() : null,
   };
+}
+
+function getFriendlyLookupReason(details = {}) {
+  const status = Number(details.status);
+  const rawReason = cleanEnv(details.reason || details.error?.message);
+  const lowered = rawReason.toLowerCase();
+
+  if (details.error?.name === "AbortError" || lowered.includes("aborted")) {
+    return "Tashqi tekshiruv servisi sekin javob berdi. Iltimos, birozdan keyin qayta urinib ko‘ring.";
+  }
+
+  if (status >= 500) {
+    return "Tashqi tekshiruv servisi vaqtincha javob bermayapti. ID va serverni tekshirib, birozdan keyin qayta urinib ko‘ring.";
+  }
+
+  if (status === 429) {
+    return "Tashqi tekshiruv servisi juda ko‘p so‘rov oldi. Birozdan keyin qayta urinib ko‘ring.";
+  }
+
+  if (status >= 400) {
+    return "ID yoki Server/Zone ID bo‘yicha profil topilmadi. Raqamlarni tekshirib qayta yuboring.";
+  }
+
+  if (
+    lowered.includes("topilmadi") ||
+    lowered.includes("not found") ||
+    lowered.includes("nickname")
+  ) {
+    return "Bu ID va Server/Zone ID bo‘yicha profil topilmadi. Iltimos, raqamlarni tekshirib qayta yuboring.";
+  }
+
+  if (rawReason) {
+    return "Profilni tekshirib bo‘lmadi. ID va Server/Zone ID ni tekshirib qayta urinib ko‘ring.";
+  }
+
+  return "Profil topilmadi yoki tashqi tekshiruv servisi vaqtincha javob bermadi.";
 }
 
 function detectServerType(zoneId) {
@@ -733,12 +810,15 @@ async function broadcastMessage(text) {
       chunk.map((chatId) => sendMessage(chatId, escapeHtml(text)))
     );
 
-    results.forEach((result) => {
+    results.forEach((result, index) => {
       if (result.status === "fulfilled") {
         sent += 1;
       } else {
         failed += 1;
         console.error("[BROADCAST_ERROR]", result.reason);
+        recordError("broadcast_failed", result.reason?.message || String(result.reason), {
+          chatId: chunk[index],
+        });
       }
     });
   }
@@ -798,17 +878,19 @@ function getResultText(result) {
 
 function getFailedLookupText(parsed, lookup) {
   return [
-    "❌ <b>Akkaunt tekshirilmadi</b>",
+    "❌ <b>Profil topilmadi</b>",
     "",
     `🆔 <b>Account ID:</b> <code>${escapeHtml(parsed.accountId)}</code>`,
     `🌐 <b>Server / Zone ID:</b> <code>${escapeHtml(parsed.zoneId)}</code>`,
     "",
-    "Bu quyidagilardan biri bo‘lishi mumkin:",
-    "1. Account ID xato kiritilgan",
-    "2. Server/Zone ID xato kiritilgan",
-    "3. Tashqi MLBB lookup API vaqtincha ishlamayapti",
+    "Raqamlar to‘g‘ri kiritilganini tekshirib ko‘ring:",
+    "1. Account ID to‘liq yozilgan bo‘lishi kerak",
+    "2. Server/Zone ID qavs ichidagi raqam bo‘lishi kerak",
+    "3. Tashqi tekshiruv servisi vaqtincha sekinlashgan bo‘lishi mumkin",
     "",
-    `📌 <b>Sabab:</b> ${escapeHtml(lookup.reason || "Noma’lum xatolik")}`,
+    `📌 <b>Holat:</b> ${escapeHtml(lookup.reason || getFriendlyLookupReason())}`,
+    "",
+    "Namuna: <code>1289050 (10050)</code>",
   ].join("\n");
 }
 
@@ -838,7 +920,7 @@ function getHelpText(user = {}) {
     "",
     getCommandsText(user),
     "",
-    `Admin bilan bog‘lanish: @${escapeHtml(SUPPORT_USERNAME)}`,
+    `Aloqa: @${escapeHtml(SUPPORT_USERNAME)}`,
   ].join("\n");
 }
 
@@ -930,19 +1012,64 @@ function getTelegramProfileFailedText(tgId, reason) {
 }
 
 function getStatsText() {
+  const errorLines = getStatsErrorLines();
+
   return [
     "📊 <b>Bot statistikasi</b>",
     "",
     `👥 <b>Foydalanuvchilar:</b> ${stats.users.size}`,
+    `📣 <b>Broadcast chatlar:</b> ${stats.broadcastChats.size}`,
+    `⏳ <b>Kutilayotgan broadcast:</b> ${stats.pendingBroadcasts.size}`,
     `🚀 <b>/start:</b> ${stats.starts}`,
     `🔎 <b>Jami tekshiruv:</b> ${stats.checks}`,
     `✅ <b>Muvaffaqiyatli:</b> ${stats.successChecks}`,
     `❌ <b>Xatolik:</b> ${stats.failedChecks}`,
     `🕒 <b>Ishga tushgan:</b> ${formatDate(stats.startedAt)}`,
     stats.lastCheckAt ? `✅ <b>Oxirgi tekshiruv:</b> ${formatDate(stats.lastCheckAt)}` : "",
+    "",
+    "<b>Xatolik turlari:</b>",
+    ...getErrorCountLines(),
+    "",
+    "<b>Oxirgi xatoliklar:</b>",
+    ...errorLines,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function getErrorCountLines() {
+  const entries = Object.entries(stats.errorCounts || {});
+
+  if (!entries.length) {
+    return ["Xatolik qayd etilmagan."];
+  }
+
+  return entries
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, count]) => `${escapeHtml(type)}: <b>${count}</b>`);
+}
+
+function getStatsErrorLines() {
+  const errors = (stats.errors || []).slice(-5).reverse();
+
+  if (!errors.length) {
+    return ["Xatolik qayd etilmagan."];
+  }
+
+  return errors.map((error) => {
+    const meta = Object.entries(error.meta || {})
+      .filter(([, value]) => value !== undefined && value !== null && value !== "")
+      .map(([key, value]) => `${key}=${clipText(String(value), 60)}`)
+      .join(", ");
+
+    return [
+      `• ${formatDate(error.at)} — <b>${escapeHtml(error.type)}</b>`,
+      escapeHtml(clipText(error.message || "Noma’lum xatolik", 160)),
+      meta ? `(${escapeHtml(meta)})` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  });
 }
 
 function getUnknownText() {
@@ -992,6 +1119,7 @@ function getBroadcastExpiredText() {
 function getBroadcastConfirmText(text) {
   return [
     "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
+    "Hali hech kimga yuborilmadi. Yuborish faqat pastdagi tasdiq tugmasidan keyin boshlanadi.",
     "",
     `Qabul qiluvchilar: <b>${stats.broadcastChats.size}</b>`,
     "",
@@ -1027,7 +1155,6 @@ function mainKeyboard(user = {}) {
     keyboard,
     resize_keyboard: true,
     is_persistent: true,
-    input_field_placeholder: "1289050 (10050) yoki /tg 5081175125",
   };
 }
 
@@ -1043,17 +1170,17 @@ function helpKeyboard(user = {}) {
   return mainKeyboard(user);
 }
 
-function broadcastConfirmKeyboard(broadcastId) {
+function broadcastConfirmKeyboard(broadcastId, confirmToken) {
   return {
     inline_keyboard: [
       [
         {
           text: "✅ Tasdiqlash",
-          callback_data: `broadcast_confirm:${broadcastId}`,
+          callback_data: `broadcast_confirm:${broadcastId}:${confirmToken}`,
         },
         {
           text: "❌ Bekor qilish",
-          callback_data: `broadcast_cancel:${broadcastId}`,
+          callback_data: `broadcast_cancel:${broadcastId}:${confirmToken}`,
         },
       ],
     ],
@@ -1226,6 +1353,23 @@ function trackUser(user = {}, chat = {}) {
   }
 }
 
+function recordError(type, message, meta = {}) {
+  const safeType = cleanEnv(type) || "unknown_error";
+  const safeMessage = cleanEnv(message) || "Noma’lum xatolik";
+
+  stats.errorCounts[safeType] = (stats.errorCounts[safeType] || 0) + 1;
+  stats.errors.push({
+    at: new Date().toISOString(),
+    type: safeType,
+    message: safeMessage,
+    meta,
+  });
+
+  if (stats.errors.length > 20) {
+    stats.errors.splice(0, stats.errors.length - 20);
+  }
+}
+
 function getChatIdFromUpdate(update) {
   if (!update || typeof update !== "object") {
     return null;
@@ -1300,6 +1444,32 @@ function createBroadcastId() {
   return crypto.randomBytes(8).toString("hex");
 }
 
+function createBroadcastToken() {
+  return crypto.randomBytes(8).toString("hex");
+}
+
+function hashBroadcastToken(token) {
+  return crypto.createHash("sha256").update(cleanEnv(token)).digest("hex");
+}
+
+function parseBroadcastCallback(data, action) {
+  const prefix = `${action}:`;
+
+  if (!String(data || "").startsWith(prefix)) {
+    return {
+      broadcastId: "",
+      token: "",
+    };
+  }
+
+  const [broadcastId = "", token = ""] = String(data).slice(prefix.length).split(":");
+
+  return {
+    broadcastId,
+    token,
+  };
+}
+
 function cleanupPendingBroadcasts() {
   const now = Date.now();
 
@@ -1333,8 +1503,11 @@ module.exports.__private = {
   detectServerType,
   extractTelegramId,
   getCommandsText,
+  getFailedLookupText,
   getResultText,
+  getStatsText,
   getTelegramProfileText,
+  mainKeyboard,
   isValidWebhookSecret,
   isAdmin,
   isKeyboardButton,
