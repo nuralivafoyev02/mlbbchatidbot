@@ -5,6 +5,9 @@ const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 const SUPPORT_USERNAME = sanitizeTelegramUsername(
   process.env.SUPPORT_USERNAME || "Oblto_org"
 );
+const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
+  process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
+);
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987");
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
@@ -166,6 +169,24 @@ async function handleMessage(message, updateMeta = {}) {
   trackUser(user, message.chat, {
     ...updateMeta,
   });
+
+  if (isGroupChat(message.chat)) {
+    const addressing = getGroupAddressing(message);
+
+    if (!addressing.addressed) {
+      return;
+    }
+
+    if (!addressing.input) {
+      await sendMessage(chatId, getCheckPromptText(), null);
+      return;
+    }
+
+    await detectAndReply(chatId, addressing.input, user, {
+      replyMarkup: null,
+    });
+    return;
+  }
 
   if (!text) {
     await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
@@ -445,8 +466,10 @@ async function handleBroadcastCancel(chatId, user, data) {
   await sendMessage(chatId, "Bekor qilindi.", mainKeyboard(user));
 }
 
-async function detectAndReply(chatId, input, user = {}) {
+async function detectAndReply(chatId, input, user = {}, options = {}) {
   const parsed = parseMlbbInput(input);
+  const replyMarkup =
+    Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : resultKeyboard(user);
 
   if (!parsed.ok) {
     stats.failedChecks += 1;
@@ -466,7 +489,7 @@ async function detectAndReply(chatId, input, user = {}) {
         "✅ <code>1289050 10050</code>",
         "✅ <code>/check 1289050 10050</code>",
       ].join("\n"),
-      checkKeyboard(user)
+      Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : checkKeyboard(user)
     );
 
     return;
@@ -490,7 +513,7 @@ async function detectAndReply(chatId, input, user = {}) {
     await sendMessage(
       chatId,
       getFailedLookupText(parsed, lookup),
-      resultKeyboard(user)
+      replyMarkup
     );
 
     return;
@@ -508,7 +531,7 @@ async function detectAndReply(chatId, input, user = {}) {
     rawProvider: lookup.provider,
   };
 
-  await sendMessage(chatId, getResultText(result), resultKeyboard(user));
+  await sendMessage(chatId, getResultText(result), replyMarkup);
 }
 
 async function lookupMlbbAccount(accountId, zoneId) {
@@ -1293,13 +1316,18 @@ function broadcastConfirmKeyboard(broadcastId, confirmToken) {
 }
 
 async function sendMessage(chatId, text, replyMarkup) {
-  return telegram("sendMessage", {
+  const payload = {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    reply_markup: replyMarkup,
-  });
+  };
+
+  if (replyMarkup) {
+    payload.reply_markup = replyMarkup;
+  }
+
+  return telegram("sendMessage", payload);
 }
 
 async function sendChatAction(chatId, action) {
@@ -1375,6 +1403,121 @@ async function fetchWithTimeout(url, options = {}) {
 
 function isCommand(text, command) {
   return new RegExp(`^\\/${command}(?:@\\w+)?(?:\\s|$)`, "i").test(text);
+}
+
+function isGroupChat(chat = {}) {
+  return chat.type === "group" || chat.type === "supergroup";
+}
+
+function getGroupAddressing(message = {}) {
+  const text = String(message.text || "").trim();
+
+  if (!text) {
+    return {
+      addressed: false,
+      input: "",
+    };
+  }
+
+  const commandAddressing = getGroupCommandAddressing(text);
+
+  if (commandAddressing.addressed) {
+    return commandAddressing;
+  }
+
+  const mention = findAddressedBotMention(text, message.entities || []);
+
+  if (!mention) {
+    return {
+      addressed: false,
+      input: "",
+    };
+  }
+
+  return {
+    addressed: true,
+    input: removeTextRange(text, mention.offset, mention.length).trim(),
+  };
+}
+
+function getGroupCommandAddressing(text) {
+  const match = String(text || "").match(/^\/([A-Za-z0-9_]+)(?:@([A-Za-z0-9_]+))?(?:\s|$)/);
+
+  if (!match) {
+    return {
+      addressed: false,
+      input: "",
+    };
+  }
+
+  const [, command, username] = match;
+
+  if (!["check", "start"].includes(command.toLowerCase())) {
+    return {
+      addressed: false,
+      input: "",
+    };
+  }
+
+  if (!isAddressedBotUsername(username, 0)) {
+    return {
+      addressed: false,
+      input: "",
+    };
+  }
+
+  return {
+    addressed: true,
+    input: text.slice(match[0].length).trim(),
+  };
+}
+
+function findAddressedBotMention(text, entities = []) {
+  for (const entity of entities) {
+    if (entity?.type !== "mention") {
+      continue;
+    }
+
+    const mention = text.slice(entity.offset, entity.offset + entity.length);
+
+    if (isAddressedBotUsername(mention, entity.offset)) {
+      return {
+        offset: entity.offset,
+        length: entity.length,
+      };
+    }
+  }
+
+  const fallback = text.match(/@\w{5,32}/);
+
+  if (fallback && isAddressedBotUsername(fallback[0], fallback.index || 0)) {
+    return {
+      offset: fallback.index || 0,
+      length: fallback[0].length,
+    };
+  }
+
+  return null;
+}
+
+function isAddressedBotUsername(value, offset = 0) {
+  const username = sanitizeOptionalTelegramUsername(value);
+
+  if (!username) {
+    return false;
+  }
+
+  if (!TELEGRAM_BOT_USERNAME) {
+    return offset === 0;
+  }
+
+  return username.toLowerCase() === TELEGRAM_BOT_USERNAME.toLowerCase();
+}
+
+function removeTextRange(text, offset, length) {
+  return `${text.slice(0, offset)} ${text.slice(offset + length)}`
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isKeyboardButton(text, ...buttons) {
@@ -1714,6 +1857,12 @@ function sanitizeTelegramUsername(value) {
   }
 
   return "Oblto_org";
+}
+
+function sanitizeOptionalTelegramUsername(value) {
+  const username = cleanEnv(value).replace(/^@+/, "");
+
+  return /^[A-Za-z0-9_]{5,32}$/.test(username) ? username : "";
 }
 
 function createBroadcastId() {

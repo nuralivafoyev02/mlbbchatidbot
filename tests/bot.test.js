@@ -5,6 +5,7 @@ process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
 process.env.SUPPORT_USERNAME = "@Oblto_org";
 process.env.ADMIN_IDS = "5081175125,8500085987";
+process.env.TELEGRAM_BOT_USERNAME = "mlbb_test_bot";
 delete process.env.SUPABASE_URL;
 delete process.env.SUPABASE_SERVICE_KEY;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -230,6 +231,104 @@ test("/start sends a reply keyboard", async () => {
     assert.ok(calls[0].payload.reply_markup.keyboard);
     assert.equal(calls[0].payload.reply_markup.inline_keyboard, undefined);
     assert.equal(calls[0].payload.reply_markup.input_field_placeholder, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("group messages without a bot mention are ignored", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 20,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "1289050 10050",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("group mention with MLBB ids returns the usual lookup result", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+
+    if (urlText.startsWith("https://api.telegram.org")) {
+      calls.push({ url: urlText, payload: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ ok: true, result: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(
+      JSON.stringify({
+        nickname: "Player",
+        region: "Indonesia",
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 21,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "@mlbb_test_bot 1289050 10050",
+            entities: [{ type: "mention", offset: 0, length: 14 }],
+          },
+        },
+      },
+      res
+    );
+
+    const finalMessage = calls.at(-1).payload;
+
+    assert.equal(res.statusCode, 200);
+    assert.match(finalMessage.text, /Server Aniqlash Natijasi/);
+    assert.match(finalMessage.text, /Indonesia/);
+    assert.equal(finalMessage.reply_markup, undefined);
   } finally {
     global.fetch = originalFetch;
   }
