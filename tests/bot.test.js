@@ -364,6 +364,68 @@ test("group mention with MLBB ids returns the usual lookup result", async () => 
   }
 });
 
+test("group /check command works without mentioning the bot", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+
+    if (urlText.startsWith("https://api.telegram.org")) {
+      calls.push({ url: urlText, payload: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ ok: true, result: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    assert.match(urlText, /id=18013805/);
+    assert.match(urlText, /zone=10190/);
+
+    return new Response(
+      JSON.stringify({
+        nickname: "GroupPlayer",
+        region: "Singapore",
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 22,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "/check 18013805 (10190)",
+            entities: [{ type: "bot_command", offset: 0, length: 6 }],
+          },
+        },
+      },
+      res
+    );
+
+    const finalMessage = calls.at(-1).payload;
+
+    assert.equal(res.statusCode, 200);
+    assert.match(finalMessage.text, /Server Aniqlash Natijasi/);
+    assert.match(finalMessage.text, /Singapore/);
+    assert.equal(finalMessage.reply_markup, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("callback queries without a message are acknowledged without crashing", async () => {
   const originalFetch = global.fetch;
   const calls = [];

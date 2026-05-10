@@ -1587,10 +1587,19 @@ function getGroupCommandAddressing(text) {
 
   const [, command, username] = match;
 
-  if (!["check", "start"].includes(command.toLowerCase())) {
+  const normalizedCommand = command.toLowerCase();
+
+  if (!["check", "start"].includes(normalizedCommand)) {
     return {
       addressed: false,
       input: "",
+    };
+  }
+
+  if (normalizedCommand === "check" && !username) {
+    return {
+      addressed: true,
+      input: text.slice(match[0].length).trim(),
     };
   }
 
