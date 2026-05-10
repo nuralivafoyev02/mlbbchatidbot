@@ -229,7 +229,7 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    await handleMessageCommand(chatId, user, text);
+    await handleMessageCommand(chatId, user, message);
     return;
   }
 
@@ -355,15 +355,15 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
   }
 }
 
-async function handleMessageCommand(chatId, user, text) {
-  const messageText = text.replace(/^\/message(@\w+)?/i, "").trim();
+async function handleMessageCommand(chatId, user, message) {
+  const broadcastPayload = createBroadcastPayload(message);
 
-  if (!messageText) {
+  if (!broadcastPayload) {
     await sendMessage(chatId, getBroadcastUsageText(), mainKeyboard(user));
     return;
   }
 
-  if (messageText.length > 3500) {
+  if (broadcastPayload.kind === "text" && broadcastPayload.text.length > 3500) {
     await sendMessage(chatId, getBroadcastTooLongText(), mainKeyboard(user));
     return;
   }
@@ -375,7 +375,7 @@ async function handleMessageCommand(chatId, user, text) {
   stats.pendingBroadcasts.set(broadcastId, {
     adminId: String(user.id),
     chatId: String(chatId),
-    text: messageText,
+    payload: broadcastPayload,
     tokenHash: hashBroadcastToken(confirmToken),
     createdAt: Date.now(),
     status: "pending",
@@ -383,7 +383,7 @@ async function handleMessageCommand(chatId, user, text) {
 
   await sendMessage(
     chatId,
-    getBroadcastConfirmText(messageText),
+    getBroadcastConfirmText(broadcastPayload),
     broadcastConfirmKeyboard(broadcastId, confirmToken)
   );
 }
@@ -445,7 +445,7 @@ async function handleBroadcastConfirm(chatId, user, data) {
   stats.pendingBroadcasts.delete(broadcastId);
   await sendMessage(chatId, "📣 <b>Xabar yuborish boshlandi.</b>", mainKeyboard(user));
 
-  const result = await broadcastMessage(pending.text);
+  const result = await broadcastMessage(pending.payload);
 
   await sendMessage(
     chatId,
@@ -854,14 +854,16 @@ function validateParsedId(accountId, zoneId) {
   };
 }
 
-async function broadcastMessage(text) {
+async function broadcastMessage(payload) {
+  const broadcastPayload =
+    typeof payload === "string" ? createTextBroadcastPayload(payload) : payload;
   const chatIds = Array.from(stats.broadcastChats);
   let sent = 0;
   let failed = 0;
 
   for (const chunk of chunkArray(chatIds, 20)) {
     const results = await Promise.allSettled(
-      chunk.map((chatId) => sendMessage(chatId, escapeHtml(text)))
+      chunk.map((chatId) => sendBroadcastPayload(chatId, broadcastPayload))
     );
 
     results.forEach((result, index) => {
@@ -882,6 +884,106 @@ async function broadcastMessage(text) {
     sent,
     failed,
   };
+}
+
+async function sendBroadcastPayload(chatId, payload) {
+  if (payload?.kind === "copy") {
+    return copyMessage(chatId, payload.fromChatId, payload.messageId);
+  }
+
+  return sendMessage(chatId, payload.text, null, {
+    entities: payload.entities || [],
+    plain: true,
+  });
+}
+
+function createBroadcastPayload(message = {}) {
+  const text = String(message.text || "");
+  const command = text.match(/^\/message(?:@\w+)?(?=\s|$)/i);
+
+  if (!command) {
+    return null;
+  }
+
+  const afterCommand = text.slice(command[0].length);
+  const separatorLength = afterCommand.match(/^\s*/)?.[0]?.length || 0;
+  const contentOffset = command[0].length + separatorLength;
+  const contentText = text.slice(contentOffset);
+
+  if (contentText) {
+    return createTextBroadcastPayload(
+      contentText,
+      adjustMessageEntities(message.entities || [], contentOffset, contentText.length)
+    );
+  }
+
+  if (message.reply_to_message?.chat?.id && message.reply_to_message.message_id) {
+    return {
+      kind: "copy",
+      fromChatId: message.reply_to_message.chat.id,
+      messageId: message.reply_to_message.message_id,
+      previewText: getReplyMessagePreview(message.reply_to_message),
+    };
+  }
+
+  return null;
+}
+
+function createTextBroadcastPayload(text, entities = []) {
+  return {
+    kind: "text",
+    text: String(text || ""),
+    entities: Array.isArray(entities) ? entities : [],
+  };
+}
+
+function adjustMessageEntities(entities = [], contentOffset = 0, contentLength = 0) {
+  return entities
+    .map((entity) => {
+      const entityStart = Number(entity.offset);
+      const entityEnd = entityStart + Number(entity.length);
+      const contentEnd = contentOffset + contentLength;
+      const start = Math.max(entityStart, contentOffset);
+      const end = Math.min(entityEnd, contentEnd);
+
+      if (!Number.isFinite(entityStart) || !Number.isFinite(entityEnd) || end <= start) {
+        return null;
+      }
+
+      const adjusted = {
+        ...entity,
+        offset: start - contentOffset,
+        length: end - start,
+      };
+
+      delete adjusted.type;
+
+      return {
+        type: entity.type,
+        ...adjusted,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getReplyMessagePreview(message = {}) {
+  const text = message.text || message.caption;
+
+  if (text) {
+    return clipText(String(text), 900);
+  }
+
+  if (message.sticker) return "Sticker";
+  if (message.photo) return "Rasm";
+  if (message.video) return "Video";
+  if (message.animation) return "GIF/animatsiya";
+  if (message.document) return "Fayl";
+  if (message.voice) return "Voice";
+  if (message.audio) return "Audio";
+  if (message.video_note) return "Video note";
+  if (message.poll) return "So‘rovnoma";
+
+  return "Reply qilingan xabar";
 }
 
 function getStartText(user) {
@@ -1244,6 +1346,9 @@ function getBroadcastUsageText() {
     "Format:",
     "<code>/message Sizning xabaringiz</code>",
     "",
+    "Formatlangan text, premium emoji va linklar saqlanadi.",
+    "Sticker/media yuborish uchun o‘sha xabarga reply qilib <code>/message</code> yozing.",
+    "",
     "Keyingi qadamda tasdiqlash tugmasi chiqadi.",
   ].join("\n");
 }
@@ -1256,7 +1361,12 @@ function getBroadcastExpiredText() {
   return "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.";
 }
 
-function getBroadcastConfirmText(text) {
+function getBroadcastConfirmText(payload) {
+  const preview =
+    typeof payload === "string"
+      ? payload
+      : payload?.previewText || payload?.text || "Reply qilingan xabar";
+
   return [
     "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
     "Hali hech kimga yuborilmadi. Yuborish faqat pastdagi tasdiq tugmasidan keyin boshlanadi.",
@@ -1264,7 +1374,7 @@ function getBroadcastConfirmText(text) {
     `Qabul qiluvchilar: <b>${stats.broadcastChats.size}</b>`,
     "",
     "<b>Xabar:</b>",
-    escapeHtml(clipText(text, 900)),
+    escapeHtml(clipText(preview, 900)),
   ].join("\n");
 }
 
@@ -1327,19 +1437,32 @@ function broadcastConfirmKeyboard(broadcastId, confirmToken) {
   };
 }
 
-async function sendMessage(chatId, text, replyMarkup) {
+async function sendMessage(chatId, text, replyMarkup, options = {}) {
   const payload = {
     chat_id: chatId,
     text,
-    parse_mode: "HTML",
     disable_web_page_preview: true,
   };
+
+  if (Array.isArray(options.entities) && options.entities.length) {
+    payload.entities = options.entities;
+  } else if (!options.plain) {
+    payload.parse_mode = "HTML";
+  }
 
   if (replyMarkup) {
     payload.reply_markup = replyMarkup;
   }
 
   return telegram("sendMessage", payload);
+}
+
+async function copyMessage(chatId, fromChatId, messageId) {
+  return telegram("copyMessage", {
+    chat_id: chatId,
+    from_chat_id: fromChatId,
+    message_id: messageId,
+  });
 }
 
 async function sendChatAction(chatId, action) {

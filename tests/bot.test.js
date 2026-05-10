@@ -603,6 +603,157 @@ test("admin /message creates a confirmation keyboard", async () => {
   }
 });
 
+test("broadcast preserves Telegram text entities after /message", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  const text = "/message Salom bold 🙂";
+  const boldOffset = text.indexOf("bold");
+  const emojiOffset = text.indexOf("🙂");
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 30,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text,
+            entities: [
+              { type: "bot_command", offset: 0, length: 8 },
+              { type: "bold", offset: boldOffset, length: 4 },
+              {
+                type: "custom_emoji",
+                offset: emojiOffset,
+                length: 2,
+                custom_emoji_id: "premium-emoji-id",
+              },
+            ],
+          },
+        },
+      },
+      createRes()
+    );
+
+    const callbackData =
+      calls[0].payload.reply_markup.inline_keyboard[0][0].callback_data;
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 31,
+          callback_query: {
+            id: "callback-id",
+            data: callbackData,
+            from: { id: 5081175125 },
+            message: { chat: { id: 5081175125, type: "private" } },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const sent = calls.find((call) => call.payload.text === "Salom bold 🙂");
+
+    assert.ok(sent);
+    assert.equal(sent.payload.parse_mode, undefined);
+    assert.deepEqual(sent.payload.entities, [
+      { type: "bold", offset: 6, length: 4 },
+      {
+        type: "custom_emoji",
+        offset: 11,
+        length: 2,
+        custom_emoji_id: "premium-emoji-id",
+      },
+    ]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("reply /message copies stickers or media instead of rebuilding text", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 32,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text: "/message",
+            entities: [{ type: "bot_command", offset: 0, length: 8 }],
+            reply_to_message: {
+              message_id: 44,
+              chat: { id: 5081175125, type: "private" },
+              sticker: { file_id: "premium-sticker-file" },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const callbackData =
+      calls[0].payload.reply_markup.inline_keyboard[0][0].callback_data;
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 33,
+          callback_query: {
+            id: "callback-id",
+            data: callbackData,
+            from: { id: 5081175125 },
+            message: { chat: { id: 5081175125, type: "private" } },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const copied = calls.find((call) => String(call.url).endsWith("/copyMessage"));
+
+    assert.ok(copied);
+    assert.equal(copied.payload.from_chat_id, 5081175125);
+    assert.equal(copied.payload.message_id, 44);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("broadcast is not sent when confirmation token is invalid", async () => {
   const originalFetch = global.fetch;
   const calls = [];
