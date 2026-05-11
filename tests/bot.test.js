@@ -14,9 +14,11 @@ const handler = require("../api/bot.js");
 const {
   extractTelegramId,
   getCommandsText,
+  getErrorsText,
   getFailedLookupText,
   getResultText,
   getStatsText,
+  getUsersListText,
   getTelegramProfileText,
   isAdmin,
   isValidWebhookSecret,
@@ -24,6 +26,7 @@ const {
   isValidTelegramId,
   mainKeyboard,
   normalizeSecretEnv,
+  parseContentRangeTotal,
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
@@ -168,7 +171,7 @@ test("commands text includes admin commands only for admins", () => {
   assert.doesNotMatch(getCommandsText({ id: 777 }), /\/message/);
 });
 
-test("stats text includes current users and monthly active section", () => {
+test("stats text includes today's users and monthly active section", () => {
   trackUser({ id: 99001, first_name: "Vali" }, { id: 99001, type: "private" }, {
     updateId: 9001,
     updateType: "message",
@@ -176,9 +179,10 @@ test("stats text includes current users and monthly active section", () => {
 
   const text = getStatsText();
 
-  assert.match(text, /Joriy userlar/);
+  assert.match(text, /Bugun botdan foydalanganlar/);
   assert.match(text, /99001/);
   assert.match(text, /Oylik aktiv userlar/);
+  assert.doesNotMatch(text, /Oxirgi xatoliklar/);
 });
 
 test("main keyboard has no placeholder and hides admin buttons from users", () => {
@@ -187,8 +191,39 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
   const userKeyboardText = JSON.stringify(userKeyboard);
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
-  assert.doesNotMatch(userKeyboardText, /📊|📣|Statistika|Xabar yuborish/);
+  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
+  assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
+  assert.match(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar/);
+});
+
+test("content-range parser reads exact Supabase totals", () => {
+  assert.equal(parseContentRangeTotal("0-9/42"), 42);
+  assert.equal(parseContentRangeTotal("*/0"), 0);
+  assert.equal(parseContentRangeTotal("0-9/*"), null);
+});
+
+test("users list text numbers paginated rows", () => {
+  const text = getUsersListText({
+    users: [
+      {
+        user_id: "10011",
+        first_name: "Ali",
+        username: "ali_test",
+        updates_count: 3,
+        last_seen_at: "2026-05-11T06:00:00.000Z",
+      },
+    ],
+    total: 12,
+    page: 1,
+    pageSize: 10,
+    source: "supabase",
+  });
+
+  assert.match(text, /Bot foydalanuvchilari/);
+  assert.match(text, /Jami: <b>12<\/b>/);
+  assert.match(text, /11\. <code>10011<\/code>/);
+  assert.match(text, /@ali_test/);
 });
 
 test("lookup fallback hides raw provider status from users", () => {
@@ -572,8 +607,9 @@ test("MLBB lookup HTTP 500 returns friendly fallback and records details", async
     assert.equal(res.statusCode, 200);
     assert.match(finalMessage, /Profil topilmadi/);
     assert.doesNotMatch(finalMessage, /HTTP 500|Lookup API|server exploded/);
-    assert.match(getStatsText(), /mlbb_lookup_failed/);
-    assert.match(getStatsText(), /status=500/);
+    assert.doesNotMatch(getStatsText(), /mlbb_lookup_failed/);
+    assert.match(getErrorsText(), /mlbb_lookup_failed/);
+    assert.match(getErrorsText(), /status=500/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -615,6 +651,83 @@ test("non-admin users cannot open stats", async () => {
     assert.equal(calls.length, 1);
     assert.doesNotMatch(calls[0].payload.text, /admin|statistika|\/message/i);
     assert.match(calls[0].payload.text, /tushunmadim/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("admin users button paginates in the same message", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  for (let index = 0; index < 12; index += 1) {
+    trackUser(
+      { id: 701000 + index, first_name: `User${index}` },
+      { id: 701000 + index, type: "private" },
+      { updateId: 710000 + index, updateType: "message" }
+    );
+  }
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 40,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text: "👥 Foydalanuvchilar",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const sent = calls.at(-1).payload;
+    const nextCallback = sent.reply_markup.inline_keyboard[0][0].callback_data;
+
+    assert.match(sent.text, /Bot foydalanuvchilari/);
+    assert.match(nextCallback, /^users_page:1$/);
+
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 41,
+          callback_query: {
+            id: "callback-id",
+            data: nextCallback,
+            from: { id: 5081175125 },
+            message: {
+              message_id: 55,
+              chat: { id: 5081175125, type: "private" },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const editCall = calls.find((call) => String(call.url).endsWith("/editMessageText"));
+
+    assert.ok(editCall);
+    assert.equal(editCall.payload.message_id, 55);
+    assert.match(editCall.payload.text, /Sahifa: <b>2\//);
   } finally {
     global.fetch = originalFetch;
   }

@@ -14,11 +14,15 @@ const BROADCAST_TTL_MS = 15 * 60 * 1000;
 const BUTTON_CHECK = "🔎 Server aniqlash";
 const BUTTON_TG_PROFILE = "👤 TG profil topish";
 const BUTTON_STATS = "📊 Statistika";
+const BUTTON_USERS = "👥 Foydalanuvchilar";
+const BUTTON_ERRORS = "⚠️ Xatoliklar";
 const BUTTON_BROADCAST = "📣 Xabar yuborish";
 const BUTTON_COMMANDS = "📋 Buyruqlar";
 const BUTTON_HELP = "ℹ️ Yordam";
 const BUTTON_MENU = "🏠 Menyu";
 const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
+const USERS_PAGE_SIZE = 10;
+const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -32,13 +36,6 @@ const SUPABASE_TIMEOUT_MS = parseBoundedNumber(
   300,
   5000
 );
-const SUPABASE_USER_LIST_LIMIT = parseBoundedNumber(
-  process.env.SUPABASE_USER_LIST_LIMIT,
-  10,
-  1,
-  25
-);
-
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 if (!global.__MLBB_BOT_STATS__) {
@@ -50,10 +47,12 @@ if (!global.__MLBB_BOT_STATS__) {
     users: new Set(),
     broadcastChats: new Set(BROADCAST_USER_IDS),
     pendingBroadcasts: new Map(),
+    userProfiles: new Map(),
     errors: [],
     errorCounts: {},
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
+    lastKnownUsersSyncAt: 0,
     supabaseAuthDisabledUntil: 0,
     supabaseLastAuthError: null,
   };
@@ -63,11 +62,16 @@ const stats = global.__MLBB_BOT_STATS__;
 stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
+if (!(stats.userProfiles instanceof Map)) {
+  stats.userProfiles = new Map(Object.entries(stats.userProfiles || {}));
+}
 stats.errors ||= [];
 stats.errorCounts ||= {};
+stats.lastKnownUsersSyncAt ||= 0;
 stats.supabaseAuthDisabledUntil ||= 0;
 stats.supabaseLastAuthError ||= null;
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
+BROADCAST_USER_IDS.forEach((chatId) => rememberKnownPrivateChat(chatId));
 
 module.exports = async function handler(req, res) {
   let update = null;
@@ -170,7 +174,7 @@ async function handleMessage(message, updateMeta = {}) {
   const text = String(message.text || "").trim();
   const user = message.from || {};
 
-  trackUser(user, message.chat, {
+  await trackUser(user, message.chat, {
     ...updateMeta,
   });
 
@@ -219,7 +223,27 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    await sendMessage(chatId, await getStatsTextAsync(), mainKeyboard(user));
+    await handleStatsRequest(chatId, user, 0);
+    return;
+  }
+
+  if (isCommand(text, "users") || isCommand(text, "foydalanuvchilar")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleUsersListRequest(chatId, user, 0);
+    return;
+  }
+
+  if (isCommand(text, "errors") || isCommand(text, "xatoliklar")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleErrorsRequest(chatId, user);
     return;
   }
 
@@ -281,7 +305,27 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    await sendMessage(chatId, await getStatsTextAsync(), mainKeyboard(user));
+    await handleStatsRequest(chatId, user, 0);
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_USERS)) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleUsersListRequest(chatId, user, 0);
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_ERRORS)) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleErrorsRequest(chatId, user);
     return;
   }
 
@@ -314,7 +358,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
   const chatId = callbackQuery.message?.chat?.id;
   const user = callbackQuery.from || {};
 
-  trackUser(user, callbackQuery.message?.chat, {
+  await trackUser(user, callbackQuery.message?.chat, {
     ...updateMeta,
   });
 
@@ -345,7 +389,47 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
       return;
     }
 
-    await sendMessage(chatId, await getStatsTextAsync(), mainKeyboard(user));
+    await handleStatsRequest(chatId, user, 0, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data.startsWith("stats_today_page:")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleStatsRequest(
+      chatId,
+      user,
+      parsePageFromCallback(data, "stats_today_page"),
+      callbackQuery.message?.message_id
+    );
+    return;
+  }
+
+  if (data.startsWith("users_page:")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleUsersListRequest(
+      chatId,
+      user,
+      parsePageFromCallback(data, "users_page"),
+      callbackQuery.message?.message_id
+    );
+    return;
+  }
+
+  if (data === "errors") {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleErrorsRequest(chatId, user, callbackQuery.message?.message_id);
     return;
   }
 
@@ -353,6 +437,32 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     return;
   }
+}
+
+async function handleStatsRequest(chatId, user, todayPage = 0, messageId = null) {
+  const dbStats = await getSupabaseStats({ todayPage });
+  const text = getStatsText(dbStats);
+  const replyMarkup = dailyUsersPaginationKeyboard(dbStats);
+
+  await sendOrEditAdminMessage(chatId, messageId, text, replyMarkup || mainKeyboard(user));
+}
+
+async function handleUsersListRequest(chatId, user, page = 0, messageId = null) {
+  const syncResult = await syncKnownUsersToSupabase();
+  const pageData = await getUsersPageData(page);
+  const text = getUsersListText(pageData, syncResult);
+  const replyMarkup = usersPaginationKeyboard(pageData) || mainKeyboard(user);
+
+  await sendOrEditAdminMessage(chatId, messageId, text, replyMarkup);
+}
+
+async function handleErrorsRequest(chatId, user, messageId = null) {
+  await sendOrEditAdminMessage(
+    chatId,
+    messageId,
+    getErrorsText(),
+    errorsRefreshKeyboard() || mainKeyboard(user)
+  );
 }
 
 async function handleMessageCommand(chatId, user, message) {
@@ -857,7 +967,7 @@ function validateParsedId(accountId, zoneId) {
 async function broadcastMessage(payload) {
   const broadcastPayload =
     typeof payload === "string" ? createTextBroadcastPayload(payload) : payload;
-  const chatIds = Array.from(stats.broadcastChats);
+  const chatIds = await getBroadcastChatIds();
   let sent = 0;
   let failed = 0;
 
@@ -884,6 +994,39 @@ async function broadcastMessage(payload) {
     sent,
     failed,
   };
+}
+
+async function getBroadcastChatIds() {
+  const chatIds = new Set(Array.from(stats.broadcastChats || []));
+
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return Array.from(chatIds);
+  }
+
+  try {
+    const params = new URLSearchParams();
+
+    params.set("select", "user_id,chat_id,chat_type");
+    params.set("order", "last_seen_at.desc.nullslast");
+    params.set("limit", "1000");
+
+    const rows = await supabaseRequest(`/bot_users?${params.toString()}`);
+
+    if (Array.isArray(rows)) {
+      rows.forEach((row) => {
+        const chatId = row.chat_id || row.user_id;
+
+        if (chatId && (!row.chat_type || row.chat_type === "private")) {
+          chatIds.add(String(chatId));
+        }
+      });
+    }
+  } catch (error) {
+    console.error("[SUPABASE_BROADCAST_USERS_ERROR]", error);
+    recordError("supabase_broadcast_users_failed", error.message);
+  }
+
+  return Array.from(chatIds);
 }
 
 async function sendBroadcastPayload(chatId, payload) {
@@ -1098,6 +1241,8 @@ function getCommandsText(user = {}) {
       "",
       "<b>Admin buyruqlari:</b>",
       "<code>/stats</code> yoki <code>/stat</code> — bot statistikasi",
+      "<code>/users</code> — barcha saqlangan foydalanuvchilar ro‘yxati",
+      "<code>/errors</code> — bot xatoliklari",
       "<code>/message Matn</code> — barcha userlarga tasdiq bilan xabar yuborish"
     );
   }
@@ -1167,75 +1312,91 @@ function getTelegramProfileFailedText(tgId, reason) {
     .join("\n");
 }
 
-async function getStatsTextAsync() {
-  const dbStats = await getSupabaseStats();
+async function getStatsTextAsync(options = {}) {
+  const dbStats = await getSupabaseStats(options);
 
   return getStatsText(dbStats);
 }
 
 function getStatsText(dbStats = null) {
-  const errorLines = getStatsErrorLines();
-  const userLines = getStatsUserLines(dbStats);
+  const todayLines = getStatsTodayUserLines(dbStats);
   const monthlyLines = getStatsMonthlyLines(dbStats);
+  const totalUsers = getDisplayTotalUsers(dbStats);
+  const todayTotal = getDisplayTodayTotal(dbStats);
 
   return [
     "📊 <b>Bot statistikasi</b>",
     "",
-    `👥 <b>Foydalanuvchilar:</b> ${stats.users.size}`,
+    `👥 <b>Jami foydalanuvchilar:</b> ${totalUsers}`,
+    `🟢 <b>Bugun foydalanganlar:</b> ${todayTotal}`,
     `📣 <b>Broadcast chatlar:</b> ${stats.broadcastChats.size}`,
     `⏳ <b>Kutilayotgan broadcast:</b> ${stats.pendingBroadcasts.size}`,
     `🚀 <b>/start:</b> ${stats.starts}`,
     `🔎 <b>Jami tekshiruv:</b> ${stats.checks}`,
     `✅ <b>Muvaffaqiyatli:</b> ${stats.successChecks}`,
-    `❌ <b>Xatolik:</b> ${stats.failedChecks}`,
+    `❌ <b>MLBB tekshiruv xatolari:</b> ${stats.failedChecks}`,
     `🕒 <b>Ishga tushgan:</b> ${formatDate(stats.startedAt)}`,
     stats.lastCheckAt ? `✅ <b>Oxirgi tekshiruv:</b> ${formatDate(stats.lastCheckAt)}` : "",
     "",
-    "<b>Joriy userlar:</b>",
-    ...userLines,
+    "<b>Bugun botdan foydalanganlar:</b>",
+    ...todayLines,
     "",
     "<b>Oylik aktiv userlar:</b>",
     ...monthlyLines,
     "",
-    "<b>Xatolik turlari:</b>",
-    ...getErrorCountLines(),
-    "",
-    "<b>Oxirgi xatoliklar:</b>",
-    ...errorLines,
+    "Xatoliklar alohida admin tugmasiga ko‘chirildi: <b>⚠️ Xatoliklar</b>.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-function getStatsUserLines(dbStats = null) {
-  if (Array.isArray(dbStats?.users) && dbStats.users.length) {
-    return dbStats.users.map(formatSupabaseUserLine);
+function getDisplayTotalUsers(dbStats = null) {
+  if (Number.isFinite(Number(dbStats?.totalUsers))) {
+    return Number(dbStats.totalUsers);
+  }
+
+  return stats.users.size;
+}
+
+function getDisplayTodayTotal(dbStats = null) {
+  if (Number.isFinite(Number(dbStats?.todayTotal))) {
+    return Number(dbStats.todayTotal);
+  }
+
+  return getRuntimeTodayUsers().length;
+}
+
+function getStatsTodayUserLines(dbStats = null) {
+  if (Array.isArray(dbStats?.todayUsers) && dbStats.todayUsers.length) {
+    return dbStats.todayUsers.map((user, index) => {
+      return formatUserLine(user, dbStats.todayPage || 0, USERS_PAGE_SIZE, index);
+    });
   }
 
   if (dbStats?.configError) {
     return [`Supabase sozlamasi: ${escapeHtml(dbStats.configError)}`];
   }
 
-  const memoryUsers = Array.from(stats.users || []).slice(-SUPABASE_USER_LIST_LIMIT).reverse();
+  const memoryUsers = getRuntimeTodayUsers().slice(0, USERS_PAGE_SIZE);
 
   if (memoryUsers.length) {
     const suffix = dbStats?.error
       ? " — Supabase o‘qilmadi, lokal xotiradan"
       : "";
 
-    return memoryUsers.map((userId, index) => {
-      return `${index + 1}. <code>${escapeHtml(userId)}</code>${suffix}`;
+    return memoryUsers.map((user, index) => {
+      return `${formatUserLine(user, 0, USERS_PAGE_SIZE, index)}${suffix}`;
     });
   }
 
   if (dbStats?.error) {
-    return ["Supabase o‘qishda xatolik bor, lokal xotirada user topilmadi."];
+    return ["Supabase o‘qishda xatolik bor, bugungi lokal user topilmadi."];
   }
 
-  return ["Hali user qayd etilmagan."];
+  return ["Bugun hali user qayd etilmagan."];
 }
 
-function formatSupabaseUserLine(user, index) {
+function formatUserLine(user, page = 0, pageSize = USERS_PAGE_SIZE, index = 0) {
   const userId = user.user_id || user.id || "-";
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
   const username = user.username ? `@${user.username}` : "";
@@ -1244,13 +1405,44 @@ function formatSupabaseUserLine(user, index) {
   const lastSeen = user.last_seen_at ? formatDate(user.last_seen_at) : "-";
 
   return [
-    `${index + 1}. <code>${escapeHtml(userId)}</code>`,
+    `${page * pageSize + index + 1}. <code>${escapeHtml(userId)}</code>`,
     name ? `— ${escapeHtml(clipText(name, 45))}` : "",
     `— ${updates} update`,
     `— ${lastSeen}`,
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function getUsersListText(pageData = {}, syncResult = null) {
+  const users = Array.isArray(pageData.users) ? pageData.users : [];
+  const total = Number(pageData.total || 0);
+  const page = Number(pageData.page || 0);
+  const pageSize = Number(pageData.pageSize || USERS_PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const sourceText = pageData.source === "runtime" ? "lokal xotira" : "Supabase";
+  const lines = users.length
+    ? users.map((user, index) => formatUserLine(user, page, pageSize, index))
+    : [pageData.error ? "Foydalanuvchilarni o‘qib bo‘lmadi." : "User topilmadi."];
+  const syncLine =
+    syncResult?.attempted && !syncResult.skipped
+      ? `🔄 <b>Known user sync:</b> ${syncResult.saved}/${syncResult.total} yuborildi`
+      : "";
+
+  return [
+    "👥 <b>Bot foydalanuvchilari</b>",
+    "",
+    `Jami: <b>${total}</b>`,
+    `Sahifa: <b>${page + 1}/${totalPages}</b>`,
+    `Manba: <b>${escapeHtml(sourceText)}</b>`,
+    syncLine,
+    pageData.configError ? `Supabase sozlamasi: ${escapeHtml(pageData.configError)}` : "",
+    pageData.error && !pageData.configError ? "Supabase o‘qishda xatolik bor." : "",
+    "",
+    ...lines,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function getStatsMonthlyLines(dbStats = null) {
@@ -1277,6 +1469,18 @@ function getStatsMonthlyLines(dbStats = null) {
   }
 
   return ["Hali oylik aktivlik qayd etilmagan."];
+}
+
+function getErrorsText() {
+  return [
+    "⚠️ <b>Bot xatoliklari</b>",
+    "",
+    "<b>Xatolik turlari:</b>",
+    ...getErrorCountLines(),
+    "",
+    "<b>Oxirgi xatoliklar:</b>",
+    ...getStatsErrorLines(),
+  ].join("\n");
 }
 
 function getErrorCountLines() {
@@ -1395,10 +1599,12 @@ function mainKeyboard(user = {}) {
   ];
 
   if (isAdmin(user.id)) {
-    keyboard.splice(1, 0, [
-      { text: BUTTON_STATS },
-      { text: BUTTON_BROADCAST },
-    ]);
+    keyboard.splice(
+      1,
+      0,
+      [{ text: BUTTON_STATS }, { text: BUTTON_USERS }],
+      [{ text: BUTTON_ERRORS }, { text: BUTTON_BROADCAST }]
+    );
   }
 
   return {
@@ -1437,6 +1643,82 @@ function broadcastConfirmKeyboard(broadcastId, confirmToken) {
   };
 }
 
+function dailyUsersPaginationKeyboard(pageData = {}) {
+  return paginationKeyboard("stats_today_page", {
+    page: pageData.todayPage || 0,
+    pageSize: pageData.todayPageSize || USERS_PAGE_SIZE,
+    total: pageData.todayTotal || 0,
+  });
+}
+
+function usersPaginationKeyboard(pageData = {}) {
+  return paginationKeyboard("users_page", {
+    page: pageData.page || 0,
+    pageSize: pageData.pageSize || USERS_PAGE_SIZE,
+    total: pageData.total || 0,
+  });
+}
+
+function errorsRefreshKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "🔄 Yangilash",
+          callback_data: "errors",
+        },
+      ],
+    ],
+  };
+}
+
+function paginationKeyboard(prefix, { page = 0, pageSize = USERS_PAGE_SIZE, total = 0 } = {}) {
+  const safePage = Math.max(0, Number(page) || 0);
+  const safePageSize = Math.max(1, Number(pageSize) || USERS_PAGE_SIZE);
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const buttons = [];
+
+  if (safePage > 0) {
+    buttons.push({
+      text: "⬅️ Oldingi 10",
+      callback_data: `${prefix}:${safePage - 1}`,
+    });
+  }
+
+  if ((safePage + 1) * safePageSize < safeTotal) {
+    buttons.push({
+      text: "Keyingi 10 ➡️",
+      callback_data: `${prefix}:${safePage + 1}`,
+    });
+  }
+
+  return buttons.length ? { inline_keyboard: [buttons] } : null;
+}
+
+async function sendOrEditAdminMessage(chatId, messageId, text, replyMarkup) {
+  if (!messageId) {
+    return sendMessage(chatId, text, replyMarkup);
+  }
+
+  try {
+    return await editMessageText(
+      chatId,
+      messageId,
+      text,
+      isInlineKeyboard(replyMarkup) ? replyMarkup : null
+    );
+  } catch (error) {
+    if (/message is not modified/i.test(error.message || "")) {
+      return null;
+    }
+
+    console.error("[EDIT_MESSAGE_ERROR]", error);
+    recordError("telegram_edit_failed", error.message, { chatId, messageId });
+
+    return sendMessage(chatId, text, replyMarkup);
+  }
+}
+
 async function sendMessage(chatId, text, replyMarkup, options = {}) {
   const payload = {
     chat_id: chatId,
@@ -1455,6 +1737,22 @@ async function sendMessage(chatId, text, replyMarkup, options = {}) {
   }
 
   return telegram("sendMessage", payload);
+}
+
+async function editMessageText(chatId, messageId, text, replyMarkup) {
+  const payload = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  };
+
+  if (replyMarkup) {
+    payload.reply_markup = replyMarkup;
+  }
+
+  return telegram("editMessageText", payload);
 }
 
 async function copyMessage(chatId, fromChatId, messageId) {
@@ -1666,6 +1964,17 @@ function removeTextRange(text, offset, length) {
 
 function isKeyboardButton(text, ...buttons) {
   return buttons.includes(String(text || "").trim());
+}
+
+function isInlineKeyboard(replyMarkup) {
+  return Array.isArray(replyMarkup?.inline_keyboard);
+}
+
+function parsePageFromCallback(data, prefix) {
+  const value = String(data || "").slice(`${prefix}:`.length);
+  const page = Number.parseInt(value, 10);
+
+  return Number.isFinite(page) && page > 0 ? page : 0;
 }
 
 function parseRequestBody(body) {
@@ -1919,19 +2228,68 @@ function isAdmin(userId) {
   return ADMIN_IDS.includes(String(userId || ""));
 }
 
-function trackUser(user = {}, chat = {}, updateMeta = {}) {
-  if (user.id) {
-    stats.users.add(String(user.id));
+async function trackUser(user = {}, chat = {}, updateMeta = {}) {
+  rememberRuntimeUser(user, chat, updateMeta);
+
+  await queueSupabaseUserTrack(user, chat, updateMeta);
+}
+
+function rememberRuntimeUser(user = {}, chat = {}, updateMeta = {}) {
+  const userId = user.id ? String(user.id) : "";
+  const now = new Date().toISOString();
+
+  if (userId) {
+    const previous = stats.userProfiles.get(userId) || {};
+
+    stats.users.add(userId);
+    stats.userProfiles.set(userId, {
+      ...previous,
+      user_id: userId,
+      chat_id: chat?.id ?? previous.chat_id ?? user.id,
+      chat_type: chat?.type || previous.chat_type || "private",
+      username: cleanTextValue(user.username, 64) ?? previous.username ?? null,
+      first_name: cleanTextValue(user.first_name, 128) ?? previous.first_name ?? null,
+      last_name: cleanTextValue(user.last_name, 128) ?? previous.last_name ?? null,
+      language_code: cleanTextValue(user.language_code, 16) ?? previous.language_code ?? null,
+      is_bot: typeof user.is_bot === "boolean" ? user.is_bot : previous.is_bot ?? null,
+      first_seen_at: previous.first_seen_at || now,
+      last_seen_at: now,
+      updates_count: Number(previous.updates_count || 0) + (updateMeta.updateType ? 1 : 0),
+      last_update_type: updateMeta.updateType || previous.last_update_type || null,
+    });
   }
 
   if (chat?.id && (!chat.type || chat.type === "private")) {
     stats.broadcastChats.add(String(chat.id));
-  }
 
-  queueSupabaseUserTrack(user, chat, updateMeta);
+    if (!userId) {
+      rememberKnownPrivateChat(chat.id);
+    }
+  }
 }
 
-function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
+function rememberKnownPrivateChat(chatId) {
+  const userId = String(chatId || "");
+
+  if (!/^-?\d+$/.test(userId) || stats.userProfiles.has(userId)) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  stats.users.add(userId);
+  stats.userProfiles.set(userId, {
+    user_id: userId,
+    chat_id: userId,
+    chat_type: "private",
+    first_seen_at: now,
+    last_seen_at: now,
+    updates_count: 0,
+    last_update_type: "known_private_chat",
+  });
+}
+
+async function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
   if (getSupabaseConfigError() || isSupabaseAuthTemporarilyDisabled()) {
     return;
   }
@@ -1942,15 +2300,17 @@ function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
     return;
   }
 
-  void supabaseRpc("track_bot_user", payload, {
-    prefer: "return=minimal",
-  }).catch((error) => {
+  try {
+    await supabaseRpc("track_bot_user", payload, {
+      prefer: "return=minimal",
+    });
+  } catch (error) {
     console.error("[SUPABASE_TRACK_ERROR]", error);
     recordError("supabase_track_failed", error.message, {
       userId: payload.p_user_id,
       updateType: payload.p_update_type,
     });
-  });
+  }
 }
 
 function buildSupabaseTrackPayload(user = {}, chat = {}, updateMeta = {}) {
@@ -2027,14 +2387,19 @@ function rememberSupabaseAuthFailure(message) {
   recordError("supabase_auth_failed", safeMessage);
 }
 
-async function getSupabaseStats() {
+async function getSupabaseStats(options = {}) {
+  const todayPage = Math.max(0, Number(options.todayPage) || 0);
   const configError = getSupabaseConfigError();
 
   if (configError) {
     return {
       error: true,
       configError,
-      users: [],
+      todayUsers: getRuntimeTodayUsers().slice(0, USERS_PAGE_SIZE),
+      todayTotal: getRuntimeTodayUsers().length,
+      todayPage,
+      todayPageSize: USERS_PAGE_SIZE,
+      totalUsers: stats.users.size,
       monthly: [],
     };
   }
@@ -2043,23 +2408,32 @@ async function getSupabaseStats() {
     return {
       error: true,
       configError: stats.supabaseLastAuthError,
-      users: [],
+      todayUsers: getRuntimeTodayUsers().slice(0, USERS_PAGE_SIZE),
+      todayTotal: getRuntimeTodayUsers().length,
+      todayPage,
+      todayPageSize: USERS_PAGE_SIZE,
+      totalUsers: stats.users.size,
       monthly: [],
     };
   }
 
   try {
-    const [users, monthly] = await Promise.all([
-      supabaseRequest(
-        `/bot_users?select=user_id,username,first_name,last_name,updates_count,last_seen_at&order=last_seen_at.desc&limit=${SUPABASE_USER_LIST_LIMIT}`
-      ),
+    const [today, total, monthly] = await Promise.all([
+      getSupabaseUsersPage(todayPage, {
+        todayOnly: true,
+      }),
+      getSupabaseUsersCount(),
       supabaseRequest(
         "/bot_monthly_active_users?select=month,active_users,updates&order=month.desc&limit=6"
       ),
     ]);
 
     return {
-      users: Array.isArray(users) ? users : [],
+      todayUsers: today.users,
+      todayTotal: today.total,
+      todayPage,
+      todayPageSize: USERS_PAGE_SIZE,
+      totalUsers: total,
       monthly: Array.isArray(monthly) ? monthly : [],
     };
   } catch (error) {
@@ -2068,10 +2442,238 @@ async function getSupabaseStats() {
 
     return {
       error: true,
-      users: [],
+      todayUsers: getRuntimeTodayUsers().slice(0, USERS_PAGE_SIZE),
+      todayTotal: getRuntimeTodayUsers().length,
+      todayPage,
+      todayPageSize: USERS_PAGE_SIZE,
+      totalUsers: stats.users.size,
       monthly: [],
     };
   }
+}
+
+async function getUsersPageData(page = 0) {
+  const safePage = Math.max(0, Number(page) || 0);
+  const configError = getSupabaseConfigError();
+
+  if (configError || isSupabaseAuthTemporarilyDisabled()) {
+    return {
+      ...getRuntimeUsersPage(safePage),
+      error: Boolean(configError || stats.supabaseLastAuthError),
+      configError: configError || stats.supabaseLastAuthError,
+    };
+  }
+
+  try {
+    return await getSupabaseUsersPage(safePage);
+  } catch (error) {
+    console.error("[SUPABASE_USERS_ERROR]", error);
+    recordError("supabase_users_failed", error.message);
+
+    return {
+      ...getRuntimeUsersPage(safePage),
+      error: true,
+    };
+  }
+}
+
+async function getSupabaseUsersPage(page = 0, options = {}) {
+  const safePage = Math.max(0, Number(page) || 0);
+  const params = new URLSearchParams();
+  const offset = safePage * USERS_PAGE_SIZE;
+
+  params.set(
+    "select",
+    "user_id,chat_id,chat_type,username,first_name,last_name,updates_count,first_seen_at,last_seen_at"
+  );
+  params.set("order", "last_seen_at.desc.nullslast");
+  params.set("limit", String(USERS_PAGE_SIZE));
+  params.set("offset", String(offset));
+
+  if (options.todayOnly) {
+    const bounds = getTashkentDayBounds();
+
+    params.set("last_seen_at", `gte.${bounds.startIso}`);
+    params.append("last_seen_at", `lt.${bounds.endIso}`);
+  }
+
+  const result = await supabaseRequest(`/bot_users?${params.toString()}`, {
+    prefer: "count=exact",
+    returnMeta: true,
+  });
+
+  return {
+    users: Array.isArray(result.data) ? result.data : [],
+    total: Number.isFinite(result.count) ? result.count : 0,
+    page: safePage,
+    pageSize: USERS_PAGE_SIZE,
+    source: "supabase",
+  };
+}
+
+async function getSupabaseUsersCount() {
+  const result = await supabaseRequest("/bot_users?select=user_id&limit=1", {
+    prefer: "count=exact",
+    returnMeta: true,
+  });
+
+  return Number.isFinite(result.count) ? result.count : 0;
+}
+
+function getRuntimeUsersPage(page = 0) {
+  const safePage = Math.max(0, Number(page) || 0);
+  const users = getRuntimeUsers();
+  const offset = safePage * USERS_PAGE_SIZE;
+
+  return {
+    users: users.slice(offset, offset + USERS_PAGE_SIZE),
+    total: users.length,
+    page: safePage,
+    pageSize: USERS_PAGE_SIZE,
+    source: "runtime",
+  };
+}
+
+function getRuntimeUsers() {
+  return Array.from(stats.userProfiles.values())
+    .sort((a, b) => new Date(b.last_seen_at || 0) - new Date(a.last_seen_at || 0))
+    .map(normalizeRuntimeUser);
+}
+
+function getRuntimeTodayUsers() {
+  const bounds = getTashkentDayBounds();
+
+  return getRuntimeUsers().filter((user) => {
+    const lastSeenAt = new Date(user.last_seen_at).getTime();
+
+    return lastSeenAt >= bounds.startMs && lastSeenAt < bounds.endMs;
+  });
+}
+
+function normalizeRuntimeUser(user = {}) {
+  return {
+    ...user,
+    user_id: String(user.user_id || user.id || ""),
+    chat_id: user.chat_id ? String(user.chat_id) : null,
+    updates_count: Number(user.updates_count || 0),
+  };
+}
+
+function getTashkentDayBounds(now = new Date()) {
+  const tashkentOffsetMs = 5 * 60 * 60 * 1000;
+  const local = new Date(now.getTime() + tashkentOffsetMs);
+  const startMs =
+    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) -
+    tashkentOffsetMs;
+  const endMs = startMs + 24 * 60 * 60 * 1000;
+
+  return {
+    startMs,
+    endMs,
+    startIso: new Date(startMs).toISOString(),
+    endIso: new Date(endMs).toISOString(),
+  };
+}
+
+async function syncKnownUsersToSupabase() {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return {
+      attempted: false,
+      skipped: true,
+      total: 0,
+      saved: 0,
+    };
+  }
+
+  if (Date.now() - Number(stats.lastKnownUsersSyncAt || 0) < KNOWN_USERS_SYNC_INTERVAL_MS) {
+    return {
+      attempted: true,
+      skipped: true,
+      total: 0,
+      saved: 0,
+    };
+  }
+
+  const rows = getKnownUserRowsForSupabase();
+
+  if (!rows.length) {
+    return {
+      attempted: true,
+      skipped: false,
+      total: 0,
+      saved: 0,
+    };
+  }
+
+  let saved = 0;
+
+  try {
+    for (const chunk of chunkArray(rows, 100)) {
+      await supabaseRequest("/bot_users?on_conflict=user_id", {
+        method: "POST",
+        body: chunk,
+        prefer: "resolution=ignore-duplicates,return=minimal",
+      });
+      saved += chunk.length;
+    }
+
+    stats.lastKnownUsersSyncAt = Date.now();
+
+    return {
+      attempted: true,
+      skipped: false,
+      total: rows.length,
+      saved,
+    };
+  } catch (error) {
+    console.error("[SUPABASE_KNOWN_USERS_SYNC_ERROR]", error);
+    recordError("supabase_known_users_sync_failed", error.message);
+
+    return {
+      attempted: true,
+      skipped: false,
+      total: rows.length,
+      saved,
+      error: true,
+    };
+  }
+}
+
+function getKnownUserRowsForSupabase() {
+  const knownIds = new Set([
+    ...Array.from(stats.broadcastChats || []),
+    ...Array.from(stats.users || []),
+    ...Array.from(stats.userProfiles.keys()),
+  ]);
+  const now = new Date().toISOString();
+
+  return Array.from(knownIds)
+    .map((userId) => {
+      const id = toPgBigint(userId);
+
+      if (!id || id.startsWith("-")) {
+        return null;
+      }
+
+      const profile = stats.userProfiles.get(String(userId)) || {};
+
+      return {
+        user_id: id,
+        chat_id: toPgBigint(profile.chat_id) || id,
+        chat_type: cleanTextValue(profile.chat_type, 32) || "private",
+        username: cleanTextValue(profile.username, 64),
+        first_name: cleanTextValue(profile.first_name, 128),
+        last_name: cleanTextValue(profile.last_name, 128),
+        language_code: cleanTextValue(profile.language_code, 16),
+        is_bot: typeof profile.is_bot === "boolean" ? profile.is_bot : null,
+        first_seen_at: profile.first_seen_at || now,
+        last_seen_at: profile.last_seen_at || now,
+        updates_count: Number(profile.updates_count || 0),
+        last_update_type: profile.last_update_type || "known_private_chat",
+        updated_at: now,
+      };
+    })
+    .filter(Boolean);
 }
 
 async function supabaseRpc(functionName, args, options = {}) {
@@ -2087,7 +2689,7 @@ async function supabaseRequest(path, options = {}) {
     throw new Error(getSupabaseConfigError() || "Supabase env sozlanmagan");
   }
 
-  const { method = "GET", body, prefer } = options;
+  const { method = "GET", body, prefer, returnMeta = false } = options;
   const headers = {
     apikey: SUPABASE_SERVICE_KEY,
     Accept: "application/json",
@@ -2125,11 +2727,28 @@ async function supabaseRequest(path, options = {}) {
     throw new Error(message);
   }
 
-  if (!bodyText) {
+  const data = bodyText ? safeJsonParse(bodyText) ?? bodyText : null;
+
+  if (returnMeta) {
+    return {
+      data,
+      count: parseContentRangeTotal(response.headers.get("content-range")),
+    };
+  }
+
+  return data;
+}
+
+function parseContentRangeTotal(contentRange) {
+  const match = String(contentRange || "").match(/\/(\d+|\*)$/);
+
+  if (!match || match[1] === "*") {
     return null;
   }
 
-  return safeJsonParse(bodyText) ?? bodyText;
+  const total = Number(match[1]);
+
+  return Number.isFinite(total) ? total : null;
 }
 
 function recordError(type, message, meta = {}) {
@@ -2289,14 +2908,17 @@ module.exports.__private = {
   detectServerType,
   extractTelegramId,
   getCommandsText,
+  getErrorsText,
   getFailedLookupText,
   getResultText,
   getStatsText,
   getStatsTextAsync,
   getTelegramProfileText,
+  getUsersListText,
   isSupabaseConfigured,
   mainKeyboard,
   normalizeSecretEnv,
+  parseContentRangeTotal,
   isValidWebhookSecret,
   isAdmin,
   isKeyboardButton,
