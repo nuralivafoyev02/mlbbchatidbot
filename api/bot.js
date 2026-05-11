@@ -16,6 +16,7 @@ const BUTTON_TG_PROFILE = "👤 TG profil topish";
 const BUTTON_STATS = "📊 Statistika";
 const BUTTON_USERS = "👥 Foydalanuvchilar";
 const BUTTON_ERRORS = "⚠️ Xatoliklar";
+const BUTTON_FEEDBACK = "💬 Fikr va izohlar";
 const BUTTON_BROADCAST = "📣 Xabar yuborish";
 const BUTTON_COMMANDS = "📋 Buyruqlar";
 const BUTTON_HELP = "ℹ️ Yordam";
@@ -23,6 +24,8 @@ const BUTTON_MENU = "🏠 Menyu";
 const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 const USERS_PAGE_SIZE = 10;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const FEEDBACK_PENDING_TTL_MS = 30 * 60 * 1000;
+const FEEDBACK_MAX_LENGTH = 3000;
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -47,6 +50,7 @@ if (!global.__MLBB_BOT_STATS__) {
     users: new Set(),
     broadcastChats: new Set(BROADCAST_USER_IDS),
     pendingBroadcasts: new Map(),
+    pendingFeedbacks: new Map(),
     userProfiles: new Map(),
     errors: [],
     errorCounts: {},
@@ -62,6 +66,9 @@ const stats = global.__MLBB_BOT_STATS__;
 stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
+if (!(stats.pendingFeedbacks instanceof Map)) {
+  stats.pendingFeedbacks = new Map(Object.entries(stats.pendingFeedbacks || {}));
+}
 if (!(stats.userProfiles instanceof Map)) {
   stats.userProfiles = new Map(Object.entries(stats.userProfiles || {}));
 }
@@ -196,6 +203,16 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isFeedbackAdminReply(message)) {
+    await handleFeedbackAdminReply(chatId, user, message);
+    return;
+  }
+
+  if (isFeedbackSubmissionMessage(message, user)) {
+    await handleFeedbackSubmission(chatId, user, message);
+    return;
+  }
+
   if (!text) {
     await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
     return;
@@ -247,6 +264,18 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isCommand(text, "feedback") || isCommand(text, "fikr")) {
+    await handleFeedbackPrompt(chatId, user);
+    return;
+  }
+
+  if (isCommand(text, "cancel") || isCommand(text, "bekor")) {
+    if (clearPendingFeedback(user.id)) {
+      await sendMessage(chatId, "Fikr yuborish bekor qilindi.", mainKeyboard(user));
+      return;
+    }
+  }
+
   if (isCommand(text, "message")) {
     if (!isAdmin(user.id)) {
       await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
@@ -281,6 +310,11 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isKeyboardButton(text, BUTTON_TG_PROFILE)) {
     await sendMessage(chatId, getTelegramProfilePromptText(), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_FEEDBACK)) {
+    await handleFeedbackPrompt(chatId, user);
     return;
   }
 
@@ -463,6 +497,81 @@ async function handleErrorsRequest(chatId, user, messageId = null) {
     getErrorsText(),
     errorsRefreshKeyboard() || mainKeyboard(user)
   );
+}
+
+async function handleFeedbackPrompt(chatId, user) {
+  cleanupPendingFeedbacks();
+
+  const response = await sendMessage(chatId, getFeedbackPromptText(), feedbackForceReply());
+  const promptMessageId = response?.result?.message_id || null;
+
+  rememberPendingFeedback(user.id, chatId, promptMessageId);
+}
+
+async function handleFeedbackSubmission(chatId, user, message) {
+  const feedbackText = getFeedbackMessageText(message);
+
+  if (!feedbackText) {
+    await sendMessage(chatId, getFeedbackTextRequiredText(), mainKeyboard(user));
+    return;
+  }
+
+  if (feedbackText.length > FEEDBACK_MAX_LENGTH) {
+    await sendMessage(chatId, getFeedbackTooLongText(), mainKeyboard(user));
+    return;
+  }
+
+  clearPendingFeedback(user.id);
+
+  const feedback = {
+    id: createFeedbackId(),
+    userId: String(user.id || chatId),
+    chatId: String(chatId),
+    user,
+    text: feedbackText,
+    createdAt: new Date().toISOString(),
+  };
+  const result = await sendFeedbackToAdmins(feedback);
+
+  await sendMessage(chatId, getFeedbackThanksText(result), mainKeyboard(user));
+}
+
+async function handleFeedbackAdminReply(chatId, admin, message) {
+  const target = parseFeedbackAdminReplyTarget(message.reply_to_message);
+  const replyText = getFeedbackMessageText(message);
+
+  if (!target) {
+    return;
+  }
+
+  if (!replyText) {
+    await sendMessage(chatId, getFeedbackAdminReplyTextRequiredText(), mainKeyboard(admin));
+    return;
+  }
+
+  try {
+    await sendMessage(
+      target.chatId || target.userId,
+      getFeedbackReplyToUserText(admin, replyText),
+      mainKeyboard({ id: target.userId })
+    );
+  } catch (error) {
+    console.error("[FEEDBACK_REPLY_ERROR]", error);
+    recordError("feedback_reply_failed", error.message, {
+      adminId: admin.id,
+      userId: target.userId,
+      feedbackId: target.feedbackId,
+    });
+
+    await sendMessage(
+      chatId,
+      getFeedbackReplyFailedText(target, error.message),
+      mainKeyboard(admin)
+    );
+    return;
+  }
+
+  await sendMessage(chatId, getFeedbackReplySentText(target), mainKeyboard(admin));
 }
 
 async function handleMessageCommand(chatId, user, message) {
@@ -1040,6 +1149,37 @@ async function sendBroadcastPayload(chatId, payload) {
   });
 }
 
+async function sendFeedbackToAdmins(feedback) {
+  const adminIds = ADMIN_IDS.map(String);
+  const text = getAdminFeedbackText(feedback);
+  let sent = 0;
+  let failed = 0;
+
+  const results = await Promise.allSettled(
+    adminIds.map((adminId) => sendMessage(adminId, text, null))
+  );
+
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      sent += 1;
+      return;
+    }
+
+    failed += 1;
+    console.error("[FEEDBACK_ADMIN_SEND_ERROR]", result.reason);
+    recordError("feedback_admin_send_failed", result.reason?.message || String(result.reason), {
+      adminId: adminIds[index],
+      feedbackId: feedback.id,
+    });
+  });
+
+  return {
+    total: adminIds.length,
+    sent,
+    failed,
+  };
+}
+
 function createBroadcastPayload(message = {}) {
   const text = String(message.text || "");
   const command = text.match(/^\/message(?:@\w+)?(?=\s|$)/i);
@@ -1234,6 +1374,7 @@ function getCommandsText(user = {}) {
     "<code>/tg 5081175125</code> — Telegram ID orqali profil topish",
     "<code>/user 5081175125</code> — /tg bilan bir xil",
     "<code>/profile 5081175125</code> — /tg bilan bir xil",
+    "<code>/feedback</code> yoki <code>/fikr</code> — taklif yoki shikoyat yuborish",
   ];
 
   if (isAdmin(user.id)) {
@@ -1307,6 +1448,103 @@ function getTelegramProfileFailedText(tgId, reason) {
     "",
     "Sabab: bot bu profilni ko‘ra olmayapti yoki ID noto‘g‘ri.",
     reason ? `Telegram javobi: ${escapeHtml(reason)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getFeedbackPromptText() {
+  return [
+    "💬 <b>Fikr va izohlar</b>",
+    "",
+    "Botga kerakli funksiya, taklif yoki shikoyatingizni yozib yuboring.",
+    "Xabaringiz adminlarga yetkaziladi. Admin javob bersa, javobi bot orqali sizga keladi.",
+    "",
+    "Bekor qilish: <code>/cancel</code>",
+  ].join("\n");
+}
+
+function getFeedbackTextRequiredText() {
+  return [
+    "Fikr yoki izoh matn ko‘rinishida bo‘lishi kerak.",
+    "",
+    "Iltimos, taklif yoki shikoyatingizni yozib yuboring.",
+  ].join("\n");
+}
+
+function getFeedbackTooLongText() {
+  return `Fikr juda uzun. Iltimos, ${FEEDBACK_MAX_LENGTH} belgidan qisqaroq yozing.`;
+}
+
+function getFeedbackThanksText(result = {}) {
+  const delivered = Number(result.sent || 0);
+
+  return [
+    "✅ <b>Fikringiz yuborildi.</b>",
+    "",
+    delivered
+      ? "Adminlar ko‘rib chiqadi. Javob berilsa, bot orqali sizga yuboriladi."
+      : "Hozir adminlarga yetkazishda xatolik bo‘ldi. Iltimos, birozdan keyin qayta urinib ko‘ring.",
+  ].join("\n");
+}
+
+function getAdminFeedbackText(feedback) {
+  const user = feedback.user || {};
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  const username = user.username ? `@${user.username}` : "";
+  const displayName = [fullName, username].filter(Boolean).join(" ") || "-";
+
+  return [
+    "💬 <b>Yangi fikr yoki izoh</b>",
+    "",
+    `Feedback ID: <code>${escapeHtml(feedback.id)}</code>`,
+    `User ID: <code>${escapeHtml(feedback.userId)}</code>`,
+    `Chat ID: <code>${escapeHtml(feedback.chatId)}</code>`,
+    `User: ${escapeHtml(displayName)}`,
+    `Vaqt: ${formatDate(feedback.createdAt)}`,
+    "",
+    "<b>Xabar:</b>",
+    escapeHtml(feedback.text),
+    "",
+    "Javob berish uchun shu xabarga reply qiling.",
+  ].join("\n");
+}
+
+function getFeedbackReplyToUserText(admin, replyText) {
+  const adminName = [admin.first_name, admin.last_name].filter(Boolean).join(" ").trim();
+
+  return [
+    "💬 <b>Admin javobi</b>",
+    adminName ? `Admin: ${escapeHtml(adminName)}` : "",
+    "",
+    escapeHtml(replyText),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getFeedbackReplySentText(target) {
+  return [
+    "✅ Javob userga yuborildi.",
+    "",
+    `User ID: <code>${escapeHtml(target.userId)}</code>`,
+    target.feedbackId ? `Feedback ID: <code>${escapeHtml(target.feedbackId)}</code>` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getFeedbackAdminReplyTextRequiredText() {
+  return "Userga yuboriladigan javob matn ko‘rinishida bo‘lishi kerak.";
+}
+
+function getFeedbackReplyFailedText(target, reason) {
+  return [
+    "❌ Javobni userga yuborib bo‘lmadi.",
+    "",
+    `User ID: <code>${escapeHtml(target.userId)}</code>`,
+    target.feedbackId ? `Feedback ID: <code>${escapeHtml(target.feedbackId)}</code>` : "",
+    reason ? `Sabab: ${escapeHtml(clipText(reason, 220))}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -1595,6 +1833,7 @@ function getBroadcastResultText(result) {
 function mainKeyboard(user = {}) {
   const keyboard = [
     [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
+    [{ text: BUTTON_FEEDBACK }],
     [{ text: BUTTON_COMMANDS }, { text: BUTTON_HELP }],
   ];
 
@@ -1669,6 +1908,14 @@ function errorsRefreshKeyboard() {
         },
       ],
     ],
+  };
+}
+
+function feedbackForceReply() {
+  return {
+    force_reply: true,
+    selective: true,
+    input_field_placeholder: "Fikringizni yozing...",
   };
 }
 
@@ -1964,6 +2211,92 @@ function removeTextRange(text, offset, length) {
 
 function isKeyboardButton(text, ...buttons) {
   return buttons.includes(String(text || "").trim());
+}
+
+function isFeedbackAdminReply(message = {}) {
+  if (!isAdmin(message.from?.id)) {
+    return false;
+  }
+
+  return Boolean(parseFeedbackAdminReplyTarget(message.reply_to_message));
+}
+
+function parseFeedbackAdminReplyTarget(replyToMessage = {}) {
+  const text = String(replyToMessage?.text || replyToMessage?.caption || "");
+
+  if (!text || !/Feedback ID:/i.test(text) || !/User ID:/i.test(text)) {
+    return null;
+  }
+
+  const feedbackMatch = text.match(/Feedback ID:\s*(?:<code>)?([A-Za-z0-9_-]+)(?:<\/code>)?/i);
+  const userMatch = text.match(/User ID:\s*(?:<code>)?(-?\d{1,20})(?:<\/code>)?/i);
+  const chatMatch = text.match(/Chat ID:\s*(?:<code>)?(-?\d{1,20})(?:<\/code>)?/i);
+
+  if (!userMatch) {
+    return null;
+  }
+
+  return {
+    feedbackId: feedbackMatch?.[1] || "",
+    userId: userMatch[1],
+    chatId: chatMatch?.[1] || userMatch[1],
+  };
+}
+
+function isFeedbackSubmissionMessage(message = {}, user = {}) {
+  const text = getFeedbackMessageText(message);
+
+  if (!text || isCommandLike(text) || isKeyboardButton(text, BUTTON_FEEDBACK)) {
+    return false;
+  }
+
+  return Boolean(getPendingFeedback(user.id) || isFeedbackPromptReply(message));
+}
+
+function isFeedbackPromptReply(message = {}) {
+  const replyText = String(message.reply_to_message?.text || "");
+
+  return /Fikr va izohlar/i.test(replyText);
+}
+
+function getFeedbackMessageText(message = {}) {
+  return String(message.text || message.caption || "").trim();
+}
+
+function isCommandLike(text) {
+  return /^\//.test(String(text || "").trim());
+}
+
+function rememberPendingFeedback(userId, chatId, promptMessageId = null) {
+  if (!userId) {
+    return;
+  }
+
+  stats.pendingFeedbacks.set(String(userId), {
+    chatId: String(chatId),
+    promptMessageId,
+    createdAt: Date.now(),
+  });
+}
+
+function getPendingFeedback(userId) {
+  cleanupPendingFeedbacks();
+
+  return stats.pendingFeedbacks.get(String(userId || "")) || null;
+}
+
+function clearPendingFeedback(userId) {
+  return stats.pendingFeedbacks.delete(String(userId || ""));
+}
+
+function cleanupPendingFeedbacks() {
+  const now = Date.now();
+
+  for (const [userId, pending] of stats.pendingFeedbacks.entries()) {
+    if (now - Number(pending.createdAt || 0) > FEEDBACK_PENDING_TTL_MS) {
+      stats.pendingFeedbacks.delete(userId);
+    }
+  }
 }
 
 function isInlineKeyboard(replyMarkup) {
@@ -2848,6 +3181,10 @@ function createBroadcastId() {
   return crypto.randomBytes(8).toString("hex");
 }
 
+function createFeedbackId() {
+  return `fb_${crypto.randomBytes(6).toString("hex")}`;
+}
+
 function createBroadcastToken() {
   return crypto.randomBytes(8).toString("hex");
 }
@@ -2908,6 +3245,7 @@ module.exports.__private = {
   detectServerType,
   extractTelegramId,
   getCommandsText,
+  getAdminFeedbackText,
   getErrorsText,
   getFailedLookupText,
   getResultText,

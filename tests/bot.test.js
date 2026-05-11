@@ -13,6 +13,7 @@ delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 const handler = require("../api/bot.js");
 const {
   extractTelegramId,
+  getAdminFeedbackText,
   getCommandsText,
   getErrorsText,
   getFailedLookupText,
@@ -192,6 +193,7 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
   assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar/);
+  assert.match(userKeyboardText, /💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
   assert.match(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar/);
@@ -651,6 +653,132 @@ test("non-admin users cannot open stats", async () => {
     assert.equal(calls.length, 1);
     assert.doesNotMatch(calls[0].payload.text, /admin|statistika|\/message/i);
     assert.match(calls[0].payload.text, /tushunmadim/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("feedback button sends user comments to all admins", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(
+      JSON.stringify({ ok: true, result: { message_id: calls.length + 100 } }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 34,
+          message: {
+            chat: { id: 777, type: "private" },
+            from: { id: 777, first_name: "Ali", username: "ali_test" },
+            text: "💬 Fikr va izohlar",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.match(calls[0].payload.text, /Fikr va izohlar/);
+    assert.equal(calls[0].payload.reply_markup.force_reply, true);
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 35,
+          message: {
+            chat: { id: 777, type: "private" },
+            from: { id: 777, first_name: "Ali", username: "ali_test" },
+            text: "Botga reyting funksiyasi kerak",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const adminMessages = calls.filter((call) =>
+      ["5081175125", "8500085987"].includes(String(call.payload.chat_id))
+    );
+    const userAck = calls.find((call) => call.payload.chat_id === 777);
+
+    assert.equal(adminMessages.length, 2);
+    assert.ok(userAck);
+    assert.match(adminMessages[0].payload.text, /Feedback ID/);
+    assert.match(adminMessages[0].payload.text, /User ID: <code>777<\/code>/);
+    assert.match(adminMessages[0].payload.text, /Botga reyting funksiyasi kerak/);
+    assert.match(userAck.payload.text, /Fikringiz yuborildi/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("admin reply to feedback notification is delivered to the user", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  const notificationText = getAdminFeedbackText({
+    id: "fb_test123",
+    userId: "777",
+    chatId: "777",
+    user: { id: 777, first_name: "Ali", username: "ali_test" },
+    text: "Qidiruv tarixi kerak",
+    createdAt: "2026-05-11T06:00:00.000Z",
+  });
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 36,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: "Taklif qabul qilindi, qo‘shamiz.",
+            reply_to_message: {
+              message_id: 90,
+              text: notificationText,
+              from: { is_bot: true },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const userReply = calls.find((call) => call.payload.chat_id === "777");
+    const adminAck = calls.find((call) => call.payload.chat_id === 5081175125);
+
+    assert.ok(userReply);
+    assert.match(userReply.payload.text, /Admin javobi/);
+    assert.match(userReply.payload.text, /Taklif qabul qilindi/);
+    assert.ok(adminAck);
+    assert.match(adminAck.payload.text, /Javob userga yuborildi/);
   } finally {
     global.fetch = originalFetch;
   }
