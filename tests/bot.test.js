@@ -463,6 +463,78 @@ test("group /check command works without mentioning the bot", async () => {
   }
 });
 
+test("group /tg command works without mentioning the bot", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+
+    if (!urlText.startsWith("https://api.telegram.org")) {
+      throw new Error(`unexpected non-Telegram request: ${urlText}`);
+    }
+
+    calls.push({ url: urlText, payload: JSON.parse(options.body) });
+
+    if (urlText.endsWith("/getChat")) {
+      assert.equal(calls.at(-1).payload.chat_id, "5081175125");
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            id: 5081175125,
+            type: "private",
+            first_name: "Ali",
+            username: "ali_test",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 23,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "/tg 5081175125",
+            entities: [{ type: "bot_command", offset: 0, length: 3 }],
+          },
+        },
+      },
+      res
+    );
+
+    const finalMessage = calls.at(-1).payload;
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    assert.match(finalMessage.text, /Telegram profil/);
+    assert.match(finalMessage.text, /@ali_test/);
+    assert.equal(finalMessage.reply_markup, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("callback queries without a message are acknowledged without crashing", async () => {
   const originalFetch = global.fetch;
   const calls = [];

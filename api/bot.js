@@ -187,8 +187,16 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isGroupChat(message.chat)) {
     const addressing = getGroupAddressing(message);
+    const addressedText = addressing.commandText || addressing.input;
 
     if (!addressing.addressed) {
+      return;
+    }
+
+    if (isTelegramProfileCommand(addressedText)) {
+      await handleTelegramProfileCommand(chatId, user, addressedText, {
+        replyMarkup: null,
+      });
       return;
     }
 
@@ -286,7 +294,7 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isCommand(text, "tg") || isCommand(text, "user") || isCommand(text, "profile")) {
+  if (isTelegramProfileCommand(text)) {
     await handleTelegramProfileCommand(chatId, user, text);
     return;
   }
@@ -607,16 +615,19 @@ async function handleMessageCommand(chatId, user, message) {
   );
 }
 
-async function handleTelegramProfileCommand(chatId, user, text) {
+async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
   const tgId = extractTelegramId(text);
+  const replyMarkup = Object.hasOwn(options, "replyMarkup")
+    ? options.replyMarkup
+    : mainKeyboard(user);
 
   if (!tgId) {
-    await sendMessage(chatId, getTelegramProfilePromptText(), mainKeyboard(user));
+    await sendMessage(chatId, getTelegramProfilePromptText(), replyMarkup);
     return;
   }
 
   if (!isValidTelegramId(tgId)) {
-    await sendMessage(chatId, getInvalidTelegramIdText(), mainKeyboard(user));
+    await sendMessage(chatId, getInvalidTelegramIdText(), replyMarkup);
     return;
   }
 
@@ -628,7 +639,7 @@ async function handleTelegramProfileCommand(chatId, user, text) {
     await sendMessage(
       chatId,
       getTelegramProfileFailedText(tgId, profile.reason),
-      mainKeyboard(user)
+      replyMarkup
     );
     return;
   }
@@ -636,7 +647,7 @@ async function handleTelegramProfileCommand(chatId, user, text) {
   await sendMessage(
     chatId,
     getTelegramProfileText(profile.data),
-    mainKeyboard(user)
+    replyMarkup
   );
 }
 
@@ -1483,6 +1494,8 @@ function getAdminFeedbackText(feedback) {
   return [
     "💬 <b>Yangi fikr yoki izoh</b>",
     "",
+    `Feedback ID: <code>${escapeHtml(feedback.id)}</code>`,
+    `User ID: <code>${escapeHtml(feedback.userId)}</code>`,
     `Chat ID: <code>${escapeHtml(feedback.chatId)}</code>`,
     `User: ${escapeHtml(displayName)}`,
     `Vaqt: ${formatDate(feedback.createdAt)}`,
@@ -2067,6 +2080,14 @@ function isCommand(text, command) {
   return new RegExp(`^\\/${command}(?:@\\w+)?(?:\\s|$)`, "i").test(text);
 }
 
+function isTelegramProfileCommand(text) {
+  return (
+    isCommand(text, "tg") ||
+    isCommand(text, "user") ||
+    isCommand(text, "profile")
+  );
+}
+
 function isGroupChat(chat = {}) {
   return chat.type === "group" || chat.type === "supergroup";
 }
@@ -2116,17 +2137,18 @@ function getGroupCommandAddressing(text) {
 
   const normalizedCommand = command.toLowerCase();
 
-  if (!["check", "start"].includes(normalizedCommand)) {
+  if (!["check", "start", "tg", "user", "profile"].includes(normalizedCommand)) {
     return {
       addressed: false,
       input: "",
     };
   }
 
-  if (normalizedCommand === "check" && !username) {
+  if (["check", "tg", "user", "profile"].includes(normalizedCommand) && !username) {
     return {
       addressed: true,
       input: text.slice(match[0].length).trim(),
+      commandText: text,
     };
   }
 
@@ -2140,6 +2162,7 @@ function getGroupCommandAddressing(text) {
   return {
     addressed: true,
     input: text.slice(match[0].length).trim(),
+    commandText: text,
   };
 }
 
