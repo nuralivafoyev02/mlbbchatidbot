@@ -1300,9 +1300,8 @@ function getCheckPromptText() {
     "Iltimos, MLBB <b>Account ID</b> va <b>Server/Zone ID</b> ni yuboring.",
     "",
     "<b>Namuna:</b>",
-    "<code>1289050 (10050)</code>",
-    "<code>1289050 10050</code>",
-    "<code>/check 1289050 10050</code>",
+    "1289050 (10050)",
+    "/check 1289050 (10050)",
     "",
     "📌 Faqat Account ID yuborilsa, serverni aniq topib bo‘lmaydi.",
   ].join("\n");
