@@ -1278,11 +1278,6 @@ function getStartText(user) {
     "MLBB Account ID va Server/Zone ID yuboring, men serverini aniqlab beraman.",
     "TG ID yuborib Telegram profil ma’lumotlarini ham tekshirishingiz mumkin.",
     "",
-    "<b>Namuna:</b>",
-    "<code>1289050 (10050)</code>",
-    "<code>123456789 5009</code>",
-    "<code>/tg 5081175125</code>",
-    "",
     "Ko‘p ishlatiladigan funksiyalar pastdagi klaviaturada.",
   ].join("\n");
 }
@@ -1298,7 +1293,7 @@ function getCheckPromptText() {
     "<code>1289050 10050</code>",
     "<code>/check 1289050 10050</code>",
     "",
-    "⚠️ Faqat Account ID yuborilsa, serverni aniq topib bo‘lmaydi.",
+    "📌 Faqat Account ID yuborilsa, serverni aniq topib bo‘lmaydi.",
   ].join("\n");
 }
 
@@ -1315,7 +1310,7 @@ function getResultText(result) {
   ].join("\n");
 }
 
-function getFailedLookupText(parsed, lookup) {
+function getFailedLookupText(parsed) {
   return [
     "❌ <b>Profil topilmadi</b>",
     "",
@@ -1325,11 +1320,6 @@ function getFailedLookupText(parsed, lookup) {
     "Raqamlar to‘g‘ri kiritilganini tekshirib ko‘ring:",
     "1. Account ID to‘liq yozilgan bo‘lishi kerak",
     "2. Server/Zone ID qavs ichidagi raqam bo‘lishi kerak",
-    "3. Tashqi tekshiruv servisi vaqtincha sekinlashgan bo‘lishi mumkin",
-    "",
-    `📌 <b>Holat:</b> ${escapeHtml(lookup.reason || getFriendlyLookupReason())}`,
-    "",
-    "Namuna: <code>1289050 (10050)</code>",
   ].join("\n");
 }
 
@@ -1338,7 +1328,7 @@ function getHelpText(user = {}) {
     "ℹ️ <b>Yordam</b>",
     "",
     "<b>1. MLBB server aniqlash</b>",
-    "Account ID va Server/Zone ID ni yuboring. Bot profilni tashqi lookup API orqali tekshiradi va server turini chiqaradi.",
+    "Account ID va Server/Zone ID ni yuboring. Bot profilni MLBB official serveri orqali aniqlaydi.",
     "",
     "<b>Formatlar:</b>",
     "<code>1289050 (10050)</code>",
@@ -1440,17 +1430,14 @@ function getTelegramProfileText(profile) {
     .join("\n");
 }
 
-function getTelegramProfileFailedText(tgId, reason) {
+function getTelegramProfileFailedText(tgId) {
   return [
     "👤 <b>Profil topilmadi</b>",
     "",
     `🆔 <b>TG ID:</b> <code>${escapeHtml(tgId)}</code>`,
     "",
     "Sabab: bot bu profilni ko‘ra olmayapti yoki ID noto‘g‘ri.",
-    reason ? `Telegram javobi: ${escapeHtml(reason)}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 }
 
 function getFeedbackPromptText() {
@@ -1460,14 +1447,13 @@ function getFeedbackPromptText() {
     "Botga kerakli funksiya, taklif yoki shikoyatingizni yozib yuboring.",
     "Xabaringiz adminlarga yetkaziladi. Admin javob bersa, javobi bot orqali sizga keladi.",
     "",
-    "Bekor qilish: <code>/cancel</code>",
+    "Bekor qilish uchun /cancel buyrug'ini bosing.",
   ].join("\n");
 }
 
 function getFeedbackTextRequiredText() {
   return [
     "Fikr yoki izoh matn ko‘rinishida bo‘lishi kerak.",
-    "",
     "Iltimos, taklif yoki shikoyatingizni yozib yuboring.",
   ].join("\n");
 }
@@ -1497,8 +1483,6 @@ function getAdminFeedbackText(feedback) {
   return [
     "💬 <b>Yangi fikr yoki izoh</b>",
     "",
-    `Feedback ID: <code>${escapeHtml(feedback.id)}</code>`,
-    `User ID: <code>${escapeHtml(feedback.userId)}</code>`,
     `Chat ID: <code>${escapeHtml(feedback.chatId)}</code>`,
     `User: ${escapeHtml(displayName)}`,
     `Vaqt: ${formatDate(feedback.createdAt)}`,
@@ -1506,7 +1490,7 @@ function getAdminFeedbackText(feedback) {
     "<b>Xabar:</b>",
     escapeHtml(feedback.text),
     "",
-    "Javob berish uchun shu xabarga reply qiling.",
+    "Shu xabarga reply qilib javob berishingiz mumkin.",
   ].join("\n");
 }
 
@@ -1761,15 +1745,13 @@ function getUnknownText() {
     "Men siz yuborgan xabarni tushunmadim 🙂",
     "",
     "Serverni aniqlash uchun quyidagi formatda yuboring:",
-    "",
-    "<code>1289050 (10050)</code>",
-    "",
+    "1289050 (10050)",
     "Yoki pastdagi tugmalardan foydalaning.",
   ].join("\n");
 }
 
 function getAdminOnlyText() {
-  return "Bu bo‘lim faqat adminlar uchun.";
+  return "Bu bo‘lim faqat adminlar uchun!";
 }
 
 function getErrorText() {
@@ -1777,7 +1759,7 @@ function getErrorText() {
     "Kutilmagan xatolik bo‘ldi, lekin men ishlayapman.",
     "",
     "Iltimos, ID’ni yana shu formatda yuboring:",
-    "<code>1289050 (10050)</code>",
+    "1289050 (10050)",
   ].join("\n");
 }
 
