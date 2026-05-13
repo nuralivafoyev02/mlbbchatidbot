@@ -53,6 +53,31 @@ function createRes() {
   };
 }
 
+function hasUnpairedSurrogate(value) {
+  const text = String(value || "");
+
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        index += 1;
+        continue;
+      }
+
+      return true;
+    }
+
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 test("parseMlbbInput accepts common account and zone formats", () => {
   assert.deepEqual(parseMlbbInput("123456789 (5009)"), {
     ok: true,
@@ -228,6 +253,27 @@ test("users list text numbers paginated rows", () => {
   assert.match(text, /@ali_test/);
 });
 
+test("users list text clips names without splitting emoji pairs", () => {
+  const riskyName = `${"A".repeat(41)}😀${"B".repeat(10)}`;
+  const text = getUsersListText({
+    users: [
+      {
+        user_id: "10012",
+        first_name: riskyName,
+        updates_count: 1,
+        last_seen_at: "2026-05-11T06:00:00.000Z",
+      },
+    ],
+    total: 1,
+    page: 0,
+    pageSize: 10,
+    source: "runtime",
+  });
+
+  assert.equal(hasUnpairedSurrogate(text), false);
+  assert.match(text, /\.\.\./);
+});
+
 test("lookup fallback hides raw provider status from users", () => {
   const text = getFailedLookupText(
     { accountId: "1289050", zoneId: "10050" },
@@ -298,6 +344,44 @@ test("/start sends a reply keyboard", async () => {
     assert.ok(calls[0].payload.reply_markup.keyboard);
     assert.equal(calls[0].payload.reply_markup.inline_keyboard, undefined);
     assert.equal(calls[0].payload.reply_markup.input_field_placeholder, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("outgoing Telegram text strips malformed surrogate characters", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 3,
+          message: {
+            chat: { id: 70001, type: "private" },
+            from: { id: 70001, first_name: "Ali\uD83D" },
+            text: "/start",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.ok(calls[0]);
+    assert.match(calls[0].payload.text, /Ali/);
+    assert.equal(hasUnpairedSurrogate(calls[0].payload.text), false);
   } finally {
     global.fetch = originalFetch;
   }

@@ -1961,13 +1961,19 @@ async function sendOrEditAdminMessage(chatId, messageId, text, replyMarkup) {
 }
 
 async function sendMessage(chatId, text, replyMarkup, options = {}) {
+  const originalText = String(text ?? "");
+  const safeText = sanitizeTelegramText(originalText);
   const payload = {
     chat_id: chatId,
-    text,
+    text: safeText || " ",
     disable_web_page_preview: true,
   };
 
-  if (Array.isArray(options.entities) && options.entities.length) {
+  if (
+    Array.isArray(options.entities) &&
+    options.entities.length &&
+    safeText === originalText
+  ) {
     payload.entities = options.entities;
   } else if (!options.plain) {
     payload.parse_mode = "HTML";
@@ -1984,7 +1990,7 @@ async function editMessageText(chatId, messageId, text, replyMarkup) {
   const payload = {
     chat_id: chatId,
     message_id: messageId,
-    text,
+    text: sanitizeTelegramText(text) || " ",
     parse_mode: "HTML",
     disable_web_page_preview: true,
   };
@@ -2345,7 +2351,7 @@ function safeJsonParse(value) {
 }
 
 function escapeHtml(value) {
-  return String(value || "")
+  return sanitizeTelegramText(value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
@@ -2680,7 +2686,7 @@ function cleanTextValue(value, maxLength) {
     return null;
   }
 
-  const text = String(value).trim();
+  const text = sanitizeTelegramText(value).trim();
 
   if (!text) {
     return null;
@@ -3236,11 +3242,47 @@ function chunkArray(values, size) {
 }
 
 function clipText(text, maxLength) {
-  if (text.length <= maxLength) {
-    return text;
+  const safeText = sanitizeTelegramText(text);
+  const safeMaxLength = Math.max(0, Number(maxLength) || 0);
+  const chars = Array.from(safeText);
+
+  if (!safeMaxLength || chars.length <= safeMaxLength) {
+    return safeText;
   }
 
-  return `${text.slice(0, maxLength - 3)}...`;
+  if (safeMaxLength <= 3) {
+    return chars.slice(0, safeMaxLength).join("");
+  }
+
+  return `${chars.slice(0, safeMaxLength - 3).join("")}...`;
+}
+
+function sanitizeTelegramText(value) {
+  const text = String(value ?? "");
+  let result = "";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        result += text[index] + text[index + 1];
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      continue;
+    }
+
+    result += text[index];
+  }
+
+  return result;
 }
 
 module.exports.__private = {
@@ -3271,6 +3313,7 @@ module.exports.__private = {
   parseMlbbInput,
   parseRequestBody,
   resolveSupabaseConfig,
+  sanitizeTelegramText,
   sanitizeTelegramUsername,
   trackUser,
   validateSupabaseServiceKey,
