@@ -40,6 +40,18 @@ const SUPABASE_TIMEOUT_MS = parseBoundedNumber(
   300,
   5000
 );
+const TELEGRAM_TIMEOUT_MS = parseBoundedNumber(
+  process.env.TELEGRAM_TIMEOUT_MS,
+  5000,
+  1000,
+  10000
+);
+const MLBB_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
+  process.env.MLBB_LOOKUP_TIMEOUT_MS,
+  6000,
+  800,
+  10000
+);
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 if (!global.__MLBB_BOT_STATS__) {
@@ -186,7 +198,7 @@ async function handleMessage(message, updateMeta = {}) {
   const text = String(message.text || "").trim();
   const user = message.from || {};
 
-  await trackUser(user, message.chat, {
+  trackUser(user, message.chat, {
     ...updateMeta,
   });
 
@@ -428,7 +440,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
   const chatId = callbackQuery.message?.chat?.id;
   const user = callbackQuery.from || {};
 
-  await trackUser(user, callbackQuery.message?.chat, {
+  trackUser(user, callbackQuery.message?.chat, {
     ...updateMeta,
   });
 
@@ -659,7 +671,7 @@ async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
     return;
   }
 
-  await safeSendChatAction(chatId, "typing");
+  void safeSendChatAction(chatId, "typing");
 
   const profile = await lookupTelegramProfile(tgId);
 
@@ -748,7 +760,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
     return;
   }
 
-  await safeSendChatAction(chatId, "typing");
+  void safeSendChatAction(chatId, "typing");
 
   const lookup = await lookupMlbbAccount(parsed.accountId, parsed.zoneId);
 
@@ -799,7 +811,7 @@ async function lookupMlbbAccount(accountId, zoneId) {
         Accept: "application/json",
         "User-Agent": "MLBB-Server-Detector-Bot/1.0",
       },
-      timeoutMs: 10000,
+      timeoutMs: MLBB_LOOKUP_TIMEOUT_MS,
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -2059,7 +2071,7 @@ async function telegram(method, payload) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
-    timeoutMs: 10000,
+    timeoutMs: TELEGRAM_TIMEOUT_MS,
   });
 
   const bodyText = await response.text();
@@ -2598,10 +2610,16 @@ function isAdmin(userId) {
   return ADMIN_IDS.includes(String(userId || ""));
 }
 
-async function trackUser(user = {}, chat = {}, updateMeta = {}) {
+function trackUser(user = {}, chat = {}, updateMeta = {}) {
   rememberRuntimeUser(user, chat, updateMeta);
 
-  await queueSupabaseUserTrack(user, chat, updateMeta);
+  queueSupabaseUserTrack(user, chat, updateMeta).catch((error) => {
+    console.error("[SUPABASE_TRACK_BACKGROUND_ERROR]", error);
+    recordError("supabase_track_background_failed", error.message, {
+      userId: user.id,
+      updateType: updateMeta.updateType,
+    });
+  });
 }
 
 function rememberRuntimeUser(user = {}, chat = {}, updateMeta = {}) {
