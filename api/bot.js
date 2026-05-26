@@ -13,6 +13,7 @@ const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
 const BUTTON_CHECK = "🔎 Server aniqlash";
 const BUTTON_TG_PROFILE = "👤 TG profil topish";
+const BUTTON_BIND_INFO = "🔗 Ulanmalar";
 const BUTTON_STATS = "📊 Statistika";
 const BUTTON_USERS = "👥 Foydalanuvchilar";
 const BUTTON_ERRORS = "⚠️ Xatoliklar";
@@ -51,6 +52,7 @@ if (!global.__MLBB_BOT_STATS__) {
     broadcastChats: new Set(BROADCAST_USER_IDS),
     pendingBroadcasts: new Map(),
     pendingFeedbacks: new Map(),
+    userModes: new Map(),
     userProfiles: new Map(),
     errors: [],
     errorCounts: {},
@@ -68,6 +70,9 @@ stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
 if (!(stats.pendingFeedbacks instanceof Map)) {
   stats.pendingFeedbacks = new Map(Object.entries(stats.pendingFeedbacks || {}));
+}
+if (!(stats.userModes instanceof Map)) {
+  stats.userModes = new Map(Object.entries(stats.userModes || {}));
 }
 if (!(stats.userProfiles instanceof Map)) {
   stats.userProfiles = new Map(Object.entries(stats.userProfiles || {}));
@@ -301,6 +306,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "check")) {
     const input = text.replace(/^\/check(@\w+)?/i, "").trim();
+    rememberUserMode(user.id, "server_check");
 
     if (!input) {
       await sendMessage(chatId, getCheckPromptText(), checkKeyboard(user));
@@ -312,12 +318,19 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   if (isKeyboardButton(text, BUTTON_CHECK, BUTTON_CHECK_AGAIN)) {
+    rememberUserMode(user.id, "server_check");
     await sendMessage(chatId, getCheckPromptText(), mainKeyboard(user));
     return;
   }
 
   if (isKeyboardButton(text, BUTTON_TG_PROFILE)) {
+    rememberUserMode(user.id, "tg_profile");
     await sendMessage(chatId, getTelegramProfilePromptText(), mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_BIND_INFO)) {
+    await sendMessage(chatId, getBindInfoComingSoonText(), mainKeyboard(user));
     return;
   }
 
@@ -378,6 +391,16 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     await sendMessage(chatId, getBroadcastUsageText(), mainKeyboard(user));
+    return;
+  }
+
+  if (getUserMode(user.id) === "tg_profile") {
+    await handleTelegramProfileCommand(chatId, user, text);
+    return;
+  }
+
+  if (getUserMode(user.id) === "server_check") {
+    await detectAndReply(chatId, text, user);
     return;
   }
 
@@ -713,16 +736,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
 
     await sendMessage(
       chatId,
-      [
-        "❌ <b>ID formati noto‘g‘ri</b>",
-        "",
-        "Aniq tekshirish uchun MLBB <b>Account ID</b> va <b>Server/Zone ID</b> kerak.",
-        "",
-        "<b>To‘g‘ri formatlar:</b>",
-        "✅ <code>1289050 (10050)</code>",
-        "✅ <code>1289050 10050</code>",
-        "✅ <code>/check 1289050 10050</code>",
-      ].join("\n"),
+      getInvalidMlbbInputText(),
       Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : checkKeyboard(user)
     );
 
@@ -1322,15 +1336,13 @@ function getResultText(result) {
 
 function getFailedLookupText(parsed) {
   return [
-    "❌ <b>Profil topilmadi</b>",
-    "",
-    `🆔 <b>Account ID:</b> <code>${escapeHtml(parsed.accountId)}</code>`,
-    `🌐 <b>Server / Zone ID:</b> <code>${escapeHtml(parsed.zoneId)}</code>`,
-    "",
-    "Raqamlar to‘g‘ri kiritilganini tekshirib ko‘ring:",
-    "1. Account ID to‘liq yozilgan bo‘lishi kerak",
-    "2. Server/Zone ID qavs ichidagi raqam bo‘lishi kerak",
+    "❌ <b>Profil topilmadi.</b>",
+    "Foydalanuvchi yoki server topilmadi.",
   ].join("\n");
+}
+
+function getInvalidMlbbInputText() {
+  return "Server topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.";
 }
 
 function getHelpText(user = {}) {
@@ -1403,12 +1415,7 @@ function getTelegramProfilePromptText() {
 }
 
 function getInvalidTelegramIdText() {
-  return [
-    "TG ID formati noto‘g‘ri.",
-    "",
-    "To‘g‘ri format:",
-    "<code>/tg 5081175125</code>",
-  ].join("\n");
+  return "Foydalanuvchi topilmadi. TG ID ni tekshirib qayta yuboring.";
 }
 
 function getTelegramProfileText(profile) {
@@ -1441,13 +1448,11 @@ function getTelegramProfileText(profile) {
 }
 
 function getTelegramProfileFailedText(tgId) {
-  return [
-    "👤 <b>Profil topilmadi</b>",
-    "",
-    `🆔 <b>TG ID:</b> <code>${escapeHtml(tgId)}</code>`,
-    "",
-    "Sabab: bot bu profilni ko‘ra olmayapti yoki ID noto‘g‘ri.",
-  ].join("\n");
+  return "Foydalanuvchi topilmadi.";
+}
+
+function getBindInfoComingSoonText() {
+  return "Bu bo‘lim tez kunlarda foydalanishga topshiriladi va siz bu orqali o‘yin akkauntingizga nimalar ulanganini tekshirishingiz mumkin!";
 }
 
 function getFeedbackPromptText() {
@@ -1826,6 +1831,7 @@ function getBroadcastResultText(result) {
 
 function mainKeyboard(user = {}) {
   const keyboard = [
+    [{ text: BUTTON_BIND_INFO }],
     [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
     [{ text: BUTTON_FEEDBACK }],
     [{ text: BUTTON_COMMANDS }, { text: BUTTON_HELP }],
@@ -2261,6 +2267,18 @@ function isFeedbackSubmissionMessage(message = {}, user = {}) {
   }
 
   return Boolean(getPendingFeedback(user.id) || isFeedbackPromptReply(message));
+}
+
+function rememberUserMode(userId, mode) {
+  if (!userId) {
+    return;
+  }
+
+  stats.userModes.set(String(userId), mode);
+}
+
+function getUserMode(userId) {
+  return stats.userModes.get(String(userId || "")) || "";
 }
 
 function isFeedbackPromptReply(message = {}) {

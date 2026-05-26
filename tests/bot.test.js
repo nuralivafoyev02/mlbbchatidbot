@@ -217,11 +217,150 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
   const userKeyboardText = JSON.stringify(userKeyboard);
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
+  assert.equal(userKeyboard.keyboard[0][0].text, "🔗 Ulanmalar");
   assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar/);
   assert.match(userKeyboardText, /💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
   assert.match(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar/);
+});
+
+test("bind info button returns a short coming soon message", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 24,
+          message: {
+            chat: { id: 70024, type: "private" },
+            from: { id: 70024, first_name: "Ali" },
+            text: "🔗 Ulanmalar",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].payload.text, /tez kunlarda/);
+    assert.match(calls[0].payload.text, /o‘yin akkauntingizga/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("TG profile button keeps profile lookup mode until server button is pressed", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    calls.push({ url: urlText, payload: JSON.parse(options.body) });
+
+    if (urlText.endsWith("/getChat")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            id: 5081175125,
+            type: "private",
+            first_name: "Ali",
+            username: "ali_test",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const chat = { id: 70025, type: "private" };
+    const from = { id: 70025, first_name: "Ali" };
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 25,
+          message: { chat, from, text: "👤 TG profil topish" },
+        },
+      },
+      createRes()
+    );
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 26,
+          message: { chat, from, text: "5081175125" },
+        },
+      },
+      createRes()
+    );
+
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    assert.match(calls.at(-1).payload.text, /@ali_test/);
+
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 27,
+          message: { chat, from, text: "🔎 Server aniqlash" },
+        },
+      },
+      createRes()
+    );
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 28,
+          message: { chat, from, text: "5081175125" },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.some((call) => call.url.endsWith("/getChat")), false);
+    assert.match(calls.at(-1).payload.text, /Server topilmadi/);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test("content-range parser reads exact Supabase totals", () => {
