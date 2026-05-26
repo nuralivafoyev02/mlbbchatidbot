@@ -411,6 +411,11 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isBareTelegramIdInput(text)) {
+    await handleTelegramProfileCommand(chatId, user, text);
+    return;
+  }
+
   await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
 }
 
@@ -2097,6 +2102,10 @@ function isTelegramProfileCommand(text) {
     isCommand(text, "user") ||
     isCommand(text, "profile")
   );
+}
+
+function isBareTelegramIdInput(text) {
+  return /^-?\d{5,20}$/.test(String(text || "").trim());
 }
 
 function isGroupChat(chat = {}) {

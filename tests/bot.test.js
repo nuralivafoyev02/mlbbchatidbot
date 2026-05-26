@@ -858,6 +858,65 @@ test("/tg looks up a Telegram profile with getChat", async () => {
   }
 });
 
+test("bare Telegram ID falls back to profile lookup without relying on memory", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+
+    if (url.endsWith("/getChat")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            id: 5081175125,
+            type: "private",
+            first_name: "Ali",
+            username: "ali_test",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 29,
+          message: {
+            chat: { id: 70029, type: "private" },
+            from: { id: 70029 },
+            text: "5081175125",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    assert.match(calls.at(-1).payload.text, /@ali_test/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("MLBB lookup HTTP 500 returns friendly fallback and records details", async () => {
   const originalFetch = global.fetch;
   const calls = [];
