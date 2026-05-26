@@ -14,6 +14,7 @@ const handler = require("../api/bot.js");
 const {
   extractTelegramId,
   getAdminFeedbackText,
+  getBindInfoResultText,
   getCommandsText,
   getErrorsText,
   getFailedLookupText,
@@ -27,6 +28,7 @@ const {
   isValidTelegramId,
   mainKeyboard,
   normalizeSecretEnv,
+  normalizeBindInfoResponse,
   parseContentRangeTotal,
   parseIdList,
   parseAdvancedRanges,
@@ -225,7 +227,7 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
   assert.match(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar/);
 });
 
-test("bind info button returns a short coming soon message", async () => {
+test("bind info button prompts for account and server ids", async () => {
   const originalFetch = global.fetch;
   const calls = [];
 
@@ -256,11 +258,52 @@ test("bind info button returns a short coming soon message", async () => {
     );
 
     assert.equal(calls.length, 1);
-    assert.match(calls[0].payload.text, /tez kunlarda/);
-    assert.match(calls[0].payload.text, /o‘yin akkauntingizga/);
+    assert.match(calls[0].payload.text, /Ulanmalar/);
+    assert.match(calls[0].payload.text, /1006613098/);
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test("bind info result masks all linked identifiers", () => {
+  const normalized = normalizeBindInfoResponse({
+    data: {
+      bindings: {
+        Moonton: "ilovemysecureemail@gmail.com",
+        VK: "",
+        googlePlay: null,
+        tiktok: "private-tiktok-id",
+        facebook: { username: "TestFacebookName" },
+        Apple: false,
+        GCID: "gamecenterid",
+        Telegram: true,
+        WhatsApp: "998901234567",
+      },
+      device_login: {
+        Android: 0,
+        iOS: 1,
+      },
+    },
+  });
+
+  assert.equal(normalized.ok, true);
+
+  const text = getBindInfoResultText({
+    accountId: "1006613098",
+    zoneId: "13019",
+    ...normalized.data,
+  });
+
+  assert.match(text, /🆔/);
+  assert.match(text, /📧 <b>Moonton:<\/b> il\*+il@gmail\.com/);
+  assert.match(text, /🔵 <b>VK:<\/b> empty\./);
+  assert.match(text, /🎵 <b>TikTok:<\/b> pr\*+id/);
+  assert.match(text, /📘 <b>Facebook:<\/b> Te\*+me/);
+  assert.match(text, /🕹 <b>GCID:<\/b> ga\*+id/);
+  assert.match(text, /✈️ <b>Telegram:<\/b> linked\./);
+  assert.match(text, /🟢 <b>WhatsApp:<\/b> 99\*+67/);
+  assert.match(text, /🤖 Android: <b>0<\/b> \| 🍎 iOS: <b>1<\/b>/);
+  assert.doesNotMatch(text, /ilovemysecureemail|private-tiktok-id|TestFacebookName|998901234567/);
 });
 
 test("TG profile button keeps profile lookup mode until server button is pressed", async () => {

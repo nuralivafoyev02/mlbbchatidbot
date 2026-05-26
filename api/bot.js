@@ -30,6 +30,7 @@ const FEEDBACK_MAX_LENGTH = 3000;
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
+const MLBB_BIND_INFO_API_URL = cleanEnv(process.env.MLBB_BIND_INFO_API_URL);
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, "");
 const SUPABASE_CONFIG = resolveSupabaseConfig(process.env, SUPABASE_URL);
 const SUPABASE_SERVICE_KEY = SUPABASE_CONFIG.serviceKey;
@@ -342,7 +343,8 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   if (isKeyboardButton(text, BUTTON_BIND_INFO)) {
-    await sendMessage(chatId, getBindInfoComingSoonText(), mainKeyboard(user));
+    rememberUserMode(user.id, "bind_info");
+    await sendMessage(chatId, getBindInfoPromptText(), mainKeyboard(user));
     return;
   }
 
@@ -403,6 +405,11 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     await sendMessage(chatId, getBroadcastUsageText(), mainKeyboard(user));
+    return;
+  }
+
+  if (getUserMode(user.id) === "bind_info") {
+    await handleBindInfoRequest(chatId, text, user);
     return;
   }
 
@@ -691,6 +698,42 @@ async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
   );
 }
 
+async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
+  const parsed = parseMlbbInput(input);
+  const replyMarkup =
+    Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : resultKeyboard(user);
+
+  if (!parsed.ok) {
+    await sendMessage(chatId, getInvalidBindInfoInputText(), replyMarkup);
+    return;
+  }
+
+  void safeSendChatAction(chatId, "typing");
+
+  const bindInfo = await lookupMlbbBindInfo(parsed.accountId, parsed.zoneId);
+
+  if (!bindInfo.ok) {
+    recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+      status: bindInfo.status,
+    });
+
+    await sendMessage(chatId, getBindInfoFailedText(), replyMarkup);
+    return;
+  }
+
+  await sendMessage(
+    chatId,
+    getBindInfoResultText({
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+      ...bindInfo.data,
+    }),
+    replyMarkup
+  );
+}
+
 async function handleBroadcastConfirm(chatId, user, data) {
   if (!isAdmin(user.id)) {
     await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
@@ -869,6 +912,127 @@ async function lookupMlbbAccount(accountId, zoneId) {
       technicalReason: error.message || "Lookup API ishlamadi",
     };
   }
+}
+
+async function lookupMlbbBindInfo(accountId, zoneId) {
+  if (!MLBB_BIND_INFO_API_URL) {
+    return {
+      ok: false,
+      reason: "bind_info_api_not_configured",
+      technicalReason: "MLBB_BIND_INFO_API_URL env sozlanmagan",
+    };
+  }
+
+  try {
+    const url = new URL(MLBB_BIND_INFO_API_URL);
+    url.searchParams.set("id", accountId);
+    url.searchParams.set("zone", zoneId);
+    url.searchParams.set("server", zoneId);
+
+    const response = await fetchWithTimeout(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "MLBB-Server-Detector-Bot/1.0",
+      },
+      timeoutMs: MLBB_LOOKUP_TIMEOUT_MS,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const bodyText = await response.text();
+    const data = contentType.includes("application/json")
+      ? safeJsonParse(bodyText)
+      : safeJsonParse(bodyText) || null;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        provider: "bind_info_api",
+        reason: "bind_info_lookup_failed",
+        technicalReason: `Bind info API HTTP ${response.status}`,
+        status: response.status,
+        data,
+      };
+    }
+
+    const normalized = normalizeBindInfoResponse(data);
+
+    if (!normalized.ok) {
+      return {
+        ok: false,
+        provider: "bind_info_api",
+        reason: normalized.reason,
+        technicalReason: normalized.reason,
+        data,
+      };
+    }
+
+    return {
+      ok: true,
+      provider: "bind_info_api",
+      data: normalized.data,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "bind_info_api",
+      reason: "bind_info_lookup_failed",
+      technicalReason: error.message || "Bind info API ishlamadi",
+    };
+  }
+}
+
+function normalizeBindInfoResponse(data) {
+  const root = data?.data || data?.result || data?.account || data;
+
+  if (!root || typeof root !== "object") {
+    return {
+      ok: false,
+      reason: "Bind info API bo‘sh javob qaytardi",
+    };
+  }
+
+  const bindingsRoot = root.bindings || root.bind || root.accounts || root;
+  const deviceRoot =
+    root.device_login ||
+    root.deviceLogin ||
+    root.device ||
+    root.devices ||
+    root.login ||
+    {};
+
+  return {
+    ok: true,
+    data: {
+      bindings: {
+        moonton: pickFirstValue(bindingsRoot, [
+          "moonton",
+          "Moonton",
+          "moonton_email",
+          "moontonEmail",
+          "email",
+        ]),
+        vk: pickFirstValue(bindingsRoot, ["vk", "VK"]),
+        googlePlay: pickFirstValue(bindingsRoot, [
+          "google_play",
+          "googlePlay",
+          "Google Play",
+          "google",
+          "gp",
+        ]),
+        tiktok: pickFirstValue(bindingsRoot, ["tiktok", "tikTok", "TikTok"]),
+        facebook: pickFirstValue(bindingsRoot, ["facebook", "fb", "Facebook"]),
+        apple: pickFirstValue(bindingsRoot, ["apple", "Apple", "apple_id", "appleId"]),
+        gcid: pickFirstValue(bindingsRoot, ["gcid", "GCID", "game_center", "gameCenter"]),
+        telegram: pickFirstValue(bindingsRoot, ["telegram", "Telegram", "tg"]),
+        whatsapp: pickFirstValue(bindingsRoot, ["whatsapp", "WhatsApp", "wa"]),
+      },
+      deviceLogin: {
+        android: pickFirstValue(deviceRoot, ["android", "Android", "android_count"]),
+        ios: pickFirstValue(deviceRoot, ["ios", "iOS", "IOS", "iphone", "ios_count"]),
+      },
+    },
+  };
 }
 
 async function lookupTelegramProfile(tgId) {
@@ -1468,8 +1632,46 @@ function getTelegramProfileFailedText(tgId) {
   return "Foydalanuvchi topilmadi.";
 }
 
-function getBindInfoComingSoonText() {
-  return "Bu bo‘lim tez kunlarda foydalanishga topshiriladi va siz bu orqali o‘yin akkauntingizga nimalar ulanganini tekshirishingiz mumkin!";
+function getBindInfoPromptText() {
+  return [
+    "🔗 <b>Ulanmalar</b>",
+    "",
+    "MLBB <b>Account ID</b> va <b>Server/Zone ID</b> ni yuboring.",
+    "",
+    "<b>Namuna:</b>",
+    "<code>1006613098 (13019)</code>",
+  ].join("\n");
+}
+
+function getInvalidBindInfoInputText() {
+  return "Ulanmalar topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.";
+}
+
+function getBindInfoFailedText() {
+  return "Ulanmalar topilmadi.";
+}
+
+function getBindInfoResultText(result = {}) {
+  const bindings = result.bindings || {};
+  const deviceLogin = result.deviceLogin || {};
+
+  return [
+    "🔗 <b>Ulanmalar</b>",
+    "",
+    `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
+    `🌐 <b>Server:</b> <code>${escapeHtml(result.zoneId)}</code>`,
+    `📧 <b>Moonton:</b> ${escapeHtml(maskSensitiveValue(bindings.moonton))}`,
+    `🔵 <b>VK:</b> ${escapeHtml(maskSensitiveValue(bindings.vk))}`,
+    `🎮 <b>Google Play:</b> ${escapeHtml(maskSensitiveValue(bindings.googlePlay))}`,
+    `🎵 <b>TikTok:</b> ${escapeHtml(maskSensitiveValue(bindings.tiktok))}`,
+    `📘 <b>Facebook:</b> ${escapeHtml(maskSensitiveValue(bindings.facebook))}`,
+    `🍎 <b>Apple:</b> ${escapeHtml(maskSensitiveValue(bindings.apple))}`,
+    `🕹 <b>GCID:</b> ${escapeHtml(maskSensitiveValue(bindings.gcid))}`,
+    `✈️ <b>Telegram:</b> ${escapeHtml(maskSensitiveValue(bindings.telegram))}`,
+    `🟢 <b>WhatsApp:</b> ${escapeHtml(maskSensitiveValue(bindings.whatsapp))}`,
+    "",
+    `📱 <b>Device Login</b> 🤖 Android: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.android))}</b> | 🍎 iOS: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.ios))}</b>`,
+  ].join("\n");
 }
 
 function getFeedbackPromptText() {
@@ -2387,6 +2589,145 @@ function safeJsonParse(value) {
   } catch {
     return null;
   }
+}
+
+function pickFirstValue(source = {}, keys = []) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (Object.hasOwn(source, key)) {
+      return normalizeBindValue(source[key]);
+    }
+  }
+
+  const loweredKeys = Object.keys(source).reduce((map, key) => {
+    map.set(key.toLowerCase().replace(/[\s_-]+/g, ""), key);
+    return map;
+  }, new Map());
+
+  for (const key of keys) {
+    const normalizedKey = String(key).toLowerCase().replace(/[\s_-]+/g, "");
+    const actualKey = loweredKeys.get(normalizedKey);
+
+    if (actualKey) {
+      return normalizeBindValue(source[actualKey]);
+    }
+  }
+
+  return null;
+}
+
+function normalizeBindValue(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const item = value.find((entry) => !isEmptyBindValue(entry));
+
+    return normalizeBindValue(item);
+  }
+
+  if (typeof value === "object") {
+    return normalizeBindValue(
+      value.email ??
+        value.username ??
+        value.userName ??
+        value.nickname ??
+        value.name ??
+        value.id ??
+        value.value ??
+        value.bound ??
+        value.linked ??
+        null
+    );
+  }
+
+  return String(value).trim();
+}
+
+function isEmptyBindValue(value) {
+  if (value === undefined || value === null || value === false || value === 0) {
+    return true;
+  }
+
+  const text = String(value).trim().toLowerCase();
+
+  return (
+    !text ||
+    ["0", "empty", "empty.", "null", "none", "false", "-", "yo‘q", "yo'q"].includes(text)
+  );
+}
+
+function maskSensitiveValue(value) {
+  if (isEmptyBindValue(value)) {
+    return "empty.";
+  }
+
+  if (value === true) {
+    return "linked.";
+  }
+
+  const text = sanitizeTelegramText(String(value)).trim();
+
+  if (!text) {
+    return "empty.";
+  }
+
+  if (text.includes("@")) {
+    return maskEmailValue(text);
+  }
+
+  return maskTokenValue(text);
+}
+
+function maskEmailValue(value) {
+  const [localPart, ...domainParts] = String(value).split("@");
+  const domain = domainParts.join("@");
+
+  if (!domain) {
+    return maskTokenValue(value);
+  }
+
+  return `${maskTokenValue(localPart)}@${domain}`;
+}
+
+function maskTokenValue(value) {
+  const chars = Array.from(String(value));
+
+  if (chars.length <= 2) {
+    return "*".repeat(Math.max(1, chars.length));
+  }
+
+  if (chars.length <= 4) {
+    return `${chars[0]}${"*".repeat(chars.length - 2)}${chars.at(-1)}`;
+  }
+
+  return `${chars.slice(0, 2).join("")}${"*".repeat(chars.length - 4)}${chars.slice(-2).join("")}`;
+}
+
+function formatDeviceLoginCount(value) {
+  if (isEmptyBindValue(value)) {
+    return "0";
+  }
+
+  if (value === true) {
+    return "1";
+  }
+
+  const number = Number(value);
+
+  if (Number.isFinite(number) && number >= 0) {
+    return String(Math.trunc(number));
+  }
+
+  return maskSensitiveValue(value);
 }
 
 function escapeHtml(value) {
@@ -3339,6 +3680,7 @@ module.exports.__private = {
   getAdminFeedbackText,
   getErrorsText,
   getFailedLookupText,
+  getBindInfoResultText,
   getResultText,
   getStatsText,
   getStatsTextAsync,
@@ -3353,6 +3695,7 @@ module.exports.__private = {
   isKeyboardButton,
   isValidTelegramId,
   normalizeLookupResponse,
+  normalizeBindInfoResponse,
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
