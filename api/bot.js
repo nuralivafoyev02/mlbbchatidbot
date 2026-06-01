@@ -30,7 +30,21 @@ const FEEDBACK_MAX_LENGTH = 3000;
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
-const MLBB_BIND_INFO_API_URL = cleanEnv(process.env.MLBB_BIND_INFO_API_URL);
+const MLBB_BIND_INFO_API_KEY = cleanEnv(
+  process.env.MLBB_BIND_INFO_API_KEY ||
+    process.env.MLBB_STALKER_API_KEY ||
+    process.env.MLBB_API_KEY
+);
+const MLBB_BIND_INFO_API_URL = cleanEnv(
+  process.env.MLBB_BIND_INFO_API_URL ||
+    (MLBB_BIND_INFO_API_KEY ? "https://api.mlbbstalker.pro/bind" : "")
+);
+const MLBB_BIND_INFO_API_METHOD = normalizeHttpMethod(
+  process.env.MLBB_BIND_INFO_API_METHOD ||
+    (MLBB_BIND_INFO_API_KEY ? "POST" : "GET")
+);
+const MLBB_BIND_INFO_API_KEY_FIELD =
+  cleanEnv(process.env.MLBB_BIND_INFO_API_KEY_FIELD) || "x_key";
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, "");
 const SUPABASE_CONFIG = resolveSupabaseConfig(process.env, SUPABASE_URL);
 const SUPABASE_SERVICE_KEY = SUPABASE_CONFIG.serviceKey;
@@ -218,6 +232,15 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
+    if (isBindInfoCommand(addressedText)) {
+      const input = stripBindInfoCommand(addressedText);
+
+      await handleBindInfoRequest(chatId, input, user, {
+        replyMarkup: null,
+      });
+      return;
+    }
+
     if (!addressing.input) {
       await sendMessage(chatId, getCheckPromptText(), null);
       return;
@@ -318,7 +341,7 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   if (isCommand(text, "check")) {
-    const input = text.replace(/^\/check(@\w+)?/i, "").trim();
+    const input = stripCommand(text, "check");
     rememberUserMode(user.id, "server_check");
 
     if (!input) {
@@ -327,6 +350,19 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     await detectAndReply(chatId, input, user);
+    return;
+  }
+
+  if (isBindInfoCommand(text)) {
+    const input = stripBindInfoCommand(text);
+    rememberUserMode(user.id, "bind_info");
+
+    if (!input) {
+      await sendMessage(chatId, getBindInfoPromptText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleBindInfoRequest(chatId, input, user);
     return;
   }
 
@@ -924,17 +960,12 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
   }
 
   try {
-    const url = new URL(MLBB_BIND_INFO_API_URL);
-    url.searchParams.set("id", accountId);
-    url.searchParams.set("zone", zoneId);
-    url.searchParams.set("server", zoneId);
+    const request = buildBindInfoRequest(accountId, zoneId);
 
-    const response = await fetchWithTimeout(url.toString(), {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "MLBB-Server-Detector-Bot/1.0",
-      },
+    const response = await fetchWithTimeout(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
       timeoutMs: MLBB_LOOKUP_TIMEOUT_MS,
     });
 
@@ -982,6 +1013,59 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
   }
 }
 
+function buildBindInfoRequest(accountId, zoneId) {
+  const method = MLBB_BIND_INFO_API_METHOD === "POST" ? "POST" : "GET";
+  const url = new URL(MLBB_BIND_INFO_API_URL);
+  const headers = {
+    Accept: "application/json",
+    "User-Agent": "MLBB-Server-Detector-Bot/1.0",
+  };
+
+  if (method === "POST") {
+    const payload = {
+      player_id: accountId,
+      server_id: zoneId,
+    };
+
+    if (MLBB_BIND_INFO_API_KEY) {
+      payload[MLBB_BIND_INFO_API_KEY_FIELD] = MLBB_BIND_INFO_API_KEY;
+    }
+
+    return {
+      method,
+      url: url.toString(),
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    };
+  }
+
+  setMissingSearchParam(url, "id", accountId);
+  setMissingSearchParam(url, "zone", zoneId);
+  setMissingSearchParam(url, "server", zoneId);
+  setMissingSearchParam(url, "player_id", accountId);
+  setMissingSearchParam(url, "server_id", zoneId);
+
+  if (MLBB_BIND_INFO_API_KEY) {
+    setMissingSearchParam(url, MLBB_BIND_INFO_API_KEY_FIELD, MLBB_BIND_INFO_API_KEY);
+  }
+
+  return {
+    method,
+    url: url.toString(),
+    headers,
+    body: undefined,
+  };
+}
+
+function setMissingSearchParam(url, key, value) {
+  if (!url.searchParams.has(key)) {
+    url.searchParams.set(key, value);
+  }
+}
+
 function normalizeBindInfoResponse(data) {
   const root = data?.data || data?.result || data?.account || data;
 
@@ -992,14 +1076,34 @@ function normalizeBindInfoResponse(data) {
     };
   }
 
-  const bindingsRoot = root.bindings || root.bind || root.accounts || root;
-  const deviceRoot =
+  const bindingsRoot = normalizeNamedBindCollection(
+    root.bindings ||
+      root.bind ||
+      root.accounts ||
+      root.account_bindings ||
+      root.accountBindings ||
+      root.bind_account ||
+      root.bindAccount ||
+      root.bound_accounts ||
+      root.boundAccounts ||
+      root.social ||
+      root.socials ||
+      root
+  );
+  const deviceRoot = normalizeNamedBindCollection(
     root.device_login ||
-    root.deviceLogin ||
-    root.device ||
-    root.devices ||
-    root.login ||
-    {};
+      root.deviceLogin ||
+      root.connected_device ||
+      root.connectedDevice ||
+      root.connected_devices ||
+      root.connectedDevices ||
+      root.device ||
+      root.devices ||
+      root.login ||
+      root.quick_login ||
+      root.quickLogin ||
+      {}
+  );
 
   return {
     ok: true,
@@ -1033,6 +1137,56 @@ function normalizeBindInfoResponse(data) {
       },
     },
   };
+}
+
+function normalizeNamedBindCollection(source = {}) {
+  if (!Array.isArray(source)) {
+    return source;
+  }
+
+  return source.reduce((result, item) => {
+    if (typeof item === "string") {
+      result[item] = true;
+      return result;
+    }
+
+    if (!item || typeof item !== "object") {
+      return result;
+    }
+
+    const name =
+      item.key ||
+      item.name ||
+      item.type ||
+      item.platform ||
+      item.provider ||
+      item.account ||
+      item.title;
+
+    if (name) {
+      result[name] =
+        item.value ??
+        item.email ??
+        item.username ??
+        item.userName ??
+        item.id ??
+        item.count ??
+        item.total ??
+        item.status ??
+        item.bound ??
+        item.linked ??
+        item.connected ??
+        item.is_bound ??
+        item.isBound ??
+        true;
+      return result;
+    }
+
+    return {
+      ...result,
+      ...item,
+    };
+  }, {});
 }
 
 async function lookupTelegramProfile(tgId) {
@@ -1564,6 +1718,7 @@ function getCommandsText(user = {}) {
     "<code>/help</code> — batafsil yordam",
     "<code>/commands</code> — barcha buyruqlar ro‘yxati",
     "<code>/check 1289050 10050</code> — MLBB server/profil tekshirish",
+    "<code>/info 1006613098 13019</code> yoki <code>/bind</code> — akkaunt ulanmalarini tekshirish",
     "<code>/tg 5081175125</code> — Telegram ID orqali profil topish",
     "<code>/user 5081175125</code> — /tg bilan bir xil",
     "<code>/profile 5081175125</code> — /tg bilan bir xil",
@@ -1654,6 +1809,7 @@ function getBindInfoFailedText() {
 function getBindInfoResultText(result = {}) {
   const bindings = result.bindings || {};
   const deviceLogin = result.deviceLogin || {};
+  const hasDeviceLogin = hasDeviceLoginData(deviceLogin);
 
   return [
     "🔗 <b>Ulanmalar</b>",
@@ -1670,8 +1826,12 @@ function getBindInfoResultText(result = {}) {
     `✈️ <b>Telegram:</b> ${escapeHtml(maskSensitiveValue(bindings.telegram))}`,
     `🟢 <b>WhatsApp:</b> ${escapeHtml(maskSensitiveValue(bindings.whatsapp))}`,
     "",
-    `📱 <b>Device Login</b> 🤖 Android: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.android))}</b> | 🍎 iOS: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.ios))}</b>`,
-  ].join("\n");
+    hasDeviceLogin
+      ? `📱 <b>Device Login</b> 🤖 Android: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.android))}</b> | 🍎 iOS: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.ios))}</b>`
+      : "",
+  ]
+    .filter((line, index, lines) => line || lines[index + 1])
+    .join("\n");
 }
 
 function getFeedbackPromptText() {
@@ -2318,6 +2478,27 @@ function isTelegramProfileCommand(text) {
   );
 }
 
+function isBindInfoCommand(text) {
+  return (
+    isCommand(text, "info") ||
+    isCommand(text, "bind") ||
+    isCommand(text, "ulanish") ||
+    isCommand(text, "ulamalar")
+  );
+}
+
+function stripBindInfoCommand(text) {
+  return String(text || "")
+    .replace(/^\/(?:info|bind|ulanish|ulamalar)(?:@\w+)?/i, "")
+    .trim();
+}
+
+function stripCommand(text, command) {
+  return String(text || "")
+    .replace(new RegExp(`^\\/${command}(?:@\\w+)?`, "i"), "")
+    .trim();
+}
+
 function isBareTelegramIdInput(text) {
   return /^-?\d{5,20}$/.test(String(text || "").trim());
 }
@@ -2642,9 +2823,15 @@ function normalizeBindValue(value) {
         value.nickname ??
         value.name ??
         value.id ??
+        value.count ??
+        value.total ??
         value.value ??
         value.bound ??
         value.linked ??
+        value.connected ??
+        value.status ??
+        value.is_bound ??
+        value.isBound ??
         null
     );
   }
@@ -2661,7 +2848,24 @@ function isEmptyBindValue(value) {
 
   return (
     !text ||
-    ["0", "empty", "empty.", "null", "none", "false", "-", "yo‘q", "yo'q"].includes(text)
+    [
+      "0",
+      "empty",
+      "empty.",
+      "null",
+      "none",
+      "false",
+      "-",
+      "no",
+      "not linked",
+      "not_linked",
+      "not bound",
+      "not_bound",
+      "unbound",
+      "disconnected",
+      "yo‘q",
+      "yo'q",
+    ].includes(text)
   );
 }
 
@@ -2678,6 +2882,10 @@ function maskSensitiveValue(value) {
 
   if (!text) {
     return "empty.";
+  }
+
+  if (["1", "true", "yes", "linked", "bound", "connected"].includes(text.toLowerCase())) {
+    return "linked.";
   }
 
   if (text.includes("@")) {
@@ -2730,6 +2938,16 @@ function formatDeviceLoginCount(value) {
   return maskSensitiveValue(value);
 }
 
+function hasDeviceLoginData(deviceLogin = {}) {
+  return [deviceLogin.android, deviceLogin.ios].some((value) => {
+    if (value === undefined || value === null) {
+      return false;
+    }
+
+    return String(value).trim() !== "";
+  });
+}
+
 function escapeHtml(value) {
   return sanitizeTelegramText(value || "")
     .replace(/&/g, "&amp;")
@@ -2764,6 +2982,12 @@ function formatMonth(value) {
 
 function cleanEnv(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeHttpMethod(value) {
+  const method = cleanEnv(value).toUpperCase();
+
+  return method === "POST" ? "POST" : "GET";
 }
 
 function normalizeSecretEnv(value) {
@@ -3672,6 +3896,7 @@ function sanitizeTelegramText(value) {
 }
 
 module.exports.__private = {
+  buildBindInfoRequest,
   broadcastMessage,
   buildSupabaseTrackPayload,
   detectServerType,
@@ -3694,6 +3919,7 @@ module.exports.__private = {
   isAdmin,
   isKeyboardButton,
   isValidTelegramId,
+  lookupMlbbBindInfo,
   normalizeLookupResponse,
   normalizeBindInfoResponse,
   parseIdList,

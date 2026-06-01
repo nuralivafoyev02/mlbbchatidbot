@@ -6,6 +6,9 @@ process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
 process.env.SUPPORT_USERNAME = "@Oblto_org";
 process.env.ADMIN_IDS = "5081175125,8500085987";
 process.env.TELEGRAM_BOT_USERNAME = "mlbb_test_bot";
+process.env.MLBB_BIND_INFO_API_URL = "https://bind.example.test/bind";
+process.env.MLBB_BIND_INFO_API_METHOD = "POST";
+process.env.MLBB_BIND_INFO_API_KEY = "test-bind-key";
 delete process.env.SUPABASE_URL;
 delete process.env.SUPABASE_SERVICE_KEY;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -26,6 +29,7 @@ const {
   isValidWebhookSecret,
   isKeyboardButton,
   isValidTelegramId,
+  lookupMlbbBindInfo,
   mainKeyboard,
   normalizeSecretEnv,
   normalizeBindInfoResponse,
@@ -304,6 +308,306 @@ test("bind info result masks all linked identifiers", () => {
   assert.match(text, /🟢 <b>WhatsApp:<\/b> 99\*+67/);
   assert.match(text, /🤖 Android: <b>0<\/b> \| 🍎 iOS: <b>1<\/b>/);
   assert.doesNotMatch(text, /ilovemysecureemail|private-tiktok-id|TestFacebookName|998901234567/);
+});
+
+test("bind info result hides device login when provider omits device data", () => {
+  const normalized = normalizeBindInfoResponse({
+    data: {
+      bindings: {
+        Moonton: "owner@example.com",
+        Facebook: "fb-owner",
+      },
+    },
+  });
+
+  assert.equal(normalized.ok, true);
+
+  const text = getBindInfoResultText({
+    accountId: "1514855804",
+    zoneId: "16368",
+    ...normalized.data,
+  });
+
+  assert.match(text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+  assert.match(text, /📘 <b>Facebook:<\/b> fb\*+er/);
+  assert.doesNotMatch(text, /Device Login|Android|iOS/);
+});
+
+test("bind info lookup posts player and server ids to configured API", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        data: {
+          bind_account: [
+            { platform: "Moonton", email: "owner@example.com" },
+            { platform: "Facebook", username: "fb-owner" },
+            { platform: "Google Play", bound: true },
+            { platform: "TikTok", status: "not linked" },
+          ],
+          connected_device: [
+            { platform: "Android", count: 2 },
+            { platform: "iOS", count: 1 },
+          ],
+        },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const result = await lookupMlbbBindInfo("1006613098", "13019");
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://bind.example.test/bind");
+    assert.deepEqual(calls[0].payload, {
+      player_id: "1006613098",
+      server_id: "13019",
+      x_key: "test-bind-key",
+    });
+    assert.equal(result.data.bindings.moonton, "owner@example.com");
+    assert.equal(result.data.bindings.facebook, "fb-owner");
+    assert.equal(result.data.bindings.googlePlay, true);
+    assert.equal(result.data.bindings.tiktok, "not linked");
+    assert.equal(result.data.deviceLogin.android, "2");
+    assert.equal(result.data.deviceLogin.ios, "1");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("bind info button mode returns masked linked accounts", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+              Facebook: "fb-owner",
+              Telegram: true,
+            },
+            device_login: {
+              Android: 2,
+              iOS: 1,
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const chat = { id: 70026, type: "private" };
+    const from = { id: 70026, first_name: "Ali" };
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 26,
+          message: { chat, from, text: "🔗 Ulanmalar" },
+        },
+      },
+      createRes()
+    );
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 27,
+          message: { chat, from, text: "1006613098 (13019)" },
+        },
+      },
+      createRes()
+    );
+
+    const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
+    const finalMessage = calls.at(-1).payload.text;
+
+    assert.deepEqual(bindCall.payload, {
+      player_id: "1006613098",
+      server_id: "13019",
+      x_key: "test-bind-key",
+    });
+    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+    assert.match(finalMessage, /📘 <b>Facebook:<\/b> fb\*+er/);
+    assert.match(finalMessage, /✈️ <b>Telegram:<\/b> linked\./);
+    assert.match(finalMessage, /🤖 Android: <b>2<\/b> \| 🍎 iOS: <b>1<\/b>/);
+    assert.doesNotMatch(finalMessage, /owner@example\.com|fb-owner/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("/bind command returns masked linked accounts", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bind_account: [
+              { platform: "Moonton", email: "owner@example.com" },
+              { platform: "Facebook", username: "fb-owner" },
+            ],
+            connected_device: [
+              { platform: "Android", count: 1 },
+              { platform: "iOS", count: 0 },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 42,
+          message: {
+            chat: { id: 70042, type: "private" },
+            from: { id: 70042, first_name: "Ali" },
+            text: "/bind 1006613098 (13019)",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
+    const finalMessage = calls.at(-1).payload.text;
+
+    assert.deepEqual(bindCall.payload, {
+      player_id: "1006613098",
+      server_id: "13019",
+      x_key: "test-bind-key",
+    });
+    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+    assert.match(finalMessage, /📘 <b>Facebook:<\/b> fb\*+er/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("/info command is an alias for bind info lookup", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+              GooglePlay: true,
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 43,
+          message: {
+            chat: { id: 70043, type: "private" },
+            from: { id: 70043, first_name: "Ali" },
+            text: "/info 1006613098 (13019)",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
+    const finalMessage = calls.at(-1).payload.text;
+
+    assert.deepEqual(bindCall.payload, {
+      player_id: "1006613098",
+      server_id: "13019",
+      x_key: "test-bind-key",
+    });
+    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+    assert.match(finalMessage, /🎮 <b>Google Play:<\/b> linked\./);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test("TG profile button keeps profile lookup mode until server button is pressed", async () => {
