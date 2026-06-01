@@ -18,6 +18,7 @@ const {
   extractTelegramId,
   getAdminFeedbackText,
   getBindInfoResultText,
+  getBindInfoWaitText,
   getCommandsText,
   getErrorsText,
   getFailedLookupText,
@@ -306,7 +307,7 @@ test("bind info result masks all linked identifiers", () => {
   assert.match(text, /🕹 <b>GCID:<\/b> ga\*+id/);
   assert.match(text, /✈️ <b>Telegram:<\/b> linked\./);
   assert.match(text, /🟢 <b>WhatsApp:<\/b> 99\*+67/);
-  assert.match(text, /🤖 Android: <b>0<\/b> \| 🍎 iOS: <b>1<\/b>/);
+  assert.doesNotMatch(text, /Device Login|Android|iOS/);
   assert.doesNotMatch(text, /ilovemysecureemail|private-tiktok-id|TestFacebookName|998901234567/);
 });
 
@@ -331,6 +332,51 @@ test("bind info result hides device login when provider omits device data", () =
   assert.match(text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
   assert.match(text, /📘 <b>Facebook:<\/b> fb\*+er/);
   assert.doesNotMatch(text, /Device Login|Android|iOS/);
+});
+
+test("zite player_info bind response is normalized to linked accounts", () => {
+  const normalized = normalizeBindInfoResponse({
+    player_info: {
+      bind_count: 2,
+      bind_account: [
+        {
+          account_name: "mt-and",
+          platform: "Moonton (Android)",
+          data: {
+            email: "m***********************@gmail.com",
+            register_time: "1728628655",
+          },
+        },
+        {
+          account_name: "gg",
+          platform: "Google",
+          data: {
+            email: "m***************@gmail.com",
+            name: "M**********",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.data.bindings.moonton, "m***********************@gmail.com");
+  assert.equal(normalized.data.bindings.googlePlay, "m***************@gmail.com");
+
+  const text = getBindInfoResultText({
+    accountId: "1514855804",
+    zoneId: "16368",
+    ...normalized.data,
+  });
+
+  assert.match(text, /📧 <b>Moonton:<\/b> m\*+@gmail\.com/);
+  assert.match(text, /🎮 <b>Google Play:<\/b> m\*+@gmail\.com/);
+  assert.doesNotMatch(text, /Device Login/);
+});
+
+test("bind info wait text tells users zite lookup can take time", () => {
+  assert.match(getBindInfoWaitText(), /biroz vaqt olishi mumkin/);
+  assert.match(getBindInfoWaitText(), /kutib turing/);
 });
 
 test("bind info lookup posts player and server ids to configured API", async () => {
@@ -465,7 +511,7 @@ test("bind info button mode returns masked linked accounts", async () => {
     assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
     assert.match(finalMessage, /📘 <b>Facebook:<\/b> fb\*+er/);
     assert.match(finalMessage, /✈️ <b>Telegram:<\/b> linked\./);
-    assert.match(finalMessage, /🤖 Android: <b>2<\/b> \| 🍎 iOS: <b>1<\/b>/);
+    assert.doesNotMatch(finalMessage, /Device Login|Android|iOS/);
     assert.doesNotMatch(finalMessage, /owner@example\.com|fb-owner/);
   } finally {
     global.fetch = originalFetch;
@@ -899,6 +945,86 @@ test("group messages without a bot mention are ignored", async () => {
             chat: { id: -100777, type: "supergroup" },
             from: { id: 777, first_name: "Ali" },
             text: "1289050 10050",
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("group mention for another username is ignored", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 44,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "@other_user 1289050 10050",
+            entities: [{ type: "mention", offset: 0, length: 11 }],
+          },
+        },
+      },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("group /info command is ignored", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 45,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "@mlbb_test_bot /info 1514855804 16368",
+            entities: [{ type: "mention", offset: 0, length: 14 }],
           },
         },
       },

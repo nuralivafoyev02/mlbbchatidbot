@@ -4,7 +4,9 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "dev:cf": "npx wrangler dev",
+    "deploy:cf": "npx wrangler deploy"
   },
   "engines": {
     "node": ">=18"

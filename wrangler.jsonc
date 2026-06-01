@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mlbbchatidbot",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "BIND_INFO_QUEUE",
+        "queue": "mlbbchatidbot-bind-info"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "mlbbchatidbot-bind-info",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 1
+      }
+    ]
+  },
+  "vars": {
+    "SUPPORT_USERNAME": "Oblto_org",
+    "ADMIN_IDS": "5081175125,8500085987",
+    "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
+    "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
+    "ADVANCED_SERVER_RANGES": "30000-39999,90000-99999",
+    "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",
+    "MLBB_BIND_INFO_PROVIDER": "zite",
+    "MLBB_BIND_INFO_API_URL": "https://zite.lol/",
+    "MLBB_BIND_INFO_API_METHOD": "POST",
+    "MLBB_BIND_INFO_TIMEOUT_MS": "120000",
+    "TELEGRAM_TIMEOUT_MS": "5000"
+  }
+}

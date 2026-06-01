@@ -30,6 +30,8 @@ const FEEDBACK_MAX_LENGTH = 3000;
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
+const MLBB_BIND_INFO_PROVIDER = cleanEnv(process.env.MLBB_BIND_INFO_PROVIDER).toLowerCase();
+const MLBB_BIND_INFO_SHOW_DEVICES = isTruthyEnv(process.env.MLBB_BIND_INFO_SHOW_DEVICES);
 const MLBB_BIND_INFO_API_KEY = cleanEnv(
   process.env.MLBB_BIND_INFO_API_KEY ||
     process.env.MLBB_STALKER_API_KEY ||
@@ -37,11 +39,12 @@ const MLBB_BIND_INFO_API_KEY = cleanEnv(
 );
 const MLBB_BIND_INFO_API_URL = cleanEnv(
   process.env.MLBB_BIND_INFO_API_URL ||
+    (MLBB_BIND_INFO_PROVIDER === "zite" ? "https://zite.lol/" : "") ||
     (MLBB_BIND_INFO_API_KEY ? "https://api.mlbbstalker.pro/bind" : "")
 );
 const MLBB_BIND_INFO_API_METHOD = normalizeHttpMethod(
   process.env.MLBB_BIND_INFO_API_METHOD ||
-    (MLBB_BIND_INFO_API_KEY ? "POST" : "GET")
+    (MLBB_BIND_INFO_PROVIDER === "zite" || MLBB_BIND_INFO_API_KEY ? "POST" : "GET")
 );
 const MLBB_BIND_INFO_API_KEY_FIELD =
   cleanEnv(process.env.MLBB_BIND_INFO_API_KEY_FIELD) || "x_key";
@@ -66,6 +69,12 @@ const MLBB_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
   6000,
   800,
   10000
+);
+const MLBB_BIND_INFO_TIMEOUT_MS = parseBoundedNumber(
+  process.env.MLBB_BIND_INFO_TIMEOUT_MS,
+  isZiteBindInfoProvider() ? 120000 : MLBB_LOOKUP_TIMEOUT_MS,
+  800,
+  120000
 );
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
@@ -191,6 +200,7 @@ async function processUpdate(update) {
     await handleMessage(messageEntry[1], {
       updateId: update.update_id,
       updateType: messageEntry[0],
+      skipBindWait: update.__skip_bind_wait === true,
     });
     return;
   }
@@ -212,6 +222,7 @@ async function handleMessage(message, updateMeta = {}) {
   const chatId = message.chat.id;
   const text = String(message.text || "").trim();
   const user = message.from || {};
+  const skipBindWait = updateMeta.skipBindWait === true;
 
   trackUser(user, message.chat, {
     ...updateMeta,
@@ -232,12 +243,7 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    if (isBindInfoCommand(addressedText)) {
-      const input = stripBindInfoCommand(addressedText);
-
-      await handleBindInfoRequest(chatId, input, user, {
-        replyMarkup: null,
-      });
+    if (isBindInfoCommand(addressedText) || isBindInfoCommand(addressing.input)) {
       return;
     }
 
@@ -362,7 +368,7 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    await handleBindInfoRequest(chatId, input, user);
+    await handleBindInfoRequest(chatId, input, user, { skipWait: skipBindWait });
     return;
   }
 
@@ -445,7 +451,7 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   if (getUserMode(user.id) === "bind_info") {
-    await handleBindInfoRequest(chatId, text, user);
+    await handleBindInfoRequest(chatId, text, user, { skipWait: skipBindWait });
     return;
   }
 
@@ -746,6 +752,10 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
 
   void safeSendChatAction(chatId, "typing");
 
+  if (isZiteBindInfoProvider() && !options.skipWait) {
+    await safeSendMessage(chatId, getBindInfoWaitText(), replyMarkup);
+  }
+
   const bindInfo = await lookupMlbbBindInfo(parsed.accountId, parsed.zoneId);
 
   if (!bindInfo.ok) {
@@ -966,7 +976,7 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
       method: request.method,
       headers: request.headers,
       body: request.body,
-      timeoutMs: MLBB_LOOKUP_TIMEOUT_MS,
+      timeoutMs: MLBB_BIND_INFO_TIMEOUT_MS,
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -1020,6 +1030,21 @@ function buildBindInfoRequest(accountId, zoneId) {
     Accept: "application/json",
     "User-Agent": "MLBB-Server-Detector-Bot/1.0",
   };
+
+  if (isZiteBindInfoProvider()) {
+    return {
+      method: "POST",
+      url: url.toString(),
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        role_id: Number(accountId),
+        zone_id: Number(zoneId),
+      }),
+    };
+  }
 
   if (method === "POST") {
     const payload = {
@@ -1076,8 +1101,14 @@ function normalizeBindInfoResponse(data) {
     };
   }
 
+  const playerInfoRoot = root.player_info || root.playerInfo || root.info || root;
   const bindingsRoot = normalizeNamedBindCollection(
-    root.bindings ||
+    playerInfoRoot.bind_account ||
+      playerInfoRoot.bindAccount ||
+      playerInfoRoot.bindings ||
+      playerInfoRoot.bind ||
+      playerInfoRoot.accounts ||
+      root.bindings ||
       root.bind ||
       root.accounts ||
       root.account_bindings ||
@@ -1091,7 +1122,13 @@ function normalizeBindInfoResponse(data) {
       root
   );
   const deviceRoot = normalizeNamedBindCollection(
-    root.device_login ||
+    playerInfoRoot.device_login ||
+      playerInfoRoot.deviceLogin ||
+      playerInfoRoot.connected_device ||
+      playerInfoRoot.connectedDevice ||
+      playerInfoRoot.connected_devices ||
+      playerInfoRoot.connectedDevices ||
+      root.device_login ||
       root.deviceLogin ||
       root.connected_device ||
       root.connectedDevice ||
@@ -1164,7 +1201,8 @@ function normalizeNamedBindCollection(source = {}) {
       item.title;
 
     if (name) {
-      result[name] =
+      result[normalizeBindCollectionKey(name)] =
+        item.data ??
         item.value ??
         item.email ??
         item.username ??
@@ -1187,6 +1225,24 @@ function normalizeNamedBindCollection(source = {}) {
       ...item,
     };
   }, {});
+}
+
+function normalizeBindCollectionKey(name) {
+  const text = String(name || "").toLowerCase();
+
+  if (text.includes("moonton")) return "moonton";
+  if (text.includes("google") || text === "gg") return "googlePlay";
+  if (text.includes("facebook") || text === "fb") return "facebook";
+  if (text.includes("tiktok")) return "tiktok";
+  if (text.includes("apple")) return "apple";
+  if (text.includes("game center") || text.includes("gcid")) return "gcid";
+  if (text.includes("telegram") || text === "tg") return "telegram";
+  if (text.includes("whatsapp") || text === "wa") return "whatsapp";
+  if (text.includes("android")) return "android";
+  if (text.includes("ios") || text.includes("iphone")) return "ios";
+  if (text === "vk" || text.includes("vkontakte")) return "vk";
+
+  return name;
 }
 
 async function lookupTelegramProfile(tgId) {
@@ -1803,13 +1859,24 @@ function getInvalidBindInfoInputText() {
 }
 
 function getBindInfoFailedText() {
-  return "Ulanmalar topilmadi.";
+  return [
+    "Ma’lumot olish uchun bazadan javob olib bo‘lmadi.",
+    "Iltimos, birozdan keyin qayta urinib ko‘ring.",
+  ].join("\n");
+}
+
+function getBindInfoWaitText() {
+  return [
+    "⏳ <b>Ulanmalar tekshirilmoqda...</b>",
+    "",
+    "Iltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
+  ].join("\n");
 }
 
 function getBindInfoResultText(result = {}) {
   const bindings = result.bindings || {};
   const deviceLogin = result.deviceLogin || {};
-  const hasDeviceLogin = hasDeviceLoginData(deviceLogin);
+  const hasDeviceLogin = MLBB_BIND_INFO_SHOW_DEVICES && hasDeviceLoginData(deviceLogin);
 
   return [
     "🔗 <b>Ulanmalar</b>",
@@ -2617,7 +2684,7 @@ function isAddressedBotUsername(value, offset = 0) {
   }
 
   if (!TELEGRAM_BOT_USERNAME) {
-    return offset === 0;
+    return false;
   }
 
   return username.toLowerCase() === TELEGRAM_BOT_USERNAME.toLowerCase();
@@ -2984,6 +3051,10 @@ function cleanEnv(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isTruthyEnv(value) {
+  return /^(?:1|true|yes|on)$/i.test(cleanEnv(value));
+}
+
 function normalizeHttpMethod(value) {
   const method = cleanEnv(value).toUpperCase();
 
@@ -3335,7 +3406,7 @@ function rememberSupabaseAuthFailure(message) {
   const safeMessage = cleanEnv(message) || "Supabase API key yaroqsiz";
 
   stats.supabaseLastAuthError =
-    "Supabase API key yaroqsiz yoki JWT secret rotate qilingan. Vercel envdagi SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY ni yangilang.";
+    "Supabase API key yaroqsiz yoki JWT secret rotate qilingan. Cloudflare/Vercel envdagi SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY ni yangilang.";
   stats.supabaseAuthDisabledUntil = Date.now() + 5 * 60 * 1000;
   recordError("supabase_auth_failed", safeMessage);
 }
@@ -3797,6 +3868,13 @@ function sanitizeOptionalTelegramUsername(value) {
   return /^[A-Za-z0-9_]{5,32}$/.test(username) ? username : "";
 }
 
+function isZiteBindInfoProvider() {
+  return (
+    MLBB_BIND_INFO_PROVIDER === "zite" ||
+    /^https?:\/\/(?:www\.)?zite\.lol\b/i.test(MLBB_BIND_INFO_API_URL)
+  );
+}
+
 function createBroadcastId() {
   return crypto.randomBytes(8).toString("hex");
 }
@@ -3905,6 +3983,7 @@ module.exports.__private = {
   getAdminFeedbackText,
   getErrorsText,
   getFailedLookupText,
+  getBindInfoWaitText,
   getBindInfoResultText,
   getResultText,
   getStatsText,
