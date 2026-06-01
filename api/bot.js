@@ -24,6 +24,7 @@ const BUTTON_HELP = "ℹ️ Yordam";
 const BUTTON_MENU = "🏠 Menyu";
 const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 const USERS_PAGE_SIZE = 10;
+const BROADCAST_USERS_PAGE_SIZE = 1000;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const FEEDBACK_PENDING_TTL_MS = 30 * 60 * 1000;
 const FEEDBACK_MAX_LENGTH = 3000;
@@ -688,6 +689,8 @@ async function handleMessageCommand(chatId, user, message) {
 
   const broadcastId = createBroadcastId();
   const confirmToken = createBroadcastToken();
+  const recipientCount = await getBroadcastRecipientCount();
+
   stats.pendingBroadcasts.set(broadcastId, {
     adminId: String(user.id),
     chatId: String(chatId),
@@ -699,7 +702,7 @@ async function handleMessageCommand(chatId, user, message) {
 
   await sendMessage(
     chatId,
-    getBroadcastConfirmText(broadcastPayload),
+    getBroadcastConfirmText(broadcastPayload, recipientCount),
     broadcastConfirmKeyboard(broadcastId, confirmToken)
   );
 }
@@ -1529,29 +1532,66 @@ async function getBroadcastChatIds() {
   }
 
   try {
-    const params = new URLSearchParams();
-
-    params.set("select", "user_id,chat_id,chat_type");
-    params.set("order", "last_seen_at.desc.nullslast");
-    params.set("limit", "1000");
-
-    const rows = await supabaseRequest(`/bot_users?${params.toString()}`);
-
-    if (Array.isArray(rows)) {
-      rows.forEach((row) => {
-        const chatId = row.chat_id || row.user_id;
-
-        if (chatId && (!row.chat_type || row.chat_type === "private")) {
-          chatIds.add(String(chatId));
-        }
-      });
-    }
+    await addSupabaseBroadcastRecipients(chatIds);
   } catch (error) {
     console.error("[SUPABASE_BROADCAST_USERS_ERROR]", error);
     recordError("supabase_broadcast_users_failed", error.message);
   }
 
   return Array.from(chatIds);
+}
+
+async function getBroadcastRecipientCount() {
+  return (await getBroadcastChatIds()).length;
+}
+
+async function addSupabaseBroadcastRecipients(chatIds) {
+  for (let offset = 0; ; offset += BROADCAST_USERS_PAGE_SIZE) {
+    const params = new URLSearchParams();
+
+    params.set("select", "user_id,chat_id,chat_type,is_bot");
+    params.set("order", "last_seen_at.desc.nullslast");
+    params.set("limit", String(BROADCAST_USERS_PAGE_SIZE));
+    params.set("offset", String(offset));
+
+    const rows = await supabaseRequest(`/bot_users?${params.toString()}`);
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return;
+    }
+
+    rows.forEach((row) => {
+      const chatId = getBroadcastRecipientId(row);
+
+      if (chatId) {
+        chatIds.add(chatId);
+      }
+    });
+
+    if (rows.length < BROADCAST_USERS_PAGE_SIZE) {
+      return;
+    }
+  }
+}
+
+function getBroadcastRecipientId(row = {}) {
+  if (row.is_bot === true) {
+    return "";
+  }
+
+  const userId = toPgBigint(row.user_id);
+
+  if (userId && !userId.startsWith("-")) {
+    return userId;
+  }
+
+  const chatId = toPgBigint(row.chat_id);
+
+  if (chatId && !chatId.startsWith("-") && (!row.chat_type || row.chat_type === "private")) {
+    return chatId;
+  }
+
+  return "";
 }
 
 async function sendBroadcastPayload(chatId, payload) {
@@ -2248,7 +2288,7 @@ function getBroadcastExpiredText() {
   return "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.";
 }
 
-function getBroadcastConfirmText(payload) {
+function getBroadcastConfirmText(payload, recipientCount = stats.broadcastChats.size) {
   const preview =
     typeof payload === "string"
       ? payload
@@ -2258,7 +2298,7 @@ function getBroadcastConfirmText(payload) {
     "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
     "Hali hech kimga yuborilmadi. Yuborish faqat pastdagi tasdiq tugmasidan keyin boshlanadi.",
     "",
-    `Qabul qiluvchilar: <b>${stats.broadcastChats.size}</b>`,
+    `Qabul qiluvchilar: <b>${recipientCount}</b>`,
     "",
     "<b>Xabar:</b>",
     escapeHtml(clipText(preview, 900)),
@@ -3979,6 +4019,8 @@ module.exports.__private = {
   buildSupabaseTrackPayload,
   detectServerType,
   extractTelegramId,
+  getBroadcastChatIds,
+  getBroadcastRecipientId,
   getCommandsText,
   getAdminFeedbackText,
   getErrorsText,

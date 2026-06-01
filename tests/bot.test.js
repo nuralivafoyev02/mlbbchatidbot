@@ -1949,3 +1949,84 @@ test("broadcast is not sent when confirmation token is invalid", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("broadcast recipients include every Supabase page and use user ids", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    BROADCAST_USER_IDS: process.env.BROADCAST_USER_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  const payload = Buffer.from(
+    JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+  ).toString("base64url");
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    user_id: String(1000 + index),
+    chat_id: index % 2 ? String(1000 + index) : String(-100000 - index),
+    chat_type: index % 2 ? "private" : "supergroup",
+    is_bot: false,
+  }));
+
+  firstPage[5] = {
+    user_id: "1005",
+    chat_id: "1005",
+    chat_type: "private",
+    is_bot: true,
+  };
+
+  global.fetch = async (url) => {
+    const requestUrl = new URL(String(url));
+    const offset = Number(requestUrl.searchParams.get("offset") || 0);
+    const rows =
+      offset === 0
+        ? firstPage
+        : [{ user_id: "5000", chat_id: "-200000", chat_type: "group", is_bot: false }];
+
+    return new Response(JSON.stringify(rows), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.BROADCAST_USER_IDS = "999";
+    process.env.SUPABASE_URL = "https://trybbxovootehqvaiydn.supabase.co";
+    process.env.SUPABASE_SERVICE_KEY = `header.${payload}.signature`;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+    const recipients = await freshHandler.__private.getBroadcastChatIds();
+
+    assert.equal(recipients.length, 1001);
+    assert.ok(recipients.includes("999"));
+    assert.ok(recipients.includes("1000"));
+    assert.ok(recipients.includes("5000"));
+    assert.equal(recipients.includes("-100000"), false);
+    assert.equal(recipients.includes("1005"), false);
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
