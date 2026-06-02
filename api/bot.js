@@ -202,6 +202,7 @@ async function processUpdate(update) {
       updateId: update.update_id,
       updateType: messageEntry[0],
       skipBindWait: update.__skip_bind_wait === true,
+      bindWaitMessage: normalizeBindWaitMessage(update.__bind_wait_message),
     });
     return;
   }
@@ -224,6 +225,7 @@ async function handleMessage(message, updateMeta = {}) {
   const text = String(message.text || "").trim();
   const user = message.from || {};
   const skipBindWait = updateMeta.skipBindWait === true;
+  const bindWaitMessage = updateMeta.bindWaitMessage || null;
 
   trackUser(user, message.chat, {
     ...updateMeta,
@@ -369,7 +371,10 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    await handleBindInfoRequest(chatId, input, user, { skipWait: skipBindWait });
+    await handleBindInfoRequest(chatId, input, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
     return;
   }
 
@@ -387,7 +392,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isKeyboardButton(text, BUTTON_BIND_INFO)) {
     rememberUserMode(user.id, "bind_info");
-    await sendMessage(chatId, getBindInfoPromptText(), mainKeyboard(user));
+    await sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply());
     return;
   }
 
@@ -451,8 +456,20 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isBindInfoPromptReply(message)) {
+    rememberUserMode(user.id, "bind_info");
+    await handleBindInfoRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
   if (getUserMode(user.id) === "bind_info") {
-    await handleBindInfoRequest(chatId, text, user, { skipWait: skipBindWait });
+    await handleBindInfoRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
     return;
   }
 
@@ -636,23 +653,31 @@ async function handleFeedbackSubmission(chatId, user, message) {
 
 async function handleFeedbackAdminReply(chatId, admin, message) {
   const target = parseFeedbackAdminReplyTarget(message.reply_to_message);
-  const replyText = getFeedbackMessageText(message);
+  const replyPayload = createFeedbackAdminReplyPayload(message);
 
   if (!target) {
     return;
   }
 
-  if (!replyText) {
+  if (!replyPayload) {
     await sendMessage(chatId, getFeedbackAdminReplyTextRequiredText(), mainKeyboard(admin));
     return;
   }
 
   try {
-    await sendMessage(
-      target.chatId || target.userId,
-      getFeedbackReplyToUserText(admin, replyText),
-      mainKeyboard({ id: target.userId })
-    );
+    if (replyPayload.kind === "copy") {
+      await copyMessage(target.chatId || target.userId, chatId, message.message_id);
+    } else {
+      await sendMessage(
+        target.chatId || target.userId,
+        replyPayload.text,
+        mainKeyboard({ id: target.userId }),
+        {
+          entities: replyPayload.entities,
+          plain: true,
+        }
+      );
+    }
   } catch (error) {
     console.error("[FEEDBACK_REPLY_ERROR]", error);
     recordError("feedback_reply_failed", error.message, {
@@ -747,6 +772,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   const parsed = parseMlbbInput(input);
   const replyMarkup =
     Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : resultKeyboard(user);
+  let waitMessage = options.waitMessage || null;
 
   if (!parsed.ok) {
     await sendMessage(chatId, getInvalidBindInfoInputText(), replyMarkup);
@@ -756,7 +782,11 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   void safeSendChatAction(chatId, "typing");
 
   if (isZiteBindInfoProvider() && !options.skipWait) {
-    await safeSendMessage(chatId, getBindInfoWaitText(), replyMarkup);
+    const waitResponse = await safeSendMessage(chatId, getBindInfoWaitText(), replyMarkup);
+    waitMessage = normalizeBindWaitMessage({
+      chatId,
+      messageId: waitResponse?.result?.message_id,
+    });
   }
 
   const bindInfo = await lookupMlbbBindInfo(parsed.accountId, parsed.zoneId);
@@ -768,7 +798,8 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
       status: bindInfo.status,
     });
 
-    await sendMessage(chatId, getBindInfoFailedText(), replyMarkup);
+    await sendMessage(chatId, getBindInfoFailedText(bindInfo.reason), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
     return;
   }
 
@@ -781,6 +812,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
     }),
     replyMarkup
   );
+  await safeDeleteBindWaitMessage(chatId, waitMessage);
 }
 
 async function handleBroadcastConfirm(chatId, user, data) {
@@ -1094,6 +1126,43 @@ function setMissingSearchParam(url, key, value) {
   }
 }
 
+function firstDefinedValue(...values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function firstObjectValue(...values) {
+  return values.find((value) => value && typeof value === "object") || null;
+}
+
+function hasDirectBindKeys(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return false;
+  }
+
+  return Object.keys(source).some((key) =>
+    [
+      "moonton",
+      "moontonemail",
+      "email",
+      "vk",
+      "googleplay",
+      "google",
+      "gp",
+      "tiktok",
+      "facebook",
+      "fb",
+      "apple",
+      "appleid",
+      "gcid",
+      "gamecenter",
+      "telegram",
+      "tg",
+      "whatsapp",
+      "wa",
+    ].includes(String(key).toLowerCase().replace(/[\s_-]+/g, ""))
+  );
+}
+
 function normalizeBindInfoResponse(data) {
   const root = data?.data || data?.result || data?.account || data;
 
@@ -1104,44 +1173,55 @@ function normalizeBindInfoResponse(data) {
     };
   }
 
-  const playerInfoRoot = root.player_info || root.playerInfo || root.info || root;
-  const bindingsRoot = normalizeNamedBindCollection(
-    playerInfoRoot.bind_account ||
-      playerInfoRoot.bindAccount ||
-      playerInfoRoot.bindings ||
-      playerInfoRoot.bind ||
-      playerInfoRoot.accounts ||
-      root.bindings ||
-      root.bind ||
-      root.accounts ||
-      root.account_bindings ||
-      root.accountBindings ||
-      root.bind_account ||
-      root.bindAccount ||
-      root.bound_accounts ||
-      root.boundAccounts ||
-      root.social ||
-      root.socials ||
-      root
+  const playerInfoRoot = firstObjectValue(root.player_info, root.playerInfo, root.info);
+  const bindingsSource = firstDefinedValue(
+    playerInfoRoot?.bind_account,
+    playerInfoRoot?.bindAccount,
+    playerInfoRoot?.bindings,
+    playerInfoRoot?.bind,
+    playerInfoRoot?.accounts,
+    root.bindings,
+    root.bind,
+    root.accounts,
+    root.account_bindings,
+    root.accountBindings,
+    root.bind_account,
+    root.bindAccount,
+    root.bound_accounts,
+    root.boundAccounts,
+    root.social,
+    root.socials,
+    hasDirectBindKeys(root) ? root : undefined
   );
+
+  if (bindingsSource === undefined) {
+    return {
+      ok: false,
+      reason: "Bind info API ulanmalar ma’lumotini qaytarmadi",
+    };
+  }
+
+  const bindingsRoot = normalizeNamedBindCollection(bindingsSource);
   const deviceRoot = normalizeNamedBindCollection(
-    playerInfoRoot.device_login ||
-      playerInfoRoot.deviceLogin ||
-      playerInfoRoot.connected_device ||
-      playerInfoRoot.connectedDevice ||
-      playerInfoRoot.connected_devices ||
-      playerInfoRoot.connectedDevices ||
-      root.device_login ||
-      root.deviceLogin ||
-      root.connected_device ||
-      root.connectedDevice ||
-      root.connected_devices ||
-      root.connectedDevices ||
-      root.device ||
-      root.devices ||
-      root.login ||
-      root.quick_login ||
-      root.quickLogin ||
+    firstDefinedValue(
+      playerInfoRoot?.device_login,
+      playerInfoRoot?.deviceLogin,
+      playerInfoRoot?.connected_device,
+      playerInfoRoot?.connectedDevice,
+      playerInfoRoot?.connected_devices,
+      playerInfoRoot?.connectedDevices,
+      root.device_login,
+      root.deviceLogin,
+      root.connected_device,
+      root.connectedDevice,
+      root.connected_devices,
+      root.connectedDevices,
+      root.device,
+      root.devices,
+      root.login,
+      root.quick_login,
+      root.quickLogin
+    ) ||
       {}
   );
 
@@ -1705,6 +1785,69 @@ function adjustMessageEntities(entities = [], contentOffset = 0, contentLength =
     .filter(Boolean);
 }
 
+function shiftMessageEntities(entities = [], offsetDelta = 0) {
+  const safeDelta = Math.max(0, Number(offsetDelta) || 0);
+
+  return (Array.isArray(entities) ? entities : [])
+    .map((entity) => {
+      const offset = Number(entity.offset);
+      const length = Number(entity.length);
+
+      if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) {
+        return null;
+      }
+
+      return {
+        ...entity,
+        offset: offset + safeDelta,
+        length,
+      };
+    })
+    .filter(Boolean);
+}
+
+function createFeedbackAdminReplyPayload(message = {}) {
+  const replyText = getFeedbackMessageText(message);
+
+  if (!replyText) {
+    if (hasCopyableMessageContent(message)) {
+      return { kind: "copy" };
+    }
+
+    return null;
+  }
+
+  const prefix = "👮 Admin javobi:\n\n";
+  const sourceEntities = message.text ? message.entities : message.caption_entities;
+
+  return {
+    kind: "text",
+    text: `${prefix}${replyText}`,
+    entities: [
+      {
+        type: "bold",
+        offset: 3,
+        length: "Admin javobi".length,
+      },
+      ...shiftMessageEntities(sourceEntities || [], prefix.length),
+    ],
+  };
+}
+
+function hasCopyableMessageContent(message = {}) {
+  return Boolean(
+    message.sticker ||
+      message.photo ||
+      message.video ||
+      message.animation ||
+      message.document ||
+      message.voice ||
+      message.audio ||
+      message.video_note ||
+      message.poll
+  );
+}
+
 function getReplyMessagePreview(message = {}) {
   const text = message.text || message.caption;
 
@@ -1898,7 +2041,14 @@ function getInvalidBindInfoInputText() {
   return "Ulanmalar topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.";
 }
 
-function getBindInfoFailedText() {
+function getBindInfoFailedText(reason = "") {
+  if (/ulanmalar ma’lumotini qaytarmadi|ulanmalar ma'lumotini qaytarmadi/i.test(reason)) {
+    return [
+      "Ulanmalar ma’lumotini olish imkoni bo‘lmadi.",
+      "Provider bu akkaunt uchun linked-account ma’lumotini qaytarmadi.",
+    ].join("\n");
+  }
+
   return [
     "Ma’lumot olish uchun bazadan javob olib bo‘lmadi.",
     "Iltimos, birozdan keyin qayta urinib ko‘ring.",
@@ -1995,19 +2145,6 @@ function getAdminFeedbackText(feedback) {
     "",
     "Shu xabarga reply qilib javob berishingiz mumkin.",
   ].join("\n");
-}
-
-function getFeedbackReplyToUserText(admin, replyText) {
-  const adminName = [admin.first_name, admin.last_name].filter(Boolean).join(" ").trim();
-
-  return [
-    "💬 <b>Admin javobi</b>",
-    adminName ? `Admin: ${escapeHtml(adminName)}` : "",
-    "",
-    escapeHtml(replyText),
-  ]
-    .filter(Boolean)
-    .join("\n");
 }
 
 function getFeedbackReplySentText(target) {
@@ -2405,6 +2542,14 @@ function feedbackForceReply() {
   };
 }
 
+function bindInfoForceReply() {
+  return {
+    force_reply: true,
+    selective: true,
+    input_field_placeholder: "1006613098 (13019)",
+  };
+}
+
 function paginationKeyboard(prefix, { page = 0, pageSize = USERS_PAGE_SIZE, total = 0 } = {}) {
   const safePage = Math.max(0, Number(page) || 0);
   const safePageSize = Math.max(1, Number(pageSize) || USERS_PAGE_SIZE);
@@ -2502,6 +2647,13 @@ async function copyMessage(chatId, fromChatId, messageId) {
   });
 }
 
+async function deleteMessage(chatId, messageId) {
+  return telegram("deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  });
+}
+
 async function sendChatAction(chatId, action) {
   return telegram("sendChatAction", {
     chat_id: chatId,
@@ -2525,6 +2677,25 @@ async function safeSendChatAction(chatId, action) {
     console.error("[CHAT_ACTION_ERROR]", error);
     return null;
   }
+}
+
+async function safeDeleteMessage(chatId, messageId) {
+  if (!messageId) {
+    return null;
+  }
+
+  try {
+    return await deleteMessage(chatId, messageId);
+  } catch (error) {
+    console.error("[DELETE_MESSAGE_ERROR]", error);
+    return null;
+  }
+}
+
+async function safeDeleteBindWaitMessage(fallbackChatId, waitMessage) {
+  const normalized = normalizeBindWaitMessage(waitMessage);
+
+  return safeDeleteMessage(normalized?.chatId || fallbackChatId, normalized?.messageId);
 }
 
 async function answerCallbackQuery(callbackQueryId) {
@@ -2740,6 +2911,40 @@ function isKeyboardButton(text, ...buttons) {
   return buttons.includes(String(text || "").trim());
 }
 
+function normalizeBindWaitMessage(value = {}) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const chatId = toTelegramChatId(value.chatId || value.chat_id);
+  const messageId = toTelegramMessageId(value.messageId || value.message_id);
+
+  if (!chatId || !messageId) {
+    return null;
+  }
+
+  return {
+    chatId,
+    messageId,
+  };
+}
+
+function toTelegramChatId(value) {
+  const text = String(value ?? "").trim();
+
+  return /^-?\d{1,20}$/.test(text) ? text : null;
+}
+
+function toTelegramMessageId(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return null;
+  }
+
+  return Math.trunc(number);
+}
+
 function isFeedbackAdminReply(message = {}) {
   if (!isAdmin(message.from?.id)) {
     return false;
@@ -2796,6 +3001,12 @@ function isFeedbackPromptReply(message = {}) {
   const replyText = String(message.reply_to_message?.text || "");
 
   return /Fikr va izohlar/i.test(replyText);
+}
+
+function isBindInfoPromptReply(message = {}) {
+  const replyText = String(message.reply_to_message?.text || "");
+
+  return /Ulanmalar/i.test(replyText) && /Account ID/i.test(replyText);
 }
 
 function getFeedbackMessageText(message = {}) {

@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { pathToFileURL } = require("node:url");
 
 process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
@@ -265,6 +266,7 @@ test("bind info button prompts for account and server ids", async () => {
     assert.equal(calls.length, 1);
     assert.match(calls[0].payload.text, /Ulanmalar/);
     assert.match(calls[0].payload.text, /1006613098/);
+    assert.equal(calls[0].payload.reply_markup.force_reply, true);
   } finally {
     global.fetch = originalFetch;
   }
@@ -372,6 +374,23 @@ test("zite player_info bind response is normalized to linked accounts", () => {
   assert.match(text, /📧 <b>Moonton:<\/b> m\*+@gmail\.com/);
   assert.match(text, /🎮 <b>Google Play:<\/b> m\*+@gmail\.com/);
   assert.doesNotMatch(text, /Device Login/);
+});
+
+test("zite response without player_info is not treated as all-empty bindings", () => {
+  const normalized = normalizeBindInfoResponse({
+    player: {
+      id: 1006613098,
+      zone: 13019,
+    },
+    clientparam: "https://play.mobilelegends.com/accountretreivalv3/",
+    player_info: null,
+    _meta: {
+      success: true,
+    },
+  });
+
+  assert.equal(normalized.ok, false);
+  assert.match(normalized.reason, /ulanmalar ma’lumotini qaytarmadi/);
 });
 
 test("bind info wait text tells users zite lookup can take time", () => {
@@ -513,6 +532,92 @@ test("bind info button mode returns masked linked accounts", async () => {
     assert.match(finalMessage, /✈️ <b>Telegram:<\/b> linked\./);
     assert.doesNotMatch(finalMessage, /Device Login|Android|iOS/);
     assert.doesNotMatch(finalMessage, /owner@example\.com|fb-owner/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("bind info prompt reply uses bind lookup even if runtime mode is missing", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const chat = { id: 70028, type: "private" };
+    const from = { id: 70028, first_name: "Ali" };
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 2801,
+          message: { chat, from, text: "🔗 Ulanmalar" },
+        },
+      },
+      createRes()
+    );
+
+    const promptText = calls[0].payload.text;
+    global.__MLBB_BOT_STATS__.userModes.delete(String(from.id));
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 2802,
+          message: {
+            chat,
+            from,
+            text: "1006613098 (13019)",
+            reply_to_message: {
+              message_id: 101,
+              text: promptText,
+              from: { is_bot: true },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
+    const finalMessage = calls.at(-1).payload.text;
+
+    assert.ok(bindCall);
+    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.doesNotMatch(finalMessage, /Server Aniqlash Natijasi/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1604,8 +1709,132 @@ test("admin reply to feedback notification is delivered to the user", async () =
     assert.ok(userReply);
     assert.match(userReply.payload.text, /Admin javobi/);
     assert.match(userReply.payload.text, /Taklif qabul qilindi/);
+    assert.equal(userReply.payload.parse_mode, undefined);
     assert.ok(adminAck);
     assert.match(adminAck.payload.text, /Javob userga yuborildi/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("admin feedback reply preserves premium custom emoji entities", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  const notificationText = getAdminFeedbackText({
+    id: "fb_premium123",
+    userId: "777",
+    chatId: "777",
+    user: { id: 777, first_name: "Ali" },
+    text: "Premium emoji kerak",
+    createdAt: "2026-05-11T06:00:00.000Z",
+  });
+  const replyText = "Albatta 🙂";
+  const emojiOffset = replyText.indexOf("🙂");
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 3701,
+          message: {
+            message_id: 501,
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: replyText,
+            entities: [
+              {
+                type: "custom_emoji",
+                offset: emojiOffset,
+                length: 2,
+                custom_emoji_id: "premium-feedback-emoji",
+              },
+            ],
+            reply_to_message: {
+              message_id: 90,
+              text: notificationText,
+              from: { is_bot: true },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const userReply = calls.find((call) => call.payload.chat_id === "777");
+    const premiumEntity = userReply.payload.entities.find(
+      (entity) => entity.type === "custom_emoji"
+    );
+
+    assert.ok(userReply);
+    assert.equal(userReply.payload.parse_mode, undefined);
+    assert.equal(premiumEntity.custom_emoji_id, "premium-feedback-emoji");
+    assert.equal(premiumEntity.offset, userReply.payload.text.indexOf("🙂"));
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("admin feedback reply copies sticker messages to the user", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  const notificationText = getAdminFeedbackText({
+    id: "fb_sticker123",
+    userId: "777",
+    chatId: "777",
+    user: { id: 777, first_name: "Ali" },
+    text: "Sticker bilan javob",
+    createdAt: "2026-05-11T06:00:00.000Z",
+  });
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 3801,
+          message: {
+            message_id: 502,
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            sticker: { file_id: "premium-sticker-file" },
+            reply_to_message: {
+              message_id: 90,
+              text: notificationText,
+              from: { is_bot: true },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const copied = calls.find((call) => String(call.url).endsWith("/copyMessage"));
+
+    assert.ok(copied);
+    assert.equal(copied.payload.chat_id, "777");
+    assert.equal(copied.payload.from_chat_id, 5081175125);
+    assert.equal(copied.payload.message_id, 502);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1945,6 +2174,258 @@ test("broadcast is not sent when confirmation token is invalid", async () => {
       calls.some((call) => call.payload.text === "Maxfiy test broadcast"),
       false
     );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("bind info wait message is deleted after zite lookup finishes", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    MLBB_BIND_INFO_PROVIDER: process.env.MLBB_BIND_INFO_PROVIDER,
+    MLBB_BIND_INFO_API_URL: process.env.MLBB_BIND_INFO_API_URL,
+    MLBB_BIND_INFO_API_METHOD: process.env.MLBB_BIND_INFO_API_METHOD,
+    MLBB_BIND_INFO_API_KEY: process.env.MLBB_BIND_INFO_API_KEY,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          player_info: {
+            bind_account: [
+              {
+                platform: "Moonton",
+                data: { email: "owner@example.com" },
+              },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, result: { message_id: calls.length + 100 } }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.MLBB_BIND_INFO_PROVIDER = "zite";
+    process.env.MLBB_BIND_INFO_API_URL = "https://bind.example.test/bind";
+    process.env.MLBB_BIND_INFO_API_METHOD = "POST";
+    delete process.env.MLBB_BIND_INFO_API_KEY;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 3901,
+          message: {
+            chat: { id: 7039, type: "private" },
+            from: { id: 7039, first_name: "Ali" },
+            text: "/bind 1006613098 (13019)",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const waitIndex = calls.findIndex((call) =>
+      /Ulanmalar tekshirilmoqda/.test(call.payload?.text || "")
+    );
+    const deleted = calls.find((call) => String(call.url).endsWith("/deleteMessage"));
+
+    assert.ok(waitIndex >= 0);
+    assert.ok(deleted);
+    assert.equal(deleted.payload.message_id, waitIndex + 1 + 100);
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
+
+test("queued bind info update deletes the worker wait message", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 4001,
+          __skip_bind_wait: true,
+          __bind_wait_message: {
+            chatId: 7040,
+            messageId: 333,
+          },
+          message: {
+            chat: { id: 7040, type: "private" },
+            from: { id: 7040, first_name: "Ali" },
+            text: "1006613098 (13019)",
+            reply_to_message: {
+              message_id: 101,
+              text: "🔗 Ulanmalar\n\nMLBB Account ID va Server/Zone ID ni yuboring.",
+              from: { is_bot: true },
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const waitMessages = calls.filter((call) =>
+      /Ulanmalar tekshirilmoqda/.test(call.payload?.text || "")
+    );
+    const deleted = calls.find((call) => String(call.url).endsWith("/deleteMessage"));
+
+    assert.equal(waitMessages.length, 0);
+    assert.ok(deleted);
+    assert.equal(deleted.payload.chat_id, "7040");
+    assert.equal(deleted.payload.message_id, 333);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("worker queues bind info prompt replies and carries wait message id", async () => {
+  const originalFetch = global.fetch;
+  const queued = [];
+  const calls = [];
+  const workerUrl = pathToFileURL(require.resolve("../worker.mjs")).href;
+  const worker = await import(`${workerUrl}?test=${Date.now()}`);
+
+  global.fetch = async (url, options = {}) => {
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: String(url), payload });
+
+    return new Response(
+      JSON.stringify({ ok: true, result: { message_id: 444 } }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const response = await worker.default.fetch(
+      new Request("https://example.test/api/bot", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-telegram-bot-api-secret-token": "test-secret",
+        },
+        body: JSON.stringify({
+          update_id: 4101,
+          message: {
+            chat: { id: 7041, type: "private" },
+            from: { id: 7041, first_name: "Ali" },
+            text: "1006613098 (13019)",
+            reply_to_message: {
+              message_id: 101,
+              text: "🔗 Ulanmalar\n\nMLBB Account ID va Server/Zone ID ni yuboring.",
+              from: { is_bot: true },
+            },
+          },
+        }),
+      }),
+      {
+        TELEGRAM_BOT_TOKEN: "123456:test-token",
+        TELEGRAM_WEBHOOK_SECRET: "test-secret",
+        TELEGRAM_TIMEOUT_MS: "5000",
+        BIND_INFO_QUEUE: {
+          async send(payload) {
+            queued.push(payload);
+          },
+        },
+      },
+      { waitUntil() {} }
+    );
+    const body = await response.json();
+
+    assert.equal(body.queued, true);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].__skip_bind_wait, true);
+    assert.deepEqual(queued[0].__bind_wait_message, {
+      chatId: 7041,
+      messageId: 444,
+    });
+    assert.match(calls[0].payload.text, /Ulanmalar tekshirilmoqda/);
   } finally {
     global.fetch = originalFetch;
   }

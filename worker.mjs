@@ -10,8 +10,8 @@ export default {
     const req = createVercelRequest(request, body);
 
     if (shouldQueueBindInfoUpdate(body) && isAuthorizedWebhook(request, env)) {
-      await sendBindInfoWaitMessage(body, env);
-      await queueBindInfoUpdate(body, env, ctx);
+      const waitMessage = await sendBindInfoWaitMessage(body, env);
+      await queueBindInfoUpdate(body, env, ctx, waitMessage);
 
       return jsonResponse({
         ok: true,
@@ -145,14 +145,25 @@ function shouldQueueBindInfoUpdate(update) {
     return false;
   }
 
-  return /^\/(?:info|bind|ulanish|ulamalar)(?:@\w+)?\s+\d/i.test(text);
+  if (/^\/(?:info|bind|ulanish|ulamalar)(?:@\w+)?\s+\d/i.test(text)) {
+    return true;
+  }
+
+  return isBindInfoPromptReply(message) && hasMlbbIdPair(text);
 }
 
-async function queueBindInfoUpdate(update, env, ctx) {
+async function queueBindInfoUpdate(update, env, ctx, waitMessage = null) {
   const queuedUpdate = {
     ...update,
     __skip_bind_wait: true,
   };
+
+  if (waitMessage?.chatId && waitMessage?.messageId) {
+    queuedUpdate.__bind_wait_message = {
+      chatId: waitMessage.chatId,
+      messageId: waitMessage.messageId,
+    };
+  }
 
   if (env?.BIND_INFO_QUEUE?.send) {
     await env.BIND_INFO_QUEUE.send(queuedUpdate);
@@ -173,7 +184,7 @@ async function sendBindInfoWaitMessage(update, env) {
   const timeout = setTimeout(() => controller.abort(), getTelegramTimeoutMs(env));
 
   try {
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -190,10 +201,39 @@ async function sendBindInfoWaitMessage(update, env) {
       }),
       signal: controller.signal,
     });
+    const data = await safeJson(response);
+    const messageId = data?.result?.message_id;
+
+    if (messageId) {
+      return {
+        chatId,
+        messageId,
+      };
+    }
   } catch (error) {
     console.error("[QUEUE_WAIT_MESSAGE_ERROR]", error);
   } finally {
     clearTimeout(timeout);
+  }
+
+  return null;
+}
+
+function isBindInfoPromptReply(message = {}) {
+  const replyText = String(message.reply_to_message?.text || "");
+
+  return /Ulanmalar/i.test(replyText) && /Account ID/i.test(replyText);
+}
+
+function hasMlbbIdPair(text) {
+  return /\d{4,20}\D+\d{1,10}/.test(String(text || ""));
+}
+
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
   }
 }
 
