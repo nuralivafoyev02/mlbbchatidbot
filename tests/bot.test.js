@@ -16,11 +16,15 @@ delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const handler = require("../api/bot.js");
 const {
+  enrichPremiumEmojis,
   extractTelegramId,
+  extractTelegramPhoneNumber,
+  formatPhoneNumber,
   getAdminFeedbackText,
   getBindInfoResultText,
   getBindInfoWaitText,
   getCommandsText,
+  getCustomEmojiIdText,
   getErrorsText,
   getFailedLookupText,
   getResultText,
@@ -32,6 +36,8 @@ const {
   isKeyboardButton,
   isValidTelegramId,
   lookupMlbbBindInfo,
+  maskPhoneNumber,
+  normalizePhoneNumber,
   mainKeyboard,
   normalizeSecretEnv,
   normalizeBindInfoResponse,
@@ -188,21 +194,114 @@ test("telegram profile helpers parse ids and format profile text", () => {
   assert.equal(extractTelegramId("/tg 5081175125"), "5081175125");
   assert.equal(isValidTelegramId("5081175125"), true);
   assert.equal(isValidTelegramId("abc"), false);
+  assert.equal(extractTelegramPhoneNumber("/tg 5081175125"), "");
+  assert.equal(extractTelegramPhoneNumber("/tg +998 90 123 45 67"), "998901234567");
+  assert.equal(normalizePhoneNumber("tel:+998 (90) 123-45-67"), "998901234567");
+  assert.equal(formatPhoneNumber("998901234567"), "+998901234567");
+  assert.equal(maskPhoneNumber("+998901234567"), "+99890*****67");
 
   const text = getTelegramProfileText({
     id: 5081175125,
     type: "private",
     first_name: "Ali",
     username: "ali_test",
+    phone_number: "+998901234567",
   });
 
   assert.match(text, /5081175125/);
   assert.match(text, /@ali_test/);
+  assert.match(text, /\+99890\*+67/);
 });
 
 test("commands text includes admin commands only for admins", () => {
   assert.match(getCommandsText({ id: 5081175125 }), /\/message/);
+  assert.match(getCommandsText({ id: 5081175125 }), /\/emoji/);
   assert.doesNotMatch(getCommandsText({ id: 777 }), /\/message/);
+  assert.doesNotMatch(getCommandsText({ id: 777 }), /\/emoji/);
+});
+
+test("custom emoji helper lists ids and tg-emoji snippets", () => {
+  const text = "Salom 👋";
+  const emojiOffset = text.indexOf("👋");
+  const result = getCustomEmojiIdText({
+    reply_to_message: {
+      text,
+      entities: [
+        {
+          type: "custom_emoji",
+          offset: emojiOffset,
+          length: 2,
+          custom_emoji_id: "premium-wave-id",
+        },
+      ],
+    },
+  });
+
+  assert.match(result, /premium-wave-id/);
+  assert.match(result, /&lt;tg-emoji emoji-id="premium-wave-id"&gt;👋&lt;\/tg-emoji&gt;/);
+});
+
+test("premium emoji enrichment wraps configured emojis and preserves code snippets", () => {
+  const result = enrichPremiumEmojis(
+    '✅ Tayyor 🔎 <code>&lt;tg-emoji emoji-id="sample"&gt;✅&lt;/tg-emoji&gt;</code>'
+  );
+
+  assert.match(
+    result,
+    /<tg-emoji emoji-id="5316561083085895267">✅<\/tg-emoji> Tayyor/
+  );
+  assert.match(result, /<tg-emoji emoji-id="5188217332748527444">🔎<\/tg-emoji>/);
+  assert.match(result, /<code>&lt;tg-emoji emoji-id="sample"&gt;✅&lt;\/tg-emoji&gt;<\/code>/);
+});
+
+test("admin /emoji returns custom emoji ids from replied message", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 9201,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: "/emoji",
+            reply_to_message: {
+              text: "Wave 👋",
+              entities: [
+                {
+                  type: "custom_emoji",
+                  offset: "Wave ".length,
+                  length: 2,
+                  custom_emoji_id: "premium-wave-id",
+                },
+              ],
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].payload.text, /premium-wave-id/);
+    assert.match(calls[0].payload.text, /tg-emoji/);
+    assert.doesNotMatch(calls[0].payload.text, /5316561083085895267/);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test("stats text includes today's users and monthly active section", () => {
@@ -305,7 +404,10 @@ test("bind info result masks all linked identifiers", () => {
   assert.match(text, /📧 <b>Moonton:<\/b> il\*+il@gmail\.com/);
   assert.match(text, /🔵 <b>VK:<\/b> empty\./);
   assert.match(text, /🎵 <b>TikTok:<\/b> pr\*+id/);
-  assert.match(text, /📘 <b>Facebook:<\/b> Te\*+me/);
+  assert.match(
+    text,
+    /<tg-emoji emoji-id="5929545717583449337">📘<\/tg-emoji> <b>Facebook:<\/b> Te\*+me/
+  );
   assert.match(text, /🕹 <b>GCID:<\/b> ga\*+id/);
   assert.match(text, /✈️ <b>Telegram:<\/b> linked\./);
   assert.match(text, /🟢 <b>WhatsApp:<\/b> 99\*+67/);
@@ -332,7 +434,10 @@ test("bind info result hides device login when provider omits device data", () =
   });
 
   assert.match(text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-  assert.match(text, /📘 <b>Facebook:<\/b> fb\*+er/);
+  assert.match(
+    text,
+    /<tg-emoji emoji-id="5929545717583449337">📘<\/tg-emoji> <b>Facebook:<\/b> fb\*+er/
+  );
   assert.doesNotMatch(text, /Device Login|Android|iOS/);
 });
 
@@ -374,6 +479,35 @@ test("zite player_info bind response is normalized to linked accounts", () => {
   assert.match(text, /📧 <b>Moonton:<\/b> m\*+@gmail\.com/);
   assert.match(text, /🎮 <b>Google Play:<\/b> m\*+@gmail\.com/);
   assert.doesNotMatch(text, /Device Login/);
+});
+
+test("bind response keeps fallback values when item data is empty", () => {
+  const normalized = normalizeBindInfoResponse({
+    data: {
+      bind_account: [
+        {
+          platform: "Moonton",
+          data: {},
+          account_name: "owner@example.com",
+        },
+        {
+          platform: "Facebook",
+          data: {},
+          username: "fb-owner",
+        },
+        {
+          platform: "Google Play",
+          data: null,
+          is_bound: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.data.bindings.moonton, "owner@example.com");
+  assert.equal(normalized.data.bindings.facebook, "fb-owner");
+  assert.equal(normalized.data.bindings.googlePlay, true);
 });
 
 test("zite response without player_info is not treated as all-empty bindings", () => {
@@ -445,6 +579,38 @@ test("bind info lookup posts player and server ids to configured API", async () 
     assert.equal(result.data.bindings.tiktok, "not linked");
     assert.equal(result.data.deviceLogin.android, "2");
     assert.equal(result.data.deviceLogin.ios, "1");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("bind info lookup classifies provider auth and endpoint errors", async () => {
+  const originalFetch = global.fetch;
+
+  try {
+    global.fetch = async () =>
+      new Response(JSON.stringify({ ok: false, message: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+
+    const authResult = await lookupMlbbBindInfo("1006613098", "13019");
+
+    assert.equal(authResult.ok, false);
+    assert.equal(authResult.reason, "bind_info_provider_auth_required");
+    assert.match(authResult.technicalReason, /HTTP 401/);
+
+    global.fetch = async () =>
+      new Response("<!DOCTYPE html><html><body>Not Found</body></html>", {
+        status: 404,
+        headers: { "content-type": "text/html" },
+      });
+
+    const notFoundResult = await lookupMlbbBindInfo("1006613098", "13019");
+
+    assert.equal(notFoundResult.ok, false);
+    assert.equal(notFoundResult.reason, "bind_info_provider_not_found");
+    assert.match(notFoundResult.technicalReason, /HTTP 404/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -526,9 +692,9 @@ test("bind info button mode returns masked linked accounts", async () => {
       server_id: "13019",
       x_key: "test-bind-key",
     });
-    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
     assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-    assert.match(finalMessage, /📘 <b>Facebook:<\/b> fb\*+er/);
+    assert.match(finalMessage, /<b>Facebook:<\/b> fb\*+er/);
     assert.match(finalMessage, /✈️ <b>Telegram:<\/b> linked\./);
     assert.doesNotMatch(finalMessage, /Device Login|Android|iOS/);
     assert.doesNotMatch(finalMessage, /owner@example\.com|fb-owner/);
@@ -616,7 +782,7 @@ test("bind info prompt reply uses bind lookup even if runtime mode is missing", 
     const finalMessage = calls.at(-1).payload.text;
 
     assert.ok(bindCall);
-    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
     assert.doesNotMatch(finalMessage, /Server Aniqlash Natijasi/);
   } finally {
     global.fetch = originalFetch;
@@ -686,9 +852,9 @@ test("/bind command returns masked linked accounts", async () => {
       server_id: "13019",
       x_key: "test-bind-key",
     });
-    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
     assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-    assert.match(finalMessage, /📘 <b>Facebook:<\/b> fb\*+er/);
+    assert.match(finalMessage, /<b>Facebook:<\/b> fb\*+er/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -753,7 +919,7 @@ test("/info command is an alias for bind info lookup", async () => {
       server_id: "13019",
       x_key: "test-bind-key",
     });
-    assert.match(finalMessage, /🔗 <b>Ulanmalar<\/b>/);
+    assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
     assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
     assert.match(finalMessage, /🎮 <b>Google Play:<\/b> linked\./);
   } finally {
@@ -1103,12 +1269,33 @@ test("group mention for another username is ignored", async () => {
   }
 });
 
-test("group /info command is ignored", async () => {
+test("group /info command returns masked linked accounts", async () => {
   const originalFetch = global.fetch;
   const calls = [];
 
   global.fetch = async (url, options = {}) => {
-    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bind_account: [
+              { platform: "Moonton", email: "owner@example.com" },
+              { platform: "Facebook", username: "fb-owner" },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
     return new Response(JSON.stringify({ ok: true, result: true }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -1136,8 +1323,87 @@ test("group /info command is ignored", async () => {
       res
     );
 
+    const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
+    const finalMessage = calls.at(-1).payload;
+
     assert.equal(res.statusCode, 200);
-    assert.equal(calls.length, 0);
+    assert.ok(bindCall);
+    assert.deepEqual(bindCall.payload, {
+      player_id: "1514855804",
+      server_id: "16368",
+      x_key: "test-bind-key",
+    });
+    assert.match(finalMessage.text, /<b>Ulanmalar<\/b>/);
+    assert.match(finalMessage.text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+    assert.match(finalMessage.text, /<b>Facebook:<\/b> fb\*+er/);
+    assert.equal(finalMessage.reply_markup, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("group /bind command works without mentioning the bot", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+              GooglePlay: true,
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const res = createRes();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 46,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 777, first_name: "Ali" },
+            text: "/bind 1514855804 (16368)",
+            entities: [{ type: "bot_command", offset: 0, length: 5 }],
+          },
+        },
+      },
+      res
+    );
+
+    const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
+    const finalMessage = calls.at(-1).payload;
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(bindCall);
+    assert.match(finalMessage.text, /<b>Ulanmalar<\/b>/);
+    assert.match(finalMessage.text, /🎮 <b>Google Play:<\/b> linked\./);
+    assert.equal(finalMessage.reply_markup, undefined);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1433,6 +1699,309 @@ test("/tg looks up a Telegram profile with getChat", async () => {
     assert.match(calls.at(-1).payload.text, /@ali_test/);
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("contact with Telegram user_id saves phone mapping and returns profile", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    const urlText = String(url);
+    calls.push({ url: urlText, payload: JSON.parse(options.body) });
+
+    if (urlText.endsWith("/getChat")) {
+      assert.equal(calls.at(-1).payload.chat_id, "5081175125");
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            id: 5081175125,
+            type: "private",
+            first_name: "Ali",
+            username: "ali_test",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const chat = { id: 70050, type: "private" };
+    const from = { id: 70050, first_name: "Vali" };
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5001,
+          message: {
+            chat,
+            from,
+            contact: {
+              phone_number: "+998 90 123 45 67",
+              first_name: "Ali",
+              user_id: 5081175125,
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    assert.match(calls.at(-1).payload.text, /@ali_test/);
+    assert.match(calls.at(-1).payload.text, /\+99890\*+67/);
+
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5002,
+          message: {
+            chat,
+            from,
+            text: "/tg +998901234567",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    assert.match(calls.at(-1).payload.text, /Telegram profil/);
+    assert.match(calls.at(-1).payload.text, /@ali_test/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("contact without Telegram user_id returns a phone profile open link", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5003,
+          message: {
+            chat: { id: 70051, type: "private" },
+            from: { id: 70051, first_name: "Vali" },
+            contact: {
+              phone_number: "+998 93 123 45 67",
+              first_name: "NoId",
+            },
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.some((call) => call.url.endsWith("/getChat")), false);
+    assert.match(calls.at(-1).payload.text, /Telegram profil/);
+    assert.match(calls.at(-1).payload.text, /\+99893\*+67/);
+    assert.match(calls.at(-1).payload.text, /tg:\/\/resolve\?phone=998931234567/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("/tg phone without saved mapping returns a phone profile open link", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5005,
+          message: {
+            chat: { id: 70053, type: "private" },
+            from: { id: 70053, first_name: "Vali" },
+            text: "/tg +998908065775",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.some((call) => call.url.endsWith("/getChat")), false);
+    assert.match(calls.at(-1).payload.text, /Telegram profil/);
+    assert.match(calls.at(-1).payload.text, /\+99890\*+75/);
+    assert.match(calls.at(-1).payload.text, /tg:\/\/resolve\?phone=998908065775/);
+    assert.doesNotMatch(calls.at(-1).payload.text, /topilmadi|avval shu kontakt/i);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("/tg phone can resolve a profile from Supabase phone mapping", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  const payload = Buffer.from(
+    JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+  ).toString("base64url");
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload: body });
+
+    if (urlText.endsWith("/rpc/find_bot_user_by_phone")) {
+      assert.equal(body.p_phone_number, "998991112233");
+
+      return new Response(
+        JSON.stringify([
+          {
+            user_id: "5081175125",
+            chat_id: "5081175125",
+            chat_type: "private",
+            username: "cached_ali",
+            first_name: "Ali",
+            last_name: "Cached",
+            phone_number: "998991112233",
+          },
+        ]),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    if (urlText.endsWith("/rpc/track_bot_user")) {
+      return new Response(null, {
+        status: 204,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.endsWith("/getChat")) {
+      assert.equal(body.chat_id, "5081175125");
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            id: 5081175125,
+            type: "private",
+            first_name: "Ali",
+            username: "ali_live",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.SUPABASE_URL = "https://trybbxovootehqvaiydn.supabase.co";
+    process.env.SUPABASE_SERVICE_KEY = `header.${payload}.signature`;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5004,
+          message: {
+            chat: { id: 70052, type: "private" },
+            from: { id: 70052, first_name: "Vali" },
+            text: "/tg +998991112233",
+          },
+        },
+      },
+      createRes()
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.ok(calls.some((call) => call.url.endsWith("/rpc/find_bot_user_by_phone")));
+    assert.ok(calls.some((call) => call.url.endsWith("/getChat")));
+    const sent = calls.find((call) => /@ali_live/.test(call.payload?.text || ""));
+
+    assert.ok(sent);
+    assert.match(sent.payload.text, /\+99899\*+33/);
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
   }
 });
 
@@ -2424,6 +2993,70 @@ test("worker queues bind info prompt replies and carries wait message id", async
     assert.deepEqual(queued[0].__bind_wait_message, {
       chatId: 7041,
       messageId: 444,
+    });
+    assert.match(calls[0].payload.text, /Ulanmalar tekshirilmoqda/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("worker queues bind command aliases from group messages", async () => {
+  const originalFetch = global.fetch;
+  const queued = [];
+  const calls = [];
+  const workerUrl = pathToFileURL(require.resolve("../worker.mjs")).href;
+  const worker = await import(`${workerUrl}?test=${Date.now()}-alias`);
+
+  global.fetch = async (url, options = {}) => {
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: String(url), payload });
+
+    return new Response(
+      JSON.stringify({ ok: true, result: { message_id: 445 } }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const response = await worker.default.fetch(
+      new Request("https://example.test/api/bot", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-telegram-bot-api-secret-token": "test-secret",
+        },
+        body: JSON.stringify({
+          update_id: 4102,
+          message: {
+            chat: { id: -100777, type: "supergroup" },
+            from: { id: 7042, first_name: "Ali" },
+            text: "/ulanmalar 1006613098 (13019)",
+          },
+        }),
+      }),
+      {
+        TELEGRAM_BOT_TOKEN: "123456:test-token",
+        TELEGRAM_WEBHOOK_SECRET: "test-secret",
+        TELEGRAM_TIMEOUT_MS: "5000",
+        BIND_INFO_QUEUE: {
+          async send(payload) {
+            queued.push(payload);
+          },
+        },
+      },
+      { waitUntil() {} }
+    );
+    const body = await response.json();
+
+    assert.equal(body.queued, true);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].__skip_bind_wait, true);
+    assert.deepEqual(queued[0].__bind_wait_message, {
+      chatId: -100777,
+      messageId: 445,
     });
     assert.match(calls[0].payload.text, /Ulanmalar tekshirilmoqda/);
   } finally {

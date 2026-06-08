@@ -28,6 +28,29 @@ const BROADCAST_USERS_PAGE_SIZE = 1000;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const FEEDBACK_PENDING_TTL_MS = 30 * 60 * 1000;
 const FEEDBACK_MAX_LENGTH = 3000;
+const PREMIUM_EMOJIS = Object.freeze({
+  "🏪": "5208573502046610594",
+  "✅": "5316561083085895267",
+  "🚨": "5204082134486117389",
+  "👉": "5202091395669588099",
+  "🔍": "5188217332748527444",
+  "🔎": "5188217332748527444",
+  "👤": "5373012449597335010",
+  "📌": "5316650525779835016",
+  "⭕️": "5319090522470495400",
+  "💦": "5316589275251226951",
+  "🔗": "5375129357373165375",
+  "👋": "5319007286004299794",
+  "📱": "5926788567622749870",
+  "🖥": "5926754173524643275",
+  "🌐": "5927048877000626277",
+});
+const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze({
+  facebook: {
+    emoji: "📘",
+    id: "5929545717583449337",
+  },
+});
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -91,6 +114,7 @@ if (!global.__MLBB_BOT_STATS__) {
     pendingFeedbacks: new Map(),
     userModes: new Map(),
     userProfiles: new Map(),
+    phoneProfiles: new Map(),
     errors: [],
     errorCounts: {},
     startedAt: new Date().toISOString(),
@@ -113,6 +137,9 @@ if (!(stats.userModes instanceof Map)) {
 }
 if (!(stats.userProfiles instanceof Map)) {
   stats.userProfiles = new Map(Object.entries(stats.userProfiles || {}));
+}
+if (!(stats.phoneProfiles instanceof Map)) {
+  stats.phoneProfiles = new Map(Object.entries(stats.phoneProfiles || {}));
 }
 stats.errors ||= [];
 stats.errorCounts ||= {};
@@ -247,6 +274,18 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     if (isBindInfoCommand(addressedText) || isBindInfoCommand(addressing.input)) {
+      const bindInput = stripBindInfoCommand(addressedText);
+
+      if (!bindInput) {
+        await sendMessage(chatId, getBindInfoPromptText(), null);
+        return;
+      }
+
+      await handleBindInfoRequest(chatId, bindInput, user, {
+        replyMarkup: null,
+        skipWait: skipBindWait,
+        waitMessage: bindWaitMessage,
+      });
       return;
     }
 
@@ -258,6 +297,11 @@ async function handleMessage(message, updateMeta = {}) {
     await detectAndReply(chatId, addressing.input, user, {
       replyMarkup: null,
     });
+    return;
+  }
+
+  if (message.contact) {
+    await handleTelegramProfileContact(chatId, user, message);
     return;
   }
 
@@ -319,6 +363,16 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     await handleErrorsRequest(chatId, user);
+    return;
+  }
+
+  if (isCommand(text, "emoji")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    await handleEmojiIdRequest(chatId, user, message);
     return;
   }
 
@@ -386,7 +440,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isKeyboardButton(text, BUTTON_TG_PROFILE)) {
     rememberUserMode(user.id, "tg_profile");
-    await sendMessage(chatId, getTelegramProfilePromptText(), mainKeyboard(user));
+    await sendMessage(chatId, getTelegramProfilePromptText(), telegramProfileKeyboard(user));
     return;
   }
 
@@ -614,6 +668,12 @@ async function handleErrorsRequest(chatId, user, messageId = null) {
   );
 }
 
+async function handleEmojiIdRequest(chatId, user, message = {}) {
+  await sendMessage(chatId, getCustomEmojiIdText(message), mainKeyboard(user), {
+    premiumEmoji: false,
+  });
+}
+
 async function handleFeedbackPrompt(chatId, user) {
   cleanupPendingFeedbacks();
 
@@ -733,10 +793,18 @@ async function handleMessageCommand(chatId, user, message) {
 }
 
 async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
+  const phoneNumber = extractTelegramPhoneNumber(text);
   const tgId = extractTelegramId(text);
   const replyMarkup = Object.hasOwn(options, "replyMarkup")
     ? options.replyMarkup
     : mainKeyboard(user);
+
+  if (phoneNumber) {
+    await handleTelegramPhoneProfileLookup(chatId, user, phoneNumber, {
+      replyMarkup,
+    });
+    return;
+  }
 
   if (!tgId) {
     await sendMessage(chatId, getTelegramProfilePromptText(), replyMarkup);
@@ -748,11 +816,88 @@ async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
     return;
   }
 
+  await handleTelegramProfileById(chatId, tgId, replyMarkup);
+}
+
+async function handleTelegramProfileContact(chatId, user, message = {}, options = {}) {
+  const replyMarkup = Object.hasOwn(options, "replyMarkup")
+    ? options.replyMarkup
+    : mainKeyboard(user);
+  const contact = normalizeTelegramContact(message.contact);
+
+  if (!contact.phoneNumber) {
+    await sendMessage(chatId, getTelegramContactWithoutPhoneText(), replyMarkup);
+    return;
+  }
+
+  if (!contact.userId) {
+    await sendMessage(
+      chatId,
+      getTelegramProfileText(createTelegramPhoneLinkProfile(contact.phoneNumber, contact)),
+      replyMarkup
+    );
+    return;
+  }
+
+  rememberPhoneProfile(contact.phoneNumber, createTelegramProfileFromContact(contact));
+  void queueSupabasePhoneProfileTrack(contact);
+  await handleTelegramProfileById(chatId, contact.userId, replyMarkup, {
+    phoneNumber: contact.phoneNumber,
+    fallbackProfile: createTelegramProfileFromContact(contact),
+  });
+}
+
+async function handleTelegramPhoneProfileLookup(chatId, user, phoneNumber, options = {}) {
+  const replyMarkup = Object.hasOwn(options, "replyMarkup")
+    ? options.replyMarkup
+    : mainKeyboard(user);
+
+  void safeSendChatAction(chatId, "typing");
+
+  const phoneProfile = await lookupTelegramProfileByPhone(phoneNumber);
+
+  if (!phoneProfile.ok) {
+    await sendMessage(
+      chatId,
+      getTelegramProfileText(createTelegramPhoneLinkProfile(phoneNumber)),
+      replyMarkup
+    );
+    return;
+  }
+
+  await sendMessage(
+    chatId,
+    getTelegramProfileText({
+      ...phoneProfile.data,
+      phone_number: phoneNumber,
+    }),
+    replyMarkup
+  );
+}
+
+async function handleTelegramProfileById(
+  chatId,
+  tgId,
+  replyMarkup,
+  { phoneNumber = "", fallbackProfile = null } = {}
+) {
   void safeSendChatAction(chatId, "typing");
 
   const profile = await lookupTelegramProfile(tgId);
 
   if (!profile.ok) {
+    if (fallbackProfile?.id) {
+      await sendMessage(
+        chatId,
+        getTelegramProfileText({
+          ...fallbackProfile,
+          phone_number: phoneNumber,
+        }),
+        replyMarkup
+      );
+      return;
+    }
+
     await sendMessage(
       chatId,
       getTelegramProfileFailedText(tgId, profile.reason),
@@ -761,9 +906,23 @@ async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
     return;
   }
 
+  if (phoneNumber) {
+    rememberPhoneProfile(phoneNumber, profile.data);
+    void queueSupabasePhoneProfileTrack({
+      phoneNumber,
+      userId: profile.data?.id,
+      first_name: profile.data?.first_name,
+      last_name: profile.data?.last_name,
+      username: profile.data?.username,
+    });
+  }
+
   await sendMessage(
     chatId,
-    getTelegramProfileText(profile.data),
+    getTelegramProfileText({
+      ...profile.data,
+      phone_number: phoneNumber,
+    }),
     replyMarkup
   );
 }
@@ -1021,11 +1180,21 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
       : safeJsonParse(bodyText) || null;
 
     if (!response.ok) {
+      const reason = getFriendlyBindInfoReason({
+        status: response.status,
+        contentType,
+        bodyText,
+        data,
+      });
+
       return {
         ok: false,
         provider: "bind_info_api",
-        reason: "bind_info_lookup_failed",
-        technicalReason: `Bind info API HTTP ${response.status}`,
+        reason,
+        technicalReason: `Bind info API HTTP ${response.status}: ${clipText(
+          bodyText || response.statusText,
+          180
+        )}`,
         status: response.status,
         data,
       };
@@ -1037,7 +1206,12 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
       return {
         ok: false,
         provider: "bind_info_api",
-        reason: normalized.reason,
+        reason: getFriendlyBindInfoReason({
+          contentType,
+          bodyText,
+          data,
+          fallback: normalized.reason,
+        }),
         technicalReason: normalized.reason,
         data,
       };
@@ -1052,10 +1226,57 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
     return {
       ok: false,
       provider: "bind_info_api",
-      reason: "bind_info_lookup_failed",
+      reason: getFriendlyBindInfoReason({ error }),
       technicalReason: error.message || "Bind info API ishlamadi",
     };
   }
+}
+
+function getFriendlyBindInfoReason(details = {}) {
+  const status = Number(details.status);
+  const message = cleanEnv(
+    details.data?.message ||
+      details.data?.error ||
+      details.data?.reason ||
+      details.fallback ||
+      details.error?.message
+  );
+  const lowered = message.toLowerCase();
+  const contentType = cleanEnv(details.contentType).toLowerCase();
+  const bodyText = cleanEnv(details.bodyText);
+
+  if (
+    status === 401 ||
+    status === 403 ||
+    /unauthori[sz]ed|forbidden|auth|token|login|credential|api key/i.test(message)
+  ) {
+    return "bind_info_provider_auth_required";
+  }
+
+  if (status === 404 || /not found/i.test(message)) {
+    return "bind_info_provider_not_found";
+  }
+
+  if ([522, 523, 524, 525, 526].includes(status)) {
+    return "bind_info_provider_unavailable";
+  }
+
+  if (status === 429 || /rate limit|too many/i.test(lowered)) {
+    return "bind_info_provider_rate_limited";
+  }
+
+  if (details.error?.name === "AbortError" || /abort|timeout|timed out/i.test(message)) {
+    return "bind_info_provider_timeout";
+  }
+
+  if (
+    contentType.includes("text/html") ||
+    /^<!doctype html|^<html[\s>]/i.test(bodyText)
+  ) {
+    return "bind_info_provider_html_response";
+  }
+
+  return details.fallback || "bind_info_lookup_failed";
 }
 
 function buildBindInfoRequest(accountId, zoneId) {
@@ -1284,22 +1505,12 @@ function normalizeNamedBindCollection(source = {}) {
       item.title;
 
     if (name) {
-      result[normalizeBindCollectionKey(name)] =
-        item.data ??
-        item.value ??
-        item.email ??
-        item.username ??
-        item.userName ??
-        item.id ??
-        item.count ??
-        item.total ??
-        item.status ??
-        item.bound ??
-        item.linked ??
-        item.connected ??
-        item.is_bound ??
-        item.isBound ??
-        true;
+      const key = normalizeBindCollectionKey(name);
+
+      result[key] = chooseBindValue(
+        result[key],
+        getBindCollectionItemValue(item, name)
+      );
       return result;
     }
 
@@ -1328,6 +1539,66 @@ function normalizeBindCollectionKey(name) {
   return name;
 }
 
+function getBindCollectionItemValue(item = {}, platformName = "") {
+  const itemNameValue =
+    item.name &&
+    normalizeBindCollectionKey(item.name) !== normalizeBindCollectionKey(platformName)
+      ? item.name
+      : undefined;
+  const candidates = [
+    item.data,
+    item.value,
+    item.email,
+    item.mail,
+    item.username,
+    item.userName,
+    item.account_name,
+    item.accountName,
+    item.nickname,
+    itemNameValue,
+    item.id,
+    item.uid,
+    item.open_id,
+    item.openId,
+    item.count,
+    item.total,
+    item.status,
+    item.bind_status,
+    item.bindStatus,
+    item.bound,
+    item.linked,
+    item.connected,
+    item.is_bound,
+    item.isBound,
+    item.is_linked,
+    item.isLinked,
+    item.is_connected,
+    item.isConnected,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) {
+      continue;
+    }
+
+    if (!isEmptyBindValue(normalizeBindValue(candidate))) {
+      return candidate;
+    }
+  }
+
+  const explicitEmpty = candidates.find((candidate) => candidate !== undefined);
+
+  return explicitEmpty ?? true;
+}
+
+function chooseBindValue(currentValue, nextValue) {
+  if (isEmptyBindValue(normalizeBindValue(currentValue))) {
+    return nextValue;
+  }
+
+  return currentValue;
+}
+
 async function lookupTelegramProfile(tgId) {
   try {
     const data = await telegram("getChat", {
@@ -1344,6 +1615,68 @@ async function lookupTelegramProfile(tgId) {
       reason: normalizeTelegramError(error.message),
     };
   }
+}
+
+async function lookupTelegramProfileByPhone(phoneNumber) {
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+
+  if (!normalizedPhone) {
+    return {
+      ok: false,
+      reason: "phone_invalid",
+    };
+  }
+
+  const runtimeProfile = getPhoneProfile(normalizedPhone);
+
+  if (runtimeProfile?.id) {
+    const profile = await lookupTelegramProfile(runtimeProfile.id);
+
+    if (profile.ok) {
+      rememberPhoneProfile(normalizedPhone, profile.data);
+      void queueSupabasePhoneProfileTrack({
+        phoneNumber: normalizedPhone,
+        userId: profile.data?.id,
+        first_name: profile.data?.first_name,
+        last_name: profile.data?.last_name,
+        username: profile.data?.username,
+      });
+      return profile;
+    }
+
+    return {
+      ok: true,
+      data: runtimeProfile,
+    };
+  }
+
+  const supabaseProfile = await lookupSupabaseUserByPhone(normalizedPhone);
+
+  if (supabaseProfile?.id) {
+    const profile = await lookupTelegramProfile(supabaseProfile.id);
+
+    if (profile.ok) {
+      rememberPhoneProfile(normalizedPhone, profile.data);
+      void queueSupabasePhoneProfileTrack({
+        phoneNumber: normalizedPhone,
+        userId: profile.data?.id,
+        first_name: profile.data?.first_name,
+        last_name: profile.data?.last_name,
+        username: profile.data?.username,
+      });
+      return profile;
+    }
+
+    return {
+      ok: true,
+      data: supabaseProfile,
+    };
+  }
+
+  return {
+    ok: false,
+    reason: "phone_not_found",
+  };
 }
 
 function normalizeLookupResponse(data) {
@@ -1537,6 +1870,80 @@ function extractTelegramId(text) {
   const match = commandless.match(/-?\d{5,20}/);
 
   return match ? match[0] : "";
+}
+
+function extractTelegramPhoneNumber(text) {
+  const commandless = stripTelegramProfileCommand(text);
+
+  return normalizePhoneNumber(commandless);
+}
+
+function stripTelegramProfileCommand(text) {
+  return String(text || "")
+    .replace(/^\/(?:tg|user|profile)(@\w+)?/i, "")
+    .replace(/\u00A0/g, " ")
+    .trim();
+}
+
+function normalizePhoneNumber(value) {
+  const rawText = String(value || "").replace(/\u00A0/g, " ").trim();
+
+  if (!rawText) {
+    return "";
+  }
+
+  const text = rawText.replace(/^(?:phone|telefon|tel)\s*[:=]\s*/i, "");
+  const hasExplicitPhoneSignal =
+    /^\+/.test(text) ||
+    /^00\d/.test(text) ||
+    /^(?:phone|telefon|tel)\s*[:=]/i.test(rawText) ||
+    /^tel:/i.test(text) ||
+    /[\s().-]/.test(text);
+  let digits = text.replace(/^tel:/i, "").replace(/[^\d]/g, "");
+
+  if (digits.startsWith("00")) {
+    digits = digits.slice(2);
+  }
+
+  if (!/^\d{7,15}$/.test(digits)) {
+    return "";
+  }
+
+  if (!hasExplicitPhoneSignal && !digits.startsWith("998")) {
+    return "";
+  }
+
+  return digits;
+}
+
+function formatPhoneNumber(value) {
+  const phoneNumber = normalizePhoneNumber(value);
+
+  return phoneNumber ? `+${phoneNumber}` : "";
+}
+
+function maskPhoneNumber(value) {
+  const phoneNumber = normalizePhoneNumber(value);
+
+  if (!phoneNumber) {
+    return "";
+  }
+
+  if (phoneNumber.length <= 6) {
+    return `+${"*".repeat(phoneNumber.length)}`;
+  }
+
+  const left = phoneNumber.slice(0, Math.min(5, phoneNumber.length - 2));
+  const right = phoneNumber.slice(-2);
+  const hiddenLength = Math.max(2, phoneNumber.length - left.length - right.length);
+
+  return `+${left}${"*".repeat(hiddenLength)}${right}`;
+}
+
+function getTelegramPhoneProfileLink(value) {
+  const phoneNumber = normalizePhoneNumber(value);
+
+  return phoneNumber ? `tg://resolve?phone=${phoneNumber}` : "";
 }
 
 function isValidTelegramId(tgId) {
@@ -1875,7 +2282,7 @@ function getStartText(user) {
     `Salom, <b>${name}</b>! 👋`,
     "",
     "MLBB Account ID va Server/Zone ID yuboring, men serverini aniqlab beraman.",
-    "TG ID yuborib Telegram profil ma’lumotlarini ham tekshirishingiz mumkin.",
+    "TG ID yoki oldin yuborilgan kontakt telefoni orqali Telegram profil ma’lumotlarini ham tekshirishingiz mumkin.",
     "",
     "Ko‘p ishlatiladigan funksiyalar pastdagi klaviaturada.",
   ].join("\n");
@@ -1932,8 +2339,9 @@ function getHelpText(user = {}) {
     "<code>/check 1289050 10050</code>",
     "",
     "<b>2. Telegram profil topish</b>",
-    "TG ID orqali bot ko‘ra oladigan profil ma’lumotlarini chiqaradi.",
+    "TG ID orqali bot ko‘ra oladigan profil ma’lumotlarini chiqaradi. Telefon yuborilsa, saqlangan profil topiladi yoki Telegram clientda ochish linki beriladi.",
     "<code>/tg 5081175125</code>",
+    "<code>/tg +998901234567</code>",
     "<code>/user 5081175125</code>",
     "<code>/profile 5081175125</code>",
     "",
@@ -1941,7 +2349,7 @@ function getHelpText(user = {}) {
     "Pastdagi tugmalar orqali asosiy funksiyalarni command yozmasdan ishlatishingiz mumkin.",
     "",
     "<b>4. Cheklovlar</b>",
-    "Faqat Account ID yuborilsa, MLBB serverini aniq topib bo‘lmaydi. TG profil lookup esa Telegram botga ko‘rinadigan public ma’lumotlargina qaytaradi.",
+    "Faqat Account ID yuborilsa, MLBB serverini aniq topib bo‘lmaydi. TG profil lookup esa Telegram botga ko‘rinadigan public ma’lumotlargina qaytaradi; telefon linkining ochilishi Telegram client va user privacy sozlamalariga bog‘liq.",
     "",
     getCommandsText(user),
     "",
@@ -1959,6 +2367,7 @@ function getCommandsText(user = {}) {
     "<code>/check 1289050 10050</code> — MLBB server/profil tekshirish",
     "<code>/info 1006613098 13019</code> yoki <code>/bind</code> — akkaunt ulanmalarini tekshirish",
     "<code>/tg 5081175125</code> — Telegram ID orqali profil topish",
+    "<code>/tg +998901234567</code> — botga oldin yuborilgan kontakt telefoni orqali profil topish",
     "<code>/user 5081175125</code> — /tg bilan bir xil",
     "<code>/profile 5081175125</code> — /tg bilan bir xil",
     "<code>/feedback</code> yoki <code>/fikr</code> — taklif yoki shikoyat yuborish",
@@ -1971,6 +2380,7 @@ function getCommandsText(user = {}) {
       "<code>/stats</code> yoki <code>/stat</code> — bot statistikasi",
       "<code>/users</code> — barcha saqlangan foydalanuvchilar ro‘yxati",
       "<code>/errors</code> — bot xatoliklari",
+      "<code>/emoji</code> — premium/custom emoji ID larini chiqarish",
       "<code>/message Matn</code> — barcha userlarga tasdiq bilan xabar yuborish"
     );
   }
@@ -1982,15 +2392,49 @@ function getTelegramProfilePromptText() {
   return [
     "👤 <b>TG profil topish</b>",
     "",
-    "Telegram ID yuboring:",
+    "Telegram ID yoki oldin botga yuborilgan kontakt telefonini yuboring:",
     "<code>/tg 5081175125</code>",
+    "<code>/tg +998901234567</code>",
     "",
-    "Eslatma: Telegram botlar faqat bot ko‘ra oladigan profil/public chat ma’lumotlarini oladi.",
+    "Telefon saqlangan bo‘lsa profil ma’lumoti chiqadi, aks holda Telegram clientda ochish linki beriladi.",
+    "Eslatma: telefon linkining ochilishi Telegram client va user privacy sozlamalariga bog‘liq.",
   ].join("\n");
 }
 
 function getInvalidTelegramIdText() {
   return "Foydalanuvchi topilmadi. TG ID ni tekshirib qayta yuboring.";
+}
+
+function getTelegramContactWithoutPhoneText() {
+  return "Kontakt ichida telefon raqam topilmadi. Iltimos, telefon raqami bor kontakt yuboring.";
+}
+
+function getTelegramPhoneProfileUnavailableText(phoneNumber) {
+  return [
+    "Bu kontaktda Telegram user_id ko‘rinmadi.",
+    `Telefon: <code>${escapeHtml(formatPhoneNumber(phoneNumber))}</code>`,
+    "",
+    "Telegram botlar user_id bo‘lmagan kontaktni profilga aylantira olmaydi.",
+  ].join("\n");
+}
+
+function getTelegramPhoneProfileNotFoundText(phoneNumber) {
+  return [
+    "Bu telefon bo‘yicha saqlangan Telegram profil topilmadi.",
+    `Telefon: <code>${escapeHtml(formatPhoneNumber(phoneNumber))}</code>`,
+    "",
+    "Raqamdan topish uchun avval shu kontaktni botga yuboring. Kontakt ichida Telegram user_id bo‘lsa, keyingi safar raqam orqali ham ishlaydi.",
+  ].join("\n");
+}
+
+function createTelegramPhoneLinkProfile(phoneNumber, contact = {}) {
+  return {
+    id: "",
+    type: "private",
+    first_name: contact.first_name || "",
+    last_name: contact.last_name || "",
+    phone_number: phoneNumber,
+  };
 }
 
 function getTelegramProfileText(profile) {
@@ -2002,20 +2446,28 @@ function getTelegramProfileText(profile) {
   const username = profile.username ? `@${profile.username}` : "Yo‘q";
   const title = profile.title ? escapeHtml(profile.title) : null;
   const bio = profile.bio || profile.description;
+  const phoneLink = profile.phone_number
+    ? getTelegramPhoneProfileLink(profile.phone_number)
+    : "";
 
   return [
     "👤 <b>Telegram profil</b>",
     "",
-    `🆔 <b>ID:</b> <code>${escapeHtml(id)}</code>`,
+    id ? `🆔 <b>ID:</b> <code>${escapeHtml(id)}</code>` : "",
     name ? `👤 <b>Ism:</b> ${escapeHtml(name)}` : "",
     title ? `🏷 <b>Nomi:</b> ${title}` : "",
+    profile.phone_number
+      ? `📱 <b>Telefon:</b> <code>${escapeHtml(maskPhoneNumber(profile.phone_number))}</code>`
+      : "",
     `🔗 <b>Username:</b> ${escapeHtml(username)}`,
     profile.type ? `📌 <b>Turi:</b> ${escapeHtml(profile.type)}` : "",
     profile.username
       ? `🌐 <b>Link:</b> https://t.me/${escapeHtml(profile.username)}`
       : id
         ? `🌐 <b>Link:</b> <a href="tg://user?id=${escapeHtml(id)}">profilni ochish</a>`
-        : "",
+        : phoneLink
+          ? `🌐 <b>Link:</b> <a href="${escapeHtml(phoneLink)}">profilni ochish</a>`
+          : "",
     bio ? `📝 <b>Bio:</b> ${escapeHtml(clipText(String(bio), 500))}` : "",
   ]
     .filter(Boolean)
@@ -2049,6 +2501,40 @@ function getBindInfoFailedText(reason = "") {
     ].join("\n");
   }
 
+  if (reason === "bind_info_provider_auth_required") {
+    return [
+      "Ulanmalar provideriga ulanish uchun avtorizatsiya kerak.",
+      "Adminlarga xatolik yozib qo‘yildi, sozlama yangilangandan keyin qayta urinib ko‘ring.",
+    ].join("\n");
+  }
+
+  if (
+    reason === "bind_info_provider_not_found" ||
+    reason === "bind_info_provider_html_response"
+  ) {
+    return [
+      "Ulanmalar provider manzili ishlamayapti yoki o‘zgargan.",
+      "Adminlarga xatolik yozib qo‘yildi, birozdan keyin qayta urinib ko‘ring.",
+    ].join("\n");
+  }
+
+  if (reason === "bind_info_provider_timeout") {
+    return [
+      "Ulanmalar provideri sekin javob berdi.",
+      "Iltimos, birozdan keyin qayta urinib ko‘ring.",
+    ].join("\n");
+  }
+
+  if (
+    reason === "bind_info_provider_unavailable" ||
+    reason === "bind_info_provider_rate_limited"
+  ) {
+    return [
+      "Ulanmalar provideri vaqtincha javob bermayapti.",
+      "Iltimos, birozdan keyin qayta urinib ko‘ring.",
+    ].join("\n");
+  }
+
   return [
     "Ma’lumot olish uchun bazadan javob olib bo‘lmadi.",
     "Iltimos, birozdan keyin qayta urinib ko‘ring.",
@@ -2077,7 +2563,9 @@ function getBindInfoResultText(result = {}) {
     `🔵 <b>VK:</b> ${escapeHtml(maskSensitiveValue(bindings.vk))}`,
     `🎮 <b>Google Play:</b> ${escapeHtml(maskSensitiveValue(bindings.googlePlay))}`,
     `🎵 <b>TikTok:</b> ${escapeHtml(maskSensitiveValue(bindings.tiktok))}`,
-    `📘 <b>Facebook:</b> ${escapeHtml(maskSensitiveValue(bindings.facebook))}`,
+    `${bindProviderEmoji("facebook", "📘")} <b>Facebook:</b> ${escapeHtml(
+      maskSensitiveValue(bindings.facebook)
+    )}`,
     `🍎 <b>Apple:</b> ${escapeHtml(maskSensitiveValue(bindings.apple))}`,
     `🕹 <b>GCID:</b> ${escapeHtml(maskSensitiveValue(bindings.gcid))}`,
     `✈️ <b>Telegram:</b> ${escapeHtml(maskSensitiveValue(bindings.telegram))}`,
@@ -2380,6 +2868,72 @@ function getStatsErrorLines() {
   });
 }
 
+function getCustomEmojiIdText(message = {}) {
+  const targetMessage = message.reply_to_message || message;
+  const customEmojis = getCustomEmojiEntities(targetMessage);
+
+  if (!customEmojis.length) {
+    return [
+      "Premium/custom emoji topilmadi.",
+      "",
+      "ID olish uchun premium emoji bor xabarga reply qilib <code>/emoji</code> yozing.",
+      "Yoki <code>/emoji</code> komandasi bilan birga premium emoji yuboring.",
+    ].join("\n");
+  }
+
+  return [
+    "🧩 <b>Custom emoji ID lar</b>",
+    "",
+    ...customEmojis.flatMap((emoji, index) => [
+      `${index + 1}. ${escapeHtml(emoji.alt || "emoji")} — <code>${escapeHtml(
+        emoji.custom_emoji_id
+      )}</code>`,
+      `<code>${escapeHtml(
+        `<tg-emoji emoji-id="${emoji.custom_emoji_id}">${emoji.alt || "🙂"}</tg-emoji>`
+      )}</code>`,
+    ]),
+  ].join("\n");
+}
+
+function getCustomEmojiEntities(message = {}) {
+  const seen = new Set();
+  const entities = [
+    ...extractCustomEmojiEntities(message.text, message.entities),
+    ...extractCustomEmojiEntities(message.caption, message.caption_entities),
+  ];
+
+  return entities.filter((emoji) => {
+    const key = `${emoji.custom_emoji_id}:${emoji.alt}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function extractCustomEmojiEntities(text, entities = []) {
+  const sourceText = String(text || "");
+
+  return (Array.isArray(entities) ? entities : [])
+    .filter((entity) => entity?.type === "custom_emoji" && entity.custom_emoji_id)
+    .map((entity) => {
+      const offset = Number(entity.offset);
+      const length = Number(entity.length);
+      const alt =
+        Number.isFinite(offset) && Number.isFinite(length) && length > 0
+          ? sourceText.slice(offset, offset + length)
+          : "";
+
+      return {
+        alt,
+        custom_emoji_id: String(entity.custom_emoji_id),
+      };
+    });
+}
+
 function getUnknownText() {
   return [
     "Men siz yuborgan xabarni tushunmadim 🙂",
@@ -2468,6 +3022,19 @@ function mainKeyboard(user = {}) {
       [{ text: BUTTON_ERRORS }, { text: BUTTON_BROADCAST }]
     );
   }
+
+  return {
+    keyboard,
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+function telegramProfileKeyboard(user = {}) {
+  const keyboard = [
+    [{ text: "📱 Kontakt yuborish", request_contact: true }],
+    ...mainKeyboard(user).keyboard,
+  ];
 
   return {
     keyboard,
@@ -2599,7 +3166,10 @@ async function sendOrEditAdminMessage(chatId, messageId, text, replyMarkup) {
 
 async function sendMessage(chatId, text, replyMarkup, options = {}) {
   const originalText = String(text ?? "");
-  const safeText = sanitizeTelegramText(originalText);
+  const outgoingText = shouldEnrichPremiumEmoji(options)
+    ? enrichPremiumEmojis(originalText)
+    : originalText;
+  const safeText = sanitizeTelegramText(outgoingText);
   const payload = {
     chat_id: chatId,
     text: safeText || " ",
@@ -2609,7 +3179,7 @@ async function sendMessage(chatId, text, replyMarkup, options = {}) {
   if (
     Array.isArray(options.entities) &&
     options.entities.length &&
-    safeText === originalText
+    safeText === outgoingText
   ) {
     payload.entities = options.entities;
   } else if (!options.plain) {
@@ -2624,10 +3194,11 @@ async function sendMessage(chatId, text, replyMarkup, options = {}) {
 }
 
 async function editMessageText(chatId, messageId, text, replyMarkup) {
+  const outgoingText = enrichPremiumEmojis(text);
   const payload = {
     chat_id: chatId,
     message_id: messageId,
-    text: sanitizeTelegramText(text) || " ",
+    text: sanitizeTelegramText(outgoingText) || " ",
     parse_mode: "HTML",
     disable_web_page_preview: true,
   };
@@ -2637,6 +3208,53 @@ async function editMessageText(chatId, messageId, text, replyMarkup) {
   }
 
   return telegram("editMessageText", payload);
+}
+
+function shouldEnrichPremiumEmoji(options = {}) {
+  return !options.plain && options.premiumEmoji !== false;
+}
+
+function bindProviderEmoji(provider, fallbackEmoji) {
+  const premiumEmoji = PREMIUM_BIND_PROVIDER_EMOJIS[provider];
+
+  if (!premiumEmoji?.id) {
+    return fallbackEmoji;
+  }
+
+  return telegramEmoji(premiumEmoji.emoji || fallbackEmoji, premiumEmoji.id);
+}
+
+function telegramEmoji(emoji, emojiId) {
+  return `<tg-emoji emoji-id="${emojiId}">${emoji}</tg-emoji>`;
+}
+
+function enrichPremiumEmojis(text) {
+  const sourceText = String(text ?? "");
+
+  if (!sourceText) {
+    return sourceText;
+  }
+
+  const protectedParts = [];
+  const protectedText = sourceText.replace(
+    /<(?:tg-emoji|code|pre)\b[^>]*>.*?<\/(?:tg-emoji|code|pre)>/gis,
+    (match) => {
+      const token = `__PREMIUM_EMOJI_PROTECTED_${protectedParts.length}__`;
+      protectedParts.push(match);
+      return token;
+    }
+  );
+
+  const enrichedText = Object.entries(PREMIUM_EMOJIS).reduce(
+    (value, [emoji, emojiId]) =>
+      value.split(emoji).join(telegramEmoji(emoji, emojiId)),
+    protectedText
+  );
+
+  return protectedParts.reduce(
+    (value, part, index) => value.replace(`__PREMIUM_EMOJI_PROTECTED_${index}__`, part),
+    enrichedText
+  );
 }
 
 async function copyMessage(chatId, fromChatId, messageId) {
@@ -2761,13 +3379,14 @@ function isBindInfoCommand(text) {
     isCommand(text, "info") ||
     isCommand(text, "bind") ||
     isCommand(text, "ulanish") ||
-    isCommand(text, "ulamalar")
+    isCommand(text, "ulamalar") ||
+    isCommand(text, "ulanmalar")
   );
 }
 
 function stripBindInfoCommand(text) {
   return String(text || "")
-    .replace(/^\/(?:info|bind|ulanish|ulamalar)(?:@\w+)?/i, "")
+    .replace(/^\/(?:info|bind|ulanish|ulamalar|ulanmalar)(?:@\w+)?/i, "")
     .trim();
 }
 
@@ -2830,14 +3449,40 @@ function getGroupCommandAddressing(text) {
 
   const normalizedCommand = command.toLowerCase();
 
-  if (!["check", "start", "tg", "user", "profile"].includes(normalizedCommand)) {
+  if (
+    ![
+      "check",
+      "start",
+      "tg",
+      "user",
+      "profile",
+      "info",
+      "bind",
+      "ulanish",
+      "ulamalar",
+      "ulanmalar",
+    ].includes(normalizedCommand)
+  ) {
     return {
       addressed: false,
       input: "",
     };
   }
 
-  if (["check", "tg", "user", "profile"].includes(normalizedCommand) && !username) {
+  if (
+    [
+      "check",
+      "tg",
+      "user",
+      "profile",
+      "info",
+      "bind",
+      "ulanish",
+      "ulamalar",
+      "ulanmalar",
+    ].includes(normalizedCommand) &&
+    !username
+  ) {
     return {
       addressed: true,
       input: text.slice(match[0].length).trim(),
@@ -3136,20 +3781,33 @@ function normalizeBindValue(value) {
   if (typeof value === "object") {
     return normalizeBindValue(
       value.email ??
+        value.mail ??
+        value.account_name ??
+        value.accountName ??
         value.username ??
         value.userName ??
         value.nickname ??
         value.name ??
         value.id ??
+        value.uid ??
+        value.open_id ??
+        value.openId ??
         value.count ??
         value.total ??
         value.value ??
+        value.data ??
         value.bound ??
         value.linked ??
         value.connected ??
         value.status ??
+        value.bind_status ??
+        value.bindStatus ??
         value.is_bound ??
         value.isBound ??
+        value.is_linked ??
+        value.isLinked ??
+        value.is_connected ??
+        value.isConnected ??
         null
     );
   }
@@ -3564,6 +4222,71 @@ function rememberKnownPrivateChat(chatId) {
   });
 }
 
+function normalizeTelegramContact(contact = {}) {
+  const phoneNumber = normalizePhoneNumber(contact.phone_number);
+  const userId = toTelegramChatId(contact.user_id);
+
+  return {
+    phoneNumber,
+    userId,
+    first_name: cleanTextValue(contact.first_name, 128),
+    last_name: cleanTextValue(contact.last_name, 128),
+  };
+}
+
+function createTelegramProfileFromContact(contact = {}) {
+  return {
+    id: contact.userId || "",
+    type: contact.userId ? "private" : "",
+    first_name: contact.first_name || "",
+    last_name: contact.last_name || "",
+    phone_number: contact.phoneNumber || "",
+  };
+}
+
+function rememberPhoneProfile(phoneNumber, profile = {}) {
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  const userId = toTelegramChatId(profile.id || profile.user_id || profile.userId);
+
+  if (!normalizedPhone || !userId) {
+    return;
+  }
+
+  const previous = stats.phoneProfiles.get(normalizedPhone) || {};
+  const now = new Date().toISOString();
+
+  stats.phoneProfiles.set(normalizedPhone, {
+    ...previous,
+    phone_number: normalizedPhone,
+    id: userId,
+    user_id: userId,
+    type: profile.type || previous.type || "private",
+    username: cleanTextValue(profile.username, 64) ?? previous.username ?? null,
+    first_name: cleanTextValue(profile.first_name, 128) ?? previous.first_name ?? null,
+    last_name: cleanTextValue(profile.last_name, 128) ?? previous.last_name ?? null,
+    last_seen_at: now,
+  });
+}
+
+function getPhoneProfile(phoneNumber) {
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  const profile = stats.phoneProfiles.get(normalizedPhone);
+
+  if (!profile?.id) {
+    return null;
+  }
+
+  return {
+    ...profile,
+    phone_number: normalizedPhone,
+  };
+}
+
 async function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
   if (getSupabaseConfigError() || isSupabaseAuthTemporarilyDisabled()) {
     return;
@@ -3584,6 +4307,47 @@ async function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
     recordError("supabase_track_failed", error.message, {
       userId: payload.p_user_id,
       updateType: payload.p_update_type,
+    });
+  }
+}
+
+async function queueSupabasePhoneProfileTrack(contact = {}) {
+  if (getSupabaseConfigError() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  const userId = toPgBigint(contact.userId);
+  const phoneNumber = normalizePhoneNumber(contact.phoneNumber);
+
+  if (!userId || !phoneNumber || userId.startsWith("-")) {
+    return;
+  }
+
+  try {
+    await supabaseRpc(
+      "track_bot_user",
+      {
+        p_user_id: userId,
+        p_chat_id: userId,
+        p_chat_type: "private",
+        p_username: cleanTextValue(contact.username, 64),
+        p_first_name: cleanTextValue(contact.first_name, 128),
+        p_last_name: cleanTextValue(contact.last_name, 128),
+        p_language_code: null,
+        p_is_bot: null,
+        p_update_id: null,
+        p_update_type: null,
+        p_message_text: null,
+        p_phone_number: phoneNumber,
+      },
+      {
+        prefer: "return=minimal",
+      }
+    );
+  } catch (error) {
+    console.error("[SUPABASE_PHONE_TRACK_ERROR]", error);
+    recordError("supabase_phone_track_failed", error.message, {
+      userId,
     });
   }
 }
@@ -3793,6 +4557,53 @@ async function getSupabaseUsersCount() {
   });
 
   return Number.isFinite(result.count) ? result.count : 0;
+}
+
+async function lookupSupabaseUserByPhone(phoneNumber) {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return null;
+  }
+
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  try {
+    const rows = await supabaseRpc("find_bot_user_by_phone", {
+      p_phone_number: normalizedPhone,
+    });
+    const row = Array.isArray(rows) ? rows[0] : null;
+
+    if (!row?.user_id) {
+      return null;
+    }
+
+    return createTelegramProfileFromSupabaseUser(row);
+  } catch (error) {
+    console.error("[SUPABASE_PHONE_LOOKUP_ERROR]", error);
+    recordError("supabase_phone_lookup_failed", error.message);
+    return null;
+  }
+}
+
+function createTelegramProfileFromSupabaseUser(row = {}) {
+  const id = toTelegramChatId(row.user_id);
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    user_id: id,
+    type: row.chat_type || "private",
+    username: row.username || "",
+    first_name: row.first_name || "",
+    last_name: row.last_name || "",
+    phone_number: row.phone_number || "",
+  };
 }
 
 function getRuntimeUsersPage(page = 0) {
@@ -4230,9 +5041,13 @@ module.exports.__private = {
   buildSupabaseTrackPayload,
   detectServerType,
   extractTelegramId,
+  extractTelegramPhoneNumber,
+  enrichPremiumEmojis,
+  formatPhoneNumber,
   getBroadcastChatIds,
   getBroadcastRecipientId,
   getCommandsText,
+  getCustomEmojiIdText,
   getAdminFeedbackText,
   getErrorsText,
   getFailedLookupText,
@@ -4252,6 +5067,9 @@ module.exports.__private = {
   isKeyboardButton,
   isValidTelegramId,
   lookupMlbbBindInfo,
+  lookupTelegramProfileByPhone,
+  maskPhoneNumber,
+  normalizePhoneNumber,
   normalizeLookupResponse,
   normalizeBindInfoResponse,
   parseIdList,

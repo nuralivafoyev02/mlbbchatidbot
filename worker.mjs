@@ -3,6 +3,7 @@ import handler from "./api/bot.js";
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
 };
+const BIND_INFO_COMMAND_RE = /^\/(?:info|bind|ulanish|ulamalar|ulanmalar)(?:@\w+)?(?:\s|$)/i;
 
 export default {
   async fetch(request, env, ctx) {
@@ -141,11 +142,14 @@ function shouldQueueBindInfoUpdate(update) {
     return false;
   }
 
-  if (message?.chat?.type && message.chat.type !== "private") {
+  if (
+    message?.chat?.type &&
+    !["private", "group", "supergroup"].includes(message.chat.type)
+  ) {
     return false;
   }
 
-  if (/^\/(?:info|bind|ulanish|ulamalar)(?:@\w+)?\s+\d/i.test(text)) {
+  if (BIND_INFO_COMMAND_RE.test(text) && hasMlbbIdPair(text)) {
     return true;
   }
 
