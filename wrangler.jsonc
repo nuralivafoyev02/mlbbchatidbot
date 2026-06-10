@@ -34,9 +34,11 @@
     "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
     "ADVANCED_SERVER_RANGES": "30000-39999,90000-99999",
     "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",
-    "MLBB_BIND_INFO_PROVIDER": "zite",
-    "MLBB_BIND_INFO_API_URL": "https://zite.lol/",
+    "MLBB_BIND_INFO_PROVIDER": "bengkel",
+    "MLBB_BIND_INFO_API_URL": "https://alias-scan-noted-ranger.trycloudflare.com/bengkel",
     "MLBB_BIND_INFO_API_METHOD": "POST",
+    "MLBB_BIND_INFO_BENGKEL_BOT_USERNAME": "bengkelmlbb_bot",
+    "MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE": "/info {account_id} {zone_id}",
     "MLBB_BIND_INFO_TIMEOUT_MS": "120000",
     "TELEGRAM_TIMEOUT_MS": "5000"
   }

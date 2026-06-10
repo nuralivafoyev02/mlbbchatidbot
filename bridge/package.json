@@ -1,0 +1,17 @@
+{
+  "name": "mlbb-bengkel-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "session": "node src/generate-session.js",
+    "check": "node --check src/server.js && node --check src/generate-session.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22"
+  }
+}

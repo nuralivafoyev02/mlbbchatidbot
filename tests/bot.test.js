@@ -41,6 +41,7 @@ const {
   mainKeyboard,
   normalizeSecretEnv,
   normalizeBindInfoResponse,
+  parseBengkelBindInfoText,
   parseContentRangeTotal,
   parseIdList,
   parseAdvancedRanges,
@@ -613,6 +614,174 @@ test("bind info lookup classifies provider auth and endpoint errors", async () =
     assert.match(notFoundResult.technicalReason, /HTTP 404/);
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("bengkel bot text response is normalized to linked accounts", () => {
+  const normalized = parseBengkelBindInfoText(
+    [
+      "Bengkel MLBB",
+      "Moonton: owner@example.com",
+      "Facebook = fb-owner",
+      "Google Play - linked",
+      "TikTok: Tidak Ada",
+      "Telegram: @owner",
+      "WhatsApp: +998901234567",
+      "Device Login: Android 2 | iOS 1",
+    ].join("\n")
+  );
+
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.data.bindings.moonton, "owner@example.com");
+  assert.equal(normalized.data.bindings.facebook, "fb-owner");
+  assert.equal(normalized.data.bindings.googlePlay, true);
+  assert.equal(normalized.data.bindings.tiktok, "not linked");
+  assert.equal(normalized.data.bindings.telegram, "@owner");
+  assert.equal(normalized.data.bindings.whatsapp, "+998901234567");
+  assert.equal(normalized.data.deviceLogin.android, "2");
+  assert.equal(normalized.data.deviceLogin.ios, "1");
+
+  const text = getBindInfoResultText({
+    accountId: "1006613098",
+    zoneId: "13019",
+    ...normalized.data,
+  });
+
+  assert.match(text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+  assert.match(text, /🎮 <b>Google Play:<\/b> linked\./);
+  assert.match(text, /🎵 <b>TikTok:<\/b> empty\./);
+  assert.match(text, /✈️ <b>Telegram:<\/b> @o\*+er/);
+  assert.doesNotMatch(text, /998901234567/);
+});
+
+test("bengkel bridge request uses target bot and parses bridge text", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    MLBB_BIND_INFO_PROVIDER: process.env.MLBB_BIND_INFO_PROVIDER,
+    MLBB_BIND_INFO_API_URL: process.env.MLBB_BIND_INFO_API_URL,
+    MLBB_BIND_INFO_API_METHOD: process.env.MLBB_BIND_INFO_API_METHOD,
+    MLBB_BIND_INFO_API_KEY: process.env.MLBB_BIND_INFO_API_KEY,
+    MLBB_BIND_INFO_BENGKEL_BOT_USERNAME:
+      process.env.MLBB_BIND_INFO_BENGKEL_BOT_USERNAME,
+    MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE:
+      process.env.MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE,
+  };
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: String(url), payload });
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        result: {
+          text: [
+            "Moonton: owner@example.com",
+            "Facebook: fb-owner",
+            "Google Play: linked",
+          ].join("\n"),
+        },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.MLBB_BIND_INFO_PROVIDER = "bengkel";
+    process.env.MLBB_BIND_INFO_API_URL = "https://bridge.example.test/bengkel";
+    process.env.MLBB_BIND_INFO_API_METHOD = "POST";
+    process.env.MLBB_BIND_INFO_API_KEY = "bridge-secret";
+    delete process.env.MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+    const result = await freshHandler.__private.lookupMlbbBindInfo(
+      "1006613098",
+      "13019"
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://bridge.example.test/bengkel");
+    assert.deepEqual(calls[0].payload, {
+      bot_username: "bengkelmlbb_bot",
+      message: "/info 1006613098 13019",
+      account_id: "1006613098",
+      zone_id: "13019",
+      x_key: "bridge-secret",
+    });
+    assert.equal(result.data.bindings.moonton, "owner@example.com");
+    assert.equal(result.data.bindings.facebook, "fb-owner");
+    assert.equal(result.data.bindings.googlePlay, true);
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
+
+test("bengkel provider rejects direct Telegram Bot API URL", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    MLBB_BIND_INFO_PROVIDER: process.env.MLBB_BIND_INFO_PROVIDER,
+    MLBB_BIND_INFO_API_URL: process.env.MLBB_BIND_INFO_API_URL,
+    MLBB_BIND_INFO_API_METHOD: process.env.MLBB_BIND_INFO_API_METHOD,
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.MLBB_BIND_INFO_PROVIDER = "bengkel";
+    process.env.MLBB_BIND_INFO_API_URL = "https://api.telegram.org/bot123/sendMessage";
+    process.env.MLBB_BIND_INFO_API_METHOD = "POST";
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+    const result = await freshHandler.__private.lookupMlbbBindInfo(
+      "1006613098",
+      "13019"
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "bengkel_bridge_not_configured");
+    assert.match(result.technicalReason, /bridge HTTP endpointi kerak/);
+  } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
   }
 });
 

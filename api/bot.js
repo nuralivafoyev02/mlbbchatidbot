@@ -56,6 +56,13 @@ const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
 const MLBB_BIND_INFO_PROVIDER = cleanEnv(process.env.MLBB_BIND_INFO_PROVIDER).toLowerCase();
 const MLBB_BIND_INFO_SHOW_DEVICES = isTruthyEnv(process.env.MLBB_BIND_INFO_SHOW_DEVICES);
+const MLBB_BIND_INFO_BENGKEL_BOT_USERNAME =
+  sanitizeOptionalTelegramUsername(
+    process.env.MLBB_BIND_INFO_BENGKEL_BOT_USERNAME || "bengkelmlbb_bot"
+  ) || "bengkelmlbb_bot";
+const MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE =
+  cleanEnv(process.env.MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE) ||
+  "/info {account_id} {zone_id}";
 const MLBB_BIND_INFO_API_KEY = cleanEnv(
   process.env.MLBB_BIND_INFO_API_KEY ||
     process.env.MLBB_STALKER_API_KEY ||
@@ -68,7 +75,11 @@ const MLBB_BIND_INFO_API_URL = cleanEnv(
 );
 const MLBB_BIND_INFO_API_METHOD = normalizeHttpMethod(
   process.env.MLBB_BIND_INFO_API_METHOD ||
-    (MLBB_BIND_INFO_PROVIDER === "zite" || MLBB_BIND_INFO_API_KEY ? "POST" : "GET")
+    (["zite", "bengkel", "bengkelmlbb", "bengkelmlbb_bot"].includes(
+      MLBB_BIND_INFO_PROVIDER
+    ) || MLBB_BIND_INFO_API_KEY
+      ? "POST"
+      : "GET")
 );
 const MLBB_BIND_INFO_API_KEY_FIELD =
   cleanEnv(process.env.MLBB_BIND_INFO_API_KEY_FIELD) || "x_key";
@@ -96,7 +107,9 @@ const MLBB_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
 );
 const MLBB_BIND_INFO_TIMEOUT_MS = parseBoundedNumber(
   process.env.MLBB_BIND_INFO_TIMEOUT_MS,
-  isZiteBindInfoProvider() ? 120000 : MLBB_LOOKUP_TIMEOUT_MS,
+  isZiteBindInfoProvider() || isBengkelBindInfoProvider()
+    ? 120000
+    : MLBB_LOOKUP_TIMEOUT_MS,
   800,
   120000
 );
@@ -940,7 +953,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
 
   void safeSendChatAction(chatId, "typing");
 
-  if (isZiteBindInfoProvider() && !options.skipWait) {
+  if ((isZiteBindInfoProvider() || isBengkelBindInfoProvider()) && !options.skipWait) {
     const waitResponse = await safeSendMessage(chatId, getBindInfoWaitText(), replyMarkup);
     waitMessage = normalizeBindWaitMessage({
       chatId,
@@ -1155,6 +1168,10 @@ async function lookupMlbbAccount(accountId, zoneId) {
 }
 
 async function lookupMlbbBindInfo(accountId, zoneId) {
+  if (isBengkelBindInfoProvider()) {
+    return lookupBengkelMlbbBindInfo(accountId, zoneId);
+  }
+
   if (!MLBB_BIND_INFO_API_URL) {
     return {
       ok: false,
@@ -1228,6 +1245,81 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
       provider: "bind_info_api",
       reason: getFriendlyBindInfoReason({ error }),
       technicalReason: error.message || "Bind info API ishlamadi",
+    };
+  }
+}
+
+async function lookupBengkelMlbbBindInfo(accountId, zoneId) {
+  if (!MLBB_BIND_INFO_API_URL || isTelegramBotApiUrl(MLBB_BIND_INFO_API_URL)) {
+    return {
+      ok: false,
+      provider: "bengkel_bot",
+      reason: "bengkel_bridge_not_configured",
+      technicalReason:
+        "Bengkel provider uchun Telegram userbot/bridge HTTP endpointi kerak. Bot API boshqa botdan javob ola olmaydi.",
+    };
+  }
+
+  try {
+    const request = buildBengkelBindInfoRequest(accountId, zoneId);
+
+    const response = await fetchWithTimeout(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      timeoutMs: MLBB_BIND_INFO_TIMEOUT_MS,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const bodyText = await response.text();
+    const data = contentType.includes("application/json")
+      ? safeJsonParse(bodyText)
+      : safeJsonParse(bodyText) || null;
+
+    if (!response.ok) {
+      const reason = getFriendlyBindInfoReason({
+        status: response.status,
+        contentType,
+        bodyText,
+        data,
+      });
+
+      return {
+        ok: false,
+        provider: "bengkel_bot",
+        reason,
+        technicalReason: `Bengkel bridge HTTP ${response.status}: ${clipText(
+          bodyText || response.statusText,
+          180
+        )}`,
+        status: response.status,
+        data,
+      };
+    }
+
+    const normalized = normalizeBengkelBindInfoResponse(data, bodyText);
+
+    if (!normalized.ok) {
+      return {
+        ok: false,
+        provider: "bengkel_bot",
+        reason: normalized.reason,
+        technicalReason: normalized.reason,
+        data,
+      };
+    }
+
+    return {
+      ok: true,
+      provider: "bengkel_bot",
+      data: normalized.data,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "bengkel_bot",
+      reason: getFriendlyBindInfoReason({ error }),
+      technicalReason: error.message || "Bengkel bridge ishlamadi",
     };
   }
 }
@@ -1339,6 +1431,60 @@ function buildBindInfoRequest(accountId, zoneId) {
     headers,
     body: undefined,
   };
+}
+
+function buildBengkelBindInfoRequest(accountId, zoneId) {
+  const method = MLBB_BIND_INFO_API_METHOD === "POST" ? "POST" : "GET";
+  const url = new URL(MLBB_BIND_INFO_API_URL);
+  const headers = {
+    Accept: "application/json, text/plain",
+    "User-Agent": "MLBB-Server-Detector-Bot/1.0",
+  };
+  const payload = {
+    bot_username: MLBB_BIND_INFO_BENGKEL_BOT_USERNAME,
+    message: formatBengkelBindInfoMessage(accountId, zoneId),
+    account_id: accountId,
+    zone_id: zoneId,
+  };
+
+  if (MLBB_BIND_INFO_API_KEY) {
+    payload[MLBB_BIND_INFO_API_KEY_FIELD] = MLBB_BIND_INFO_API_KEY;
+  }
+
+  if (method === "POST") {
+    return {
+      method,
+      url: url.toString(),
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    };
+  }
+
+  for (const [key, value] of Object.entries(payload)) {
+    setMissingSearchParam(url, key, value);
+  }
+
+  return {
+    method,
+    url: url.toString(),
+    headers,
+    body: undefined,
+  };
+}
+
+function formatBengkelBindInfoMessage(accountId, zoneId) {
+  return MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE
+    .replace(/\{account_id\}/gi, accountId)
+    .replace(/\{player_id\}/gi, accountId)
+    .replace(/\{id\}/gi, accountId)
+    .replace(/\{zone_id\}/gi, zoneId)
+    .replace(/\{server_id\}/gi, zoneId)
+    .replace(/\{zone\}/gi, zoneId)
+    .replace(/\{server\}/gi, zoneId)
+    .trim();
 }
 
 function setMissingSearchParam(url, key, value) {
@@ -1478,6 +1624,278 @@ function normalizeBindInfoResponse(data) {
       },
     },
   };
+}
+
+function normalizeBengkelBindInfoResponse(data, bodyText = "") {
+  const structured = normalizeBindInfoResponse(data);
+
+  if (structured.ok) {
+    return structured;
+  }
+
+  const text = extractBengkelBindInfoText(data) || cleanEnv(bodyText);
+
+  if (!text) {
+    return {
+      ok: false,
+      reason: structured.reason || "Bengkel bridge bo‘sh javob qaytardi",
+    };
+  }
+
+  return parseBengkelBindInfoText(text, structured.reason);
+}
+
+function extractBengkelBindInfoText(value, depth = 0) {
+  if (depth > 4 || value === undefined || value === null) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return cleanEnv(value);
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const text = extractBengkelBindInfoText(item, depth + 1);
+
+      if (text) {
+        return text;
+      }
+    }
+
+    return "";
+  }
+
+  if (typeof value !== "object") {
+    return "";
+  }
+
+  const textKeys = [
+    "text",
+    "message",
+    "reply",
+    "response",
+    "result_text",
+    "resultText",
+    "content",
+    "output",
+    "body",
+  ];
+
+  for (const key of textKeys) {
+    if (!Object.hasOwn(value, key)) {
+      continue;
+    }
+
+    const text = extractBengkelBindInfoText(value[key], depth + 1);
+
+    if (text) {
+      return text;
+    }
+  }
+
+  for (const item of Object.values(value)) {
+    const text = extractBengkelBindInfoText(item, depth + 1);
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function parseBengkelBindInfoText(text, fallbackReason = "") {
+  const normalizedText = normalizeBengkelMessageText(text);
+  const bindings = {};
+  const deviceLogin = {};
+
+  for (const rawLine of normalizedText.split("\n")) {
+    const line = cleanBengkelTextLine(rawLine);
+
+    if (!line) {
+      continue;
+    }
+
+    collectBengkelDeviceLogin(line, deviceLogin);
+
+    const field = splitBengkelField(line);
+
+    if (!field) {
+      continue;
+    }
+
+    const target = mapBengkelBindLabel(field.label);
+
+    if (!target) {
+      continue;
+    }
+
+    if (target.type === "device") {
+      deviceLogin[target.key] = normalizeBengkelDeviceCount(field.value);
+      continue;
+    }
+
+    bindings[target.key] = normalizeBengkelBindTextValue(field.value);
+  }
+
+  if (!Object.keys(bindings).length && !Object.keys(deviceLogin).length) {
+    return {
+      ok: false,
+      reason: fallbackReason || "Bengkel bot javobidan ulanmalar ma’lumoti o‘qilmadi",
+    };
+  }
+
+  return normalizeBindInfoResponse({
+    data: {
+      bindings,
+      connected_device: deviceLogin,
+    },
+  });
+}
+
+function normalizeBengkelMessageText(value) {
+  return String(value || "")
+    .replace(/\r/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\u00A0/g, " ");
+}
+
+function cleanBengkelTextLine(value) {
+  return String(value || "")
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[^\w@+.-]+/, "")
+    .trim();
+}
+
+function splitBengkelField(line) {
+  const match = String(line || "").match(/^(.{1,80}?)(?:\s*[:：=]\s*|\s+-\s+)(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    label: match[1],
+    value: match[2],
+  };
+}
+
+function mapBengkelBindLabel(label) {
+  const normalized = String(label || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/\b(?:game\s*center|gcid)\b/.test(normalized)) {
+    return { type: "binding", key: "gcid" };
+  }
+
+  if (/\b(?:google|gplay|googleplay|gmail)\b/.test(normalized)) {
+    return { type: "binding", key: "googlePlay" };
+  }
+
+  if (/\b(?:moonton|email)\b/.test(normalized)) {
+    return { type: "binding", key: "moonton" };
+  }
+
+  if (/\b(?:facebook|fb)\b/.test(normalized)) {
+    return { type: "binding", key: "facebook" };
+  }
+
+  if (/\b(?:tiktok|tik\s*tok|tt)\b/.test(normalized)) {
+    return { type: "binding", key: "tiktok" };
+  }
+
+  if (/\b(?:apple|appleid)\b/.test(normalized)) {
+    return { type: "binding", key: "apple" };
+  }
+
+  if (/\b(?:telegram|tg)\b/.test(normalized)) {
+    return { type: "binding", key: "telegram" };
+  }
+
+  if (/\b(?:whatsapp|wa)\b/.test(normalized)) {
+    return { type: "binding", key: "whatsapp" };
+  }
+
+  if (/\b(?:vk|vkontakte)\b/.test(normalized)) {
+    return { type: "binding", key: "vk" };
+  }
+
+  if (/\bandroid\b/.test(normalized)) {
+    return { type: "device", key: "android" };
+  }
+
+  if (/\b(?:ios|iphone)\b/.test(normalized)) {
+    return { type: "device", key: "ios" };
+  }
+
+  return null;
+}
+
+function normalizeBengkelBindTextValue(value) {
+  const text = cleanBengkelTextLine(value)
+    .replace(/^["':=\-–—]+|["']+$/g, "")
+    .trim();
+  const lowered = text.toLowerCase();
+
+  if (!text) {
+    return null;
+  }
+
+  if (
+    /^(?:yes|true|linked|bound|connected|terhubung|ada|aktif)$/i.test(text)
+  ) {
+    return true;
+  }
+
+  if (
+    /^(?:no|false|empty|none|null|-|kosong|tidak ada|belum bind|belum linked)$/i.test(
+      text
+    ) ||
+    /(?:not linked|not bound|not bind|unlinked|unbound|disconnected|tidak terhubung)/i.test(
+      lowered
+    )
+  ) {
+    return "not linked";
+  }
+
+  return text;
+}
+
+function normalizeBengkelDeviceCount(value) {
+  const text = cleanBengkelTextLine(value);
+  const number = text.match(/\d+/)?.[0];
+
+  if (number) {
+    return number;
+  }
+
+  return normalizeBengkelBindTextValue(text);
+}
+
+function collectBengkelDeviceLogin(line, deviceLogin = {}) {
+  const text = String(line || "");
+  const android = text.match(/\bandroid\b[^\dA-Za-z]{0,20}(\d+|yes|true|linked|ada)/i);
+  const ios = text.match(/\b(?:ios|iphone)\b[^\dA-Za-z]{0,20}(\d+|yes|true|linked|ada)/i);
+
+  if (android) {
+    deviceLogin.android = normalizeBengkelDeviceCount(android[1]);
+  }
+
+  if (ios) {
+    deviceLogin.ios = normalizeBengkelDeviceCount(ios[1]);
+  }
+
+  return deviceLogin;
 }
 
 function normalizeNamedBindCollection(source = {}) {
@@ -2494,6 +2912,20 @@ function getInvalidBindInfoInputText() {
 }
 
 function getBindInfoFailedText(reason = "") {
+  if (reason === "bengkel_bridge_not_configured") {
+    return [
+      "Bengkel bot orqali ulanmalarni tekshirish uchun bridge endpoint sozlanmagan.",
+      "Adminlarga xatolik yozib qo‘yildi, sozlama yangilangandan keyin qayta urinib ko‘ring.",
+    ].join("\n");
+  }
+
+  if (/Bengkel bot javobidan ulanmalar/i.test(reason)) {
+    return [
+      "Bengkel bot javobidan ulanmalar ma’lumotini o‘qib bo‘lmadi.",
+      "Iltimos, ID va Server/Zone ID ni tekshirib qayta yuboring.",
+    ].join("\n");
+  }
+
   if (/ulanmalar ma’lumotini qaytarmadi|ulanmalar ma'lumotini qaytarmadi/i.test(reason)) {
     return [
       "Ulanmalar ma’lumotini olish imkoni bo‘lmadi.",
@@ -3837,8 +4269,15 @@ function isEmptyBindValue(value) {
       "not_linked",
       "not bound",
       "not_bound",
+      "not bind",
+      "unlinked",
       "unbound",
       "disconnected",
+      "tidak ada",
+      "tidak terhubung",
+      "belum bind",
+      "belum linked",
+      "kosong",
       "yo‘q",
       "yo'q",
     ].includes(text)
@@ -3864,7 +4303,7 @@ function maskSensitiveValue(value) {
     return "linked.";
   }
 
-  if (text.includes("@")) {
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(text)) {
     return maskEmailValue(text);
   }
 
@@ -4937,6 +5376,16 @@ function isZiteBindInfoProvider() {
   );
 }
 
+function isBengkelBindInfoProvider() {
+  return ["bengkel", "bengkelmlbb", "bengkelmlbb_bot"].includes(
+    MLBB_BIND_INFO_PROVIDER
+  );
+}
+
+function isTelegramBotApiUrl(value) {
+  return /^https?:\/\/api\.telegram\.org\/bot/i.test(cleanEnv(value));
+}
+
 function createBroadcastId() {
   return crypto.randomBytes(8).toString("hex");
 }
@@ -5036,6 +5485,7 @@ function sanitizeTelegramText(value) {
 }
 
 module.exports.__private = {
+  buildBengkelBindInfoRequest,
   buildBindInfoRequest,
   broadcastMessage,
   buildSupabaseTrackPayload,
@@ -5069,9 +5519,11 @@ module.exports.__private = {
   lookupMlbbBindInfo,
   lookupTelegramProfileByPhone,
   maskPhoneNumber,
+  normalizeBengkelBindInfoResponse,
   normalizePhoneNumber,
   normalizeLookupResponse,
   normalizeBindInfoResponse,
+  parseBengkelBindInfoText,
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
