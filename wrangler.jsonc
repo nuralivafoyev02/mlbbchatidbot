@@ -35,7 +35,7 @@
     "ADVANCED_SERVER_RANGES": "30000-39999,90000-99999",
     "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",
     "MLBB_BIND_INFO_PROVIDER": "bengkel",
-    "MLBB_BIND_INFO_API_URL": "https://alias-scan-noted-ranger.trycloudflare.com/bengkel",
+    "MLBB_BIND_INFO_API_URL": "https://mlbbchatidbot.vercel.app/api/bengkel",
     "MLBB_BIND_INFO_API_METHOD": "POST",
     "MLBB_BIND_INFO_BENGKEL_BOT_USERNAME": "bengkelmlbb_bot",
     "MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE": "/info {account_id} {zone_id}",

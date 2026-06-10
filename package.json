@@ -11,5 +11,7 @@
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {}
+  "dependencies": {
+    "telegram": "^2.26.22"
+  }
 }
