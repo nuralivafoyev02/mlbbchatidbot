@@ -951,6 +951,25 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
     return;
   }
 
+  let remainingLimit = null;
+  if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+    try {
+      const limitResult = await supabaseRpc("check_and_consume_bind_limit", {
+        p_user_id: toPgBigint(user.id),
+        p_limit: 3
+      });
+      if (limitResult && limitResult.allowed === false) {
+        await sendMessage(chatId, getBindInfoLimitReachedText(), replyMarkup);
+        return;
+      }
+      if (limitResult && typeof limitResult.remaining === "number") {
+        remainingLimit = limitResult.remaining;
+      }
+    } catch (error) {
+      console.error("[BIND_LIMIT_CHECK_ERROR]", error);
+    }
+  }
+
   void safeSendChatAction(chatId, "typing");
 
   if ((isZiteBindInfoProvider() || isBengkelBindInfoProvider()) && !options.skipWait) {
@@ -981,7 +1000,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
       accountId: parsed.accountId,
       zoneId: parsed.zoneId,
       ...bindInfo.data,
-    }),
+    }, remainingLimit),
     replyMarkup
   );
   await safeDeleteBindWaitMessage(chatId, waitMessage);
@@ -2934,6 +2953,16 @@ function getBindInfoPromptText() {
   ].join("\n");
 }
 
+function getBindInfoLimitReachedText() {
+  return [
+    "⛔️ <b>Kunlik limitga yetdingiz!</b>",
+    "",
+    "Ulanmalarni tekshirish xizmatidan oddiy foydalanuvchilar kuniga faqat <b>3 marta</b> foydalanishi mumkin. Bu cheklov tizim zo'riqishining oldini olish uchun kiritilgan.",
+    "",
+    "Iltimos, ertaga (soat 00:00 dan keyin) qayta urinib ko'ring."
+  ].join("\n");
+}
+
 function getInvalidBindInfoInputText() {
   return "Ulanmalar topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.";
 }
@@ -3008,13 +3037,13 @@ function getBindInfoWaitText() {
   ].join("\n");
 }
 
-function getBindInfoResultText(result = {}) {
+function getBindInfoResultText(result = {}, remainingLimit = null) {
   const bindings = result.bindings || {};
   const deviceLogin = result.deviceLogin || {};
   const hasDeviceLogin = MLBB_BIND_INFO_SHOW_DEVICES && hasDeviceLoginData(deviceLogin);
   const deviceLines = hasDeviceLogin ? getDeviceLoginResultLines(deviceLogin) : [];
 
-  return [
+  const lines = [
     "🔗 <b>Ulanmalar</b>",
     "",
     `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
@@ -3031,9 +3060,14 @@ function getBindInfoResultText(result = {}) {
     `✈️ <b>Telegram:</b> ${escapeHtml(maskSensitiveValue(bindings.telegram))}`,
     `🟢 <b>WhatsApp:</b> ${escapeHtml(maskSensitiveValue(bindings.whatsapp))}`,
     ...deviceLines,
-  ]
-    .filter((line, index, lines) => line || lines[index + 1])
-    .join("\n");
+  ];
+
+  if (remainingLimit !== null) {
+    lines.push("");
+    lines.push(`<i>⚠️ Bugungi urinishlar qoldig'i: ${remainingLimit}/3 ta</i>`);
+  }
+
+  return lines.filter((line, index, arr) => line || arr[index + 1]).join("\n");
 }
 
 function getFeedbackPromptText() {
