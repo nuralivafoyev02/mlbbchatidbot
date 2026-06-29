@@ -290,6 +290,21 @@ async function handleMessage(message, updateMeta = {}) {
       const bindInput = stripBindInfoCommand(addressedText);
 
       if (!bindInput) {
+        if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+          try {
+            const limitResult = await supabaseRpc("check_bind_limit_only", {
+              p_user_id: toPgBigint(user.id),
+              p_limit: 10
+            });
+            if (limitResult && limitResult.allowed === false) {
+              await sendMessage(chatId, getBindInfoLimitReachedText(), null);
+              return;
+            }
+          } catch (error) {
+            console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
+          }
+        }
+
         await sendMessage(chatId, getBindInfoPromptText(), null);
         return;
       }
@@ -369,6 +384,45 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isCommand(text, "ulanmalar")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+
+    const args = text.split(/\s+/);
+    if (args.length !== 3) {
+      await sendMessage(chatId, "<b>Noto'g'ri format!</b>\n\nTo'g'ri foydalanish: /ulanmalar [tgid] [limit]", mainKeyboard(user));
+      return;
+    }
+
+    const targetTgId = parseInt(args[1], 10);
+    const newLimit = parseInt(args[2], 10);
+
+    if (isNaN(targetTgId) || isNaN(newLimit) || newLimit < 0) {
+      await sendMessage(chatId, "<b>Xato!</b> ID va limit faqat musbat sonlardan iborat bo'lishi kerak.", mainKeyboard(user));
+      return;
+    }
+
+    try {
+      const res = await supabaseRpc("set_custom_bind_limit", {
+        p_target_user_id: toPgBigint(targetTgId),
+        p_new_limit: newLimit
+      });
+
+      if (res && res.ok) {
+        await sendMessage(chatId, `Muvaffaqiyatli! Foydalanuvchi (${targetTgId}) limiti <b>${newLimit}</b> ga o'zgartirildi ✅`, mainKeyboard(user));
+        await safeSendMessage(targetTgId, `Sizning ulanmalarni tekshirish limitingiz <b>${newLimit}</b> ga oshirildi ✅`, null);
+      } else {
+        await sendMessage(chatId, "Bazada xatolik yuz berdi.", mainKeyboard(user));
+      }
+    } catch (error) {
+      console.error("[SET_CUSTOM_LIMIT_ERROR]", error);
+      await sendMessage(chatId, "Serverda xatolik yuz berdi.", mainKeyboard(user));
+    }
+    return;
+  }
+
   if (isCommand(text, "errors") || isCommand(text, "xatoliklar")) {
     if (!isAdmin(user.id)) {
       await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
@@ -431,13 +485,29 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isBindInfoCommand(text)) {
     const input = stripBindInfoCommand(text);
-    rememberUserMode(user.id, "bind_info");
 
     if (!input) {
+      if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+        try {
+          const limitResult = await supabaseRpc("check_bind_limit_only", {
+            p_user_id: toPgBigint(user.id),
+            p_limit: 10
+          });
+          if (limitResult && limitResult.allowed === false) {
+            await sendMessage(chatId, getBindInfoLimitReachedText(), mainKeyboard(user));
+            return;
+          }
+        } catch (error) {
+          console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
+        }
+      }
+
+      rememberUserMode(user.id, "bind_info");
       await sendMessage(chatId, getBindInfoPromptText(), mainKeyboard(user));
       return;
     }
 
+    rememberUserMode(user.id, "bind_info");
     await handleBindInfoRequest(chatId, input, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
@@ -462,7 +532,7 @@ async function handleMessage(message, updateMeta = {}) {
       try {
         const limitResult = await supabaseRpc("check_bind_limit_only", {
           p_user_id: toPgBigint(user.id),
-          p_limit: 3
+          p_limit: 10
         });
         if (limitResult && limitResult.allowed === false) {
           await sendMessage(chatId, getBindInfoLimitReachedText(), mainKeyboard(user));
@@ -963,22 +1033,24 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
 
   if (!parsed.ok) {
     await sendMessage(chatId, getInvalidBindInfoInputText(), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
     return;
   }
 
-  let remainingLimit = null;
+  let limitData = null;
   if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
     try {
       const limitResult = await supabaseRpc("check_and_consume_bind_limit", {
         p_user_id: toPgBigint(user.id),
-        p_limit: 3
+        p_limit: 10
       });
       if (limitResult && limitResult.allowed === false) {
+        await safeDeleteBindWaitMessage(chatId, waitMessage);
         await sendMessage(chatId, getBindInfoLimitReachedText(), replyMarkup);
         return;
       }
       if (limitResult && typeof limitResult.remaining === "number") {
-        remainingLimit = limitResult.remaining;
+        limitData = limitResult;
       }
     } catch (error) {
       console.error("[BIND_LIMIT_CHECK_ERROR]", error);
@@ -1015,7 +1087,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
       accountId: parsed.accountId,
       zoneId: parsed.zoneId,
       ...bindInfo.data,
-    }, remainingLimit),
+    }, limitData),
     replyMarkup
   );
   await safeDeleteBindWaitMessage(chatId, waitMessage);
@@ -2972,9 +3044,9 @@ function getBindInfoLimitReachedText() {
   return [
     "⛔️ <b>Kunlik limitga yetdingiz!</b>",
     "",
-    "Ulanmalarni tekshirish xizmatidan oddiy foydalanuvchilar kuniga faqat <b>3 marta</b> foydalanishi mumkin. Bu cheklov tizim zo'riqishining oldini olish uchun kiritilgan.",
-    "",
-    "Iltimos, ertaga (soat 00:00 dan keyin) qayta urinib ko'ring."
+    "Ulanmalarni tekshirish xizmatidan kuniga faqat <b>10 marta</b> foydalanishi mumkin.",
+    "@obitomlb yoki @vafoyev_n ga murojaat qilsangiz kunlik limitingizni uzaytirib berishi mumkin.",
+    "Iltimos, ertaga yoki soat 00:00 dan keyin qayta urinib ko'ring."
   ].join("\n");
 }
 
@@ -2985,7 +3057,7 @@ function getInvalidBindInfoInputText() {
 function getBindInfoFailedText(reason = "") {
   if (reason === "bengkel_bridge_not_configured") {
     return [
-      "Bengkel bot orqali ulanmalarni tekshirish uchun bridge endpoint sozlanmagan.",
+      "Provider orqali ulanmalarni tekshirish uchun bridge endpoint sozlanmagan.",
       "Adminlarga xatolik yozib qo‘yildi, sozlama yangilangandan keyin qayta urinib ko‘ring.",
     ].join("\n");
   }
@@ -3052,7 +3124,7 @@ function getBindInfoWaitText() {
   ].join("\n");
 }
 
-function getBindInfoResultText(result = {}, remainingLimit = null) {
+function getBindInfoResultText(result = {}, limitData = null) {
   const bindings = result.bindings || {};
   const deviceLogin = result.deviceLogin || {};
   const hasDeviceLogin = MLBB_BIND_INFO_SHOW_DEVICES && hasDeviceLoginData(deviceLogin);
@@ -3077,9 +3149,11 @@ function getBindInfoResultText(result = {}, remainingLimit = null) {
     ...deviceLines,
   ];
 
-  if (remainingLimit !== null) {
+  if (limitData !== null) {
+    const remaining = limitData.remaining;
+    const total = limitData.total_limit || 10;
     lines.push("");
-    lines.push(`<i>⚠️ Bugungi urinishlar qoldig'i: ${remainingLimit}/3 ta</i>`);
+    lines.push(`<i>⚠️ Bugungi tekshirishlar qoldig'i: ${remaining}/${total} ta</i>`);
   }
 
   return lines.filter((line, index, arr) => line || arr[index + 1]).join("\n");
