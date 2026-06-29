@@ -458,6 +458,21 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   if (isKeyboardButton(text, BUTTON_BIND_INFO)) {
+    if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+      try {
+        const limitResult = await supabaseRpc("check_bind_limit_only", {
+          p_user_id: toPgBigint(user.id),
+          p_limit: 3
+        });
+        if (limitResult && limitResult.allowed === false) {
+          await sendMessage(chatId, getBindInfoLimitReachedText(), mainKeyboard(user));
+          return;
+        }
+      } catch (error) {
+        console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
+      }
+    }
+
     rememberUserMode(user.id, "bind_info");
     await sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply());
     return;
