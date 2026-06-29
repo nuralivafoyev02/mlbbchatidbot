@@ -384,7 +384,7 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isCommand(text, "ulanmalar")) {
+  if (isCommand(text, "limit")) {
     if (!isAdmin(user.id)) {
       await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
       return;
@@ -392,7 +392,7 @@ async function handleMessage(message, updateMeta = {}) {
 
     const args = text.split(/\s+/);
     if (args.length !== 3) {
-      await sendMessage(chatId, "<b>Noto'g'ri format!</b>\n\nTo'g'ri foydalanish: /ulanmalar [tgid] [limit]", mainKeyboard(user));
+      await sendMessage(chatId, "<b>Noto'g'ri format!</b>\n\nTo'g'ri foydalanish: /limit [tgid] [miqdor]", mainKeyboard(user));
       return;
     }
 
