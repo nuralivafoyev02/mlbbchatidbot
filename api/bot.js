@@ -412,7 +412,7 @@ async function handleMessage(message, updateMeta = {}) {
 
       if (res && res.ok) {
         await sendMessage(chatId, `Muvaffaqiyatli! Foydalanuvchi (${targetTgId}) limiti <b>${newLimit}</b> ga o'zgartirildi ✅`, mainKeyboard(user));
-        await safeSendMessage(targetTgId, `Sizning ulanmalarni tekshirish limitingiz <b>${newLimit}</b> ga oshirildi ✅`, null);
+        await safeSendMessage(targetTgId, `Tabriklaymiz! Sizning ulanmalarni tekshirish limitingiz <b>${newLimit}</b> ta ga o'zgartirildi ✅`, null);
       } else {
         await sendMessage(chatId, "Bazada xatolik yuz berdi.", mainKeyboard(user));
       }
