@@ -55,7 +55,7 @@ const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze({
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
 const MLBB_BIND_INFO_PROVIDER = cleanEnv(process.env.MLBB_BIND_INFO_PROVIDER).toLowerCase();
-const MLBB_BIND_INFO_SHOW_DEVICES = isTruthyEnv(process.env.MLBB_BIND_INFO_SHOW_DEVICES);
+const MLBB_BIND_INFO_SHOW_DEVICES = !isFalseyEnv(process.env.MLBB_BIND_INFO_SHOW_DEVICES);
 const MLBB_BIND_INFO_BENGKEL_BOT_USERNAME =
   sanitizeOptionalTelegramUsername(
     process.env.MLBB_BIND_INFO_BENGKEL_BOT_USERNAME || "bengkelmlbb_bot"
@@ -1619,8 +1619,35 @@ function normalizeBindInfoResponse(data) {
         whatsapp: pickFirstValue(bindingsRoot, ["whatsapp", "WhatsApp", "wa"]),
       },
       deviceLogin: {
-        android: pickFirstValue(deviceRoot, ["android", "Android", "android_count"]),
-        ios: pickFirstValue(deviceRoot, ["ios", "iOS", "IOS", "iphone", "ios_count"]),
+        android: pickFirstValue(deviceRoot, [
+          "android",
+          "Android",
+          "android_count",
+          "androidCount",
+          "android_device",
+          "androidDevice",
+          "android_devices",
+          "androidDevices",
+          "android_login",
+          "androidLogin",
+        ]),
+        ios: pickFirstValue(deviceRoot, [
+          "ios",
+          "iOS",
+          "IOS",
+          "iphone",
+          "iPhone",
+          "ios_count",
+          "iosCount",
+          "iphone_count",
+          "iphoneCount",
+          "ios_device",
+          "iosDevice",
+          "ios_devices",
+          "iosDevices",
+          "ios_login",
+          "iosLogin",
+        ]),
       },
     },
   };
@@ -2985,6 +3012,7 @@ function getBindInfoResultText(result = {}) {
   const bindings = result.bindings || {};
   const deviceLogin = result.deviceLogin || {};
   const hasDeviceLogin = MLBB_BIND_INFO_SHOW_DEVICES && hasDeviceLoginData(deviceLogin);
+  const deviceLines = hasDeviceLogin ? getDeviceLoginResultLines(deviceLogin) : [];
 
   return [
     "🔗 <b>Ulanmalar</b>",
@@ -3002,10 +3030,7 @@ function getBindInfoResultText(result = {}) {
     `🕹 <b>GCID:</b> ${escapeHtml(maskSensitiveValue(bindings.gcid))}`,
     `✈️ <b>Telegram:</b> ${escapeHtml(maskSensitiveValue(bindings.telegram))}`,
     `🟢 <b>WhatsApp:</b> ${escapeHtml(maskSensitiveValue(bindings.whatsapp))}`,
-    "",
-    hasDeviceLogin
-      ? `📱 <b>Device Login</b> 🤖 Android: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.android))}</b> | 🍎 iOS: <b>${escapeHtml(formatDeviceLoginCount(deviceLogin.ios))}</b>`
-      : "",
+    ...deviceLines,
   ]
     .filter((line, index, lines) => line || lines[index + 1])
     .join("\n");
@@ -4353,6 +4378,46 @@ function formatDeviceLoginCount(value) {
   return maskSensitiveValue(value);
 }
 
+function getDeviceLoginResultLines(deviceLogin = {}) {
+  const total = formatDeviceLoginTotal(deviceLogin);
+
+  return [
+    "",
+    "📱 <b>Device Login</b>",
+    `🤖 <b>Android:</b> ${escapeHtml(formatDeviceLoginCount(deviceLogin.android))}`,
+    `🍎 <b>iOS:</b> ${escapeHtml(formatDeviceLoginCount(deviceLogin.ios))}`,
+    total ? `📊 <b>Jami:</b> ${escapeHtml(total)}` : "",
+  ];
+}
+
+function formatDeviceLoginTotal(deviceLogin = {}) {
+  const counts = [deviceLogin.android, deviceLogin.ios].map(getDeviceLoginCountNumber);
+
+  if (counts.some((count) => count === null)) {
+    return "";
+  }
+
+  return String(counts.reduce((total, count) => total + count, 0));
+}
+
+function getDeviceLoginCountNumber(value) {
+  if (isEmptyBindValue(value)) {
+    return 0;
+  }
+
+  if (value === true) {
+    return 1;
+  }
+
+  const number = Number(value);
+
+  if (Number.isFinite(number) && number >= 0) {
+    return Math.trunc(number);
+  }
+
+  return null;
+}
+
 function hasDeviceLoginData(deviceLogin = {}) {
   return [deviceLogin.android, deviceLogin.ios].some((value) => {
     if (value === undefined || value === null) {
@@ -4399,8 +4464,8 @@ function cleanEnv(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function isTruthyEnv(value) {
-  return /^(?:1|true|yes|on)$/i.test(cleanEnv(value));
+function isFalseyEnv(value) {
+  return /^(?:0|false|no|off)$/i.test(cleanEnv(value));
 }
 
 function normalizeHttpMethod(value) {

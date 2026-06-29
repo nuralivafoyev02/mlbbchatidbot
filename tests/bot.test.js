@@ -412,7 +412,10 @@ test("bind info result masks all linked identifiers", () => {
   assert.match(text, /🕹 <b>GCID:<\/b> ga\*+id/);
   assert.match(text, /✈️ <b>Telegram:<\/b> linked\./);
   assert.match(text, /🟢 <b>WhatsApp:<\/b> 99\*+67/);
-  assert.doesNotMatch(text, /Device Login|Android|iOS/);
+  assert.match(text, /📱 <b>Device Login<\/b>/);
+  assert.match(text, /🤖 <b>Android:<\/b> 0/);
+  assert.match(text, /🍎 <b>iOS:<\/b> 1/);
+  assert.match(text, /📊 <b>Jami:<\/b> 1/);
   assert.doesNotMatch(text, /ilovemysecureemail|private-tiktok-id|TestFacebookName|998901234567/);
 });
 
@@ -651,6 +654,9 @@ test("bengkel bot text response is normalized to linked accounts", () => {
   assert.match(text, /🎮 <b>Google Play:<\/b> linked\./);
   assert.match(text, /🎵 <b>TikTok:<\/b> empty\./);
   assert.match(text, /✈️ <b>Telegram:<\/b> @o\*+er/);
+  assert.match(text, /🤖 <b>Android:<\/b> 2/);
+  assert.match(text, /🍎 <b>iOS:<\/b> 1/);
+  assert.match(text, /📊 <b>Jami:<\/b> 3/);
   assert.doesNotMatch(text, /998901234567/);
 });
 
@@ -865,7 +871,10 @@ test("bind info button mode returns masked linked accounts", async () => {
     assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
     assert.match(finalMessage, /<b>Facebook:<\/b> fb\*+er/);
     assert.match(finalMessage, /✈️ <b>Telegram:<\/b> linked\./);
-    assert.doesNotMatch(finalMessage, /Device Login|Android|iOS/);
+    assert.match(finalMessage, /<b>Device Login<\/b>/);
+    assert.match(finalMessage, /🤖 <b>Android:<\/b> 2/);
+    assert.match(finalMessage, /🍎 <b>iOS:<\/b> 1/);
+    assert.match(finalMessage, /📊 <b>Jami:<\/b> 3/);
     assert.doesNotMatch(finalMessage, /owner@example\.com|fb-owner/);
   } finally {
     global.fetch = originalFetch;
@@ -1024,6 +1033,9 @@ test("/bind command returns masked linked accounts", async () => {
     assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
     assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
     assert.match(finalMessage, /<b>Facebook:<\/b> fb\*+er/);
+    assert.match(finalMessage, /🤖 <b>Android:<\/b> 1/);
+    assert.match(finalMessage, /🍎 <b>iOS:<\/b> 0/);
+    assert.match(finalMessage, /📊 <b>Jami:<\/b> 1/);
   } finally {
     global.fetch = originalFetch;
   }
