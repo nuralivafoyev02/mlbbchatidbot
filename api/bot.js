@@ -24,6 +24,7 @@ const BUTTON_COMMANDS = "📋 Buyruqlar";
 const BUTTON_HELP = "ℹ️ Yordam";
 const BUTTON_MENU = "🏠 Menyu";
 const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
+const BUTTON_MANDATORY_SETUP = "⚙️ Majburiylikni sozlash";
 const USERS_PAGE_SIZE = 10;
 const BROADCAST_USERS_PAGE_SIZE = 1000;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -139,7 +140,15 @@ if (!global.__MLBB_BOT_STATS__) {
   };
 }
 
+if (!global.__MLBB_BOT_SETTINGS__) {
+  global.__MLBB_BOT_SETTINGS__ = {
+    mandatoryChannel: null,
+    lastFetchedAt: 0,
+  };
+}
+
 const stats = global.__MLBB_BOT_STATS__;
+const botSettings = global.__MLBB_BOT_SETTINGS__;
 stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
@@ -256,7 +265,37 @@ async function processUpdate(update) {
     return;
   }
 }
+async function checkUserMembership(chatId, userId) {
+  try {
+    const res = await telegram("getChatMember", { chat_id: chatId, user_id: userId });
+    const status = res.result?.status;
+    return ["creator", "administrator", "member", "restricted"].includes(status);
+  } catch (err) {
+    console.error("[CHECK_MEMBERSHIP_ERROR]", err.message);
+    return false;
+  }
+}
 
+async function enforceMandatoryMembership(chatId, user) {
+  if (isAdmin(user.id)) return true;
+  
+  const mandatoryChannel = await getMandatoryChannel();
+  if (!mandatoryChannel) return true;
+
+  const isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+  if (isMember) return true;
+
+  const text = `⚠️ <b>Botdan foydalanish uchun guruhga qo'shilishingiz majburiy!</b>\n\nIltimos, quyidagi guruhga qo'shiling va botdan to'liq foydalanish imkoniga ega bo'ling.`;
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: "📣 A'zo bo'lish", url: mandatoryChannel.invite_link || `https://t.me/${mandatoryChannel.username}` }],
+      [{ text: "✅ Qo'shilib keldim", callback_data: "check_membership" }]
+    ]
+  };
+
+  await sendMessage(chatId, text, keyboard);
+  return false;
+}
 async function handleMessage(message, updateMeta = {}) {
   if (!message?.chat?.id) {
     return;
@@ -271,6 +310,9 @@ async function handleMessage(message, updateMeta = {}) {
   trackUser(user, message.chat, {
     ...updateMeta,
   });
+
+  const isAllowed = await enforceMandatoryMembership(chatId, user);
+  if (!isAllowed) return;
 
   const checkUserMatch = text.match(/(?:@(\w+)|\b(\d+)\b)\s+user botdan foydalanganmi\?/i);
   if (checkUserMatch) {
@@ -646,6 +688,53 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isCommand(text, "unset_mandatory")) {
+    if (!isAdmin(user.id)) return;
+    await setMandatoryChannel(null);
+    await sendMessage(chatId, "✅ Majburiy guruh o'chirildi.", mainKeyboard(user));
+    return;
+  }
+
+  if (isKeyboardButton(text, BUTTON_MANDATORY_SETUP)) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      return;
+    }
+    rememberUserMode(user.id, "mandatory_setup");
+    const current = await getMandatoryChannel();
+    let msg = "<b>⚙️ Majburiy guruh sozlamalari</b>\n\n";
+    if (current) {
+      msg += `Hozirgi guruh: <b>${current.title}</b> (${current.id})\n\n`;
+      msg += "Yangi guruhni o'rnatish uchun guruh ID sini (yoki @username) yuboring. O'chirish uchun /unset_mandatory buyrug'ini bosing.";
+    } else {
+      msg += "Hozirda hech qanday guruh majburiy emas.\n\nGuruhni o'rnatish uchun uning ID sini (yoki @username) yuboring. Eslatma: Bot o'sha guruh yoki kanalda admin bo'lishi shart!";
+    }
+    await sendMessage(chatId, msg, mainKeyboard(user));
+    return;
+  }
+
+  if (getUserMode(user.id) === "mandatory_setup") {
+    if (!isAdmin(user.id)) return;
+    rememberUserMode(user.id, null);
+    try {
+      const res = await telegram("getChat", { chat_id: text });
+      const chat = res.result;
+      const confirmText = `<b>${chat.title}</b> (${chat.id}) guruhini majburiy qilib belgilansinmi?`;
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: "✅ Ha", callback_data: `confirm_mandatory:${chat.id}` },
+            { text: "❌ Yo'q", callback_data: "cancel_mandatory" }
+          ]
+        ]
+      };
+      await sendMessage(chatId, confirmText, keyboard);
+    } catch (err) {
+      await sendMessage(chatId, `❌ Guruh topilmadi yoki bot u yerda admin emas:\n<code>${err.message}</code>`, mainKeyboard(user));
+    }
+    return;
+  }
+
   if (isBindInfoPromptReply(message)) {
     rememberUserMode(user.id, "bind_info");
     await handleBindInfoRequest(chatId, text, user, {
@@ -703,9 +792,61 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
     ...updateMeta,
   });
 
+  if (data === "check_membership") {
+    const mandatoryChannel = await getMandatoryChannel();
+    if (mandatoryChannel) {
+      const isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+      if (isMember) {
+        await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
+        await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "✅ A'zolik tasdiqlandi!" });
+        await sendMessage(chatId, "✅ Guruhga a'zo bo'lganingiz tasdiqlandi. Botdan bemalol foydalanishingiz mumkin!", mainKeyboard(user));
+        await sendMessage(chatId, getStartText(user), mainKeyboard(user));
+      } else {
+        await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "❌ Siz hali guruhga a'zo bo'lmadingiz! Iltimos guruhga qo'shiling.", show_alert: true });
+      }
+    } else {
+       await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
+       await answerCallbackQuery(callbackQuery.id);
+    }
+    return;
+  }
+
+  const isAllowed = await enforceMandatoryMembership(chatId, user);
+  if (!isAllowed) {
+    await answerCallbackQuery(callbackQuery.id);
+    return;
+  }
+
   await answerCallbackQuery(callbackQuery.id);
 
   if (!chatId) {
+    return;
+  }
+
+  if (data.startsWith("confirm_mandatory:")) {
+    if (!isAdmin(user.id)) return;
+    const targetChatId = data.split(":")[1];
+    try {
+      const res = await telegram("getChat", { chat_id: targetChatId });
+      const chat = res.result;
+      const inviteLink = chat.invite_link || (chat.username ? `https://t.me/${chat.username}` : null);
+      if (!inviteLink) {
+         await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "❌ Guruhning public username yoki invite linki yo'q. Avval link yarating.", show_alert: true });
+         return;
+      }
+      await setMandatoryChannel({ id: chat.id, title: chat.title, invite_link: inviteLink, username: chat.username });
+      await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
+      await sendMessage(chatId, `✅ <b>${chat.title}</b> majburiy guruh etib belgilandi!`, mainKeyboard(user));
+    } catch (err) {
+      await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "Xatolik: " + err.message, show_alert: true });
+    }
+    return;
+  }
+
+  if (data === "cancel_mandatory") {
+    if (!isAdmin(user.id)) return;
+    await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
+    await sendMessage(chatId, "Bekor qilindi.", mainKeyboard(user));
     return;
   }
 
@@ -3657,7 +3798,8 @@ function mainKeyboard(user = {}) {
       1,
       0,
       [{ text: BUTTON_STATS }, { text: BUTTON_USERS }],
-      [{ text: BUTTON_ERRORS }, { text: BUTTON_BROADCAST }]
+      [{ text: BUTTON_ERRORS }, { text: BUTTON_BROADCAST }],
+      [{ text: BUTTON_MANDATORY_SETUP }]
     );
   }
 
@@ -5445,6 +5587,51 @@ function getKnownUserRowsForSupabase() {
       };
     })
     .filter(Boolean);
+}
+
+async function getMandatoryChannel() {
+  if (Date.now() - botSettings.lastFetchedAt < 60000) {
+    return botSettings.mandatoryChannel;
+  }
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+  try {
+    const data = await supabaseRequest(`/bot_settings?key=eq.mandatory_channel&select=value`);
+    if (data && data.length > 0) {
+      botSettings.mandatoryChannel = data[0].value;
+    } else {
+      botSettings.mandatoryChannel = null;
+    }
+    botSettings.lastFetchedAt = Date.now();
+  } catch (err) {
+    console.error("[FETCH_SETTINGS_ERROR]", err);
+  }
+  return botSettings.mandatoryChannel;
+}
+
+async function setMandatoryChannel(value) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured.");
+  }
+  try {
+    if (value) {
+      await supabaseRequest(`/bot_settings?on_conflict=key`, {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ key: "mandatory_channel", value }),
+      });
+    } else {
+      await supabaseRequest(`/bot_settings?key=eq.mandatory_channel`, {
+        method: "DELETE",
+      });
+    }
+    botSettings.mandatoryChannel = value;
+    botSettings.lastFetchedAt = Date.now();
+  } catch (err) {
+    console.error("[SET_SETTINGS_ERROR]", err);
+    throw err;
+  }
 }
 
 async function supabaseRpc(functionName, args, options = {}) {
