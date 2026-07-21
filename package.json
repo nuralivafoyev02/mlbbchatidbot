@@ -13,5 +13,8 @@
   },
   "dependencies": {
     "telegram": "^2.26.22"
+  },
+  "devDependencies": {
+    "wrangler": "^4.107.0"
   }
 }

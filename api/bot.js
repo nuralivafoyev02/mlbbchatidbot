@@ -9,6 +9,7 @@ const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987");
+const MAIN_GROUP_ID = cleanEnv(process.env.MAIN_GROUP_ID) || "-1003832186200";
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
 const BUTTON_CHECK = "🔎 Server aniqlash";
@@ -270,6 +271,43 @@ async function handleMessage(message, updateMeta = {}) {
   trackUser(user, message.chat, {
     ...updateMeta,
   });
+
+  const checkUserMatch = text.match(/(?:@(\w+)|\b(\d+)\b)\s+user botdan foydalanganmi\?/i);
+  if (checkUserMatch) {
+    if (!isAdmin(user.id) || String(chatId) !== MAIN_GROUP_ID) {
+      return;
+    }
+    
+    const targetUsername = checkUserMatch[1];
+    const targetId = checkUserMatch[2];
+    
+    let queryPath = "";
+    if (targetUsername) {
+      queryPath = `/bot_users?username=ilike.${encodeURIComponent(targetUsername)}&select=updates_count,last_seen_at&limit=1`;
+    } else if (targetId) {
+      queryPath = `/bot_users?user_id=eq.${encodeURIComponent(targetId)}&select=updates_count,last_seen_at&limit=1`;
+    }
+
+    if (queryPath) {
+      void safeSendChatAction(chatId, "typing");
+      try {
+        const data = await supabaseRequest(queryPath);
+        const userStat = Array.isArray(data) ? data[0] : null;
+        
+        if (userStat) {
+          const updatesCount = userStat.updates_count || 0;
+          const lastSeen = userStat.last_seen_at ? new Date(userStat.last_seen_at).toLocaleString("uz-UZ", { timeZone: "Asia/Tashkent" }) : "Noma'lum";
+          await sendMessage(chatId, `📊 Foydalanuvchi botdan <b>${updatesCount}</b> marta foydalangan.\n🕒 Oxirgi faollik: <b>${lastSeen}</b> (Toshkent vaqti)`, null);
+        } else {
+          await sendMessage(chatId, "❌ Foydalanuvchi topilmadi yoxud u hali botdan foydalanmagan.", null);
+        }
+      } catch (err) {
+        console.error("[CHECK_USER_STAT_ERROR]", err);
+        await sendMessage(chatId, "⚠️ Ma'lumotni olishda xatolik yuz berdi.", null);
+      }
+      return;
+    }
+  }
 
   if (isGroupChat(message.chat)) {
     const addressing = getGroupAddressing(message);
@@ -634,6 +672,8 @@ async function handleMessage(message, updateMeta = {}) {
     await detectAndReply(chatId, text, user);
     return;
   }
+
+
 
   const parsed = parseMlbbInput(text);
 
@@ -1091,6 +1131,15 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
     replyMarkup
   );
   await safeDeleteBindWaitMessage(chatId, waitMessage);
+
+  if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
+    const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
+    const notificationText = `${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni ulanmalarini tekshirdi.`;
+    const inlineKeyboard = {
+      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+    };
+    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+  }
 }
 
 async function handleBroadcastConfirm(chatId, user, data) {
@@ -1199,6 +1248,15 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
   };
 
   await sendMessage(chatId, getResultText(result), replyMarkup);
+
+  if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
+    const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
+    const notificationText = `${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni check qildi.`;
+    const inlineKeyboard = {
+      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+    };
+    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+  }
 }
 
 async function lookupMlbbAccount(accountId, zoneId) {

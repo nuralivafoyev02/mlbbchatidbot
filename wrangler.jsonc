@@ -28,6 +28,7 @@
     ]
   },
   "vars": {
+    "MAIN_GROUP_ID": "-1003832186200",
     "SUPPORT_USERNAME": "Oblto_org",
     "ADMIN_IDS": "5081175125,8500085987",
     "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
