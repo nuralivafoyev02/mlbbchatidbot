@@ -311,8 +311,10 @@ async function handleMessage(message, updateMeta = {}) {
     ...updateMeta,
   });
 
-  const isAllowed = await enforceMandatoryMembership(chatId, user);
-  if (!isAllowed) return;
+  if (!isGroupChat(message.chat)) {
+    const isAllowed = await enforceMandatoryMembership(chatId, user);
+    if (!isAllowed) return;
+  }
 
   const checkUserMatch = text.match(/(?:@(\w+)|\b(\d+)\b)\s+user botdan foydalanganmi\?/i);
   if (checkUserMatch) {
@@ -801,6 +803,10 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
         await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "✅ A'zolik tasdiqlandi!" });
         await sendMessage(chatId, "✅ Guruhga a'zo bo'lganingiz tasdiqlandi. Botdan bemalol foydalanishingiz mumkin!", mainKeyboard(user));
         await sendMessage(chatId, getStartText(user), mainKeyboard(user));
+        if (MAIN_GROUP_ID) {
+          const userLink = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name) || 'Foydalanuvchi'}</a>`;
+          await sendMessage(MAIN_GROUP_ID, `🆕 <b>Yangi a'zo:</b> ${userLink}\nUshbu foydalanuvchi majburiy guruhga a'zo bo'ldi va botdan foydalanish huquqiga ega bo'ldi.`);
+        }
       } else {
         await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "❌ Siz hali guruhga a'zo bo'lmadingiz! Iltimos guruhga qo'shiling.", show_alert: true });
       }
@@ -811,10 +817,12 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
     return;
   }
 
-  const isAllowed = await enforceMandatoryMembership(chatId, user);
-  if (!isAllowed) {
-    await answerCallbackQuery(callbackQuery.id);
-    return;
+  if (callbackQuery.message && !isGroupChat(callbackQuery.message.chat)) {
+    const isAllowed = await enforceMandatoryMembership(chatId, user);
+    if (!isAllowed) {
+      await answerCallbackQuery(callbackQuery.id);
+      return;
+    }
   }
 
   await answerCallbackQuery(callbackQuery.id);
@@ -3966,7 +3974,19 @@ async function sendMessage(chatId, text, replyMarkup, options = {}) {
     payload.parse_mode = "HTML";
   }
 
-  if (replyMarkup) {
+  const isGroupOrChannel = (() => {
+    if (!chatId) return false;
+    const str = String(chatId).trim();
+    if (str.startsWith("-") || str.startsWith("@")) return true;
+    const num = Number(str);
+    return !isNaN(num) && num < 0;
+  })();
+
+  if (replyMarkup && replyMarkup.inline_keyboard) {
+    payload.reply_markup = replyMarkup;
+  } else if (isGroupOrChannel) {
+    payload.reply_markup = { remove_keyboard: true };
+  } else if (replyMarkup) {
     payload.reply_markup = replyMarkup;
   }
 
@@ -5618,8 +5638,8 @@ async function setMandatoryChannel(value) {
     if (value) {
       await supabaseRequest(`/bot_settings?on_conflict=key`, {
         method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify({ key: "mandatory_channel", value }),
+        prefer: "resolution=merge-duplicates",
+        body: { key: "mandatory_channel", value },
       });
     } else {
       await supabaseRequest(`/bot_settings?key=eq.mandatory_channel`, {
