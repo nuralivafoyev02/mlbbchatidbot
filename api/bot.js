@@ -45,7 +45,8 @@ const PREMIUM_EMOJIS = Object.freeze({
   "👋": "5319007286004299794",
   "📱": "5929545717583449337",
   "🖥": "5926754173524643275",
-  "🌐": "5927048877000626277",
+  "🌐": "5463386283856373524",
+  "🌟": "5440679633576023362",
 });
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze({
   facebook: {
@@ -3358,14 +3359,13 @@ function getBindInfoResultText(result = {}, limitData = null) {
     "",
     `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
     `🌐 <b>Server:</b> <code>${escapeHtml(result.zoneId)}</code>`,
-    `📧 <b>Moonton:</b> ${escapeHtml(bindings.moonton)}`,
+    ``,
+    `🌟 <b>Moonton:</b> ${escapeHtml(bindings.moonton)}`,
     `🔵 <b>VK:</b> ${escapeHtml(bindings.vk)}`,
     `🎮 <b>Google Play:</b> ${escapeHtml(bindings.googlePlay)}`,
-    `🎵 <b>TikTok:</b> ${escapeHtml(bindings.tiktok)}`,
-    `${bindProviderEmoji("facebook", "📘")} <b>Facebook:</b> ${escapeHtml(
-      bindings.facebook
-    )}`,
-    `🍎 <b>Apple:</b> ${escapeHtml(bindings.apple)}`,
+    `<tg-emoji emoji-id="5271527792641595125">😎</tg-emoji> <b>TikTok:</b> ${escapeHtml(bindings.tiktok)}`,
+    `<tg-emoji emoji-id="5269427536453984598">😎</tg-emoji> <b>Facebook:</b> ${escapeHtml(bindings.facebook)}`,
+    `<tg-emoji emoji-id="5821379843861778259">⚪️</tg-emoji> <b>Apple:</b> ${escapeHtml(bindings.apple)}`,
     `🕹 <b>GCID:</b> ${escapeHtml(bindings.gcid)}`,
     `✈️ <b>Telegram:</b> ${escapeHtml(bindings.telegram)}`,
     `🟢 <b>WhatsApp:</b> ${escapeHtml(bindings.whatsapp)}`,
@@ -3376,7 +3376,7 @@ function getBindInfoResultText(result = {}, limitData = null) {
     const remaining = limitData.remaining;
     const total = limitData.total_limit || 10;
     lines.push("");
-    lines.push(`<i>⚠️ Bugungi tekshirishlar qoldig'i: ${remaining}/${total} ta</i>`);
+    lines.push(`<i><tg-emoji emoji-id="5249459056673825344">😄</tg-emoji> Bugungi tekshirishlar qoldig'i: ${remaining}/${total} ta</i>`);
   }
 
   return lines.filter((line, index, arr) => line || arr[index + 1]).join("\n");
