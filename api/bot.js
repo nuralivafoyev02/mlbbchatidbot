@@ -43,14 +43,14 @@ const PREMIUM_EMOJIS = Object.freeze({
   "💦": "5316589275251226951",
   "🔗": "5375129357373165375",
   "👋": "5319007286004299794",
-  "📱": "5926788567622749870",
+  "📱": "5929545717583449337",
   "🖥": "5926754173524643275",
   "🌐": "5927048877000626277",
 });
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze({
   facebook: {
     emoji: "📘",
-    id: "5929545717583449337",
+    id: "5926788567622749870",
   },
 });
 
@@ -2105,7 +2105,7 @@ function normalizeBengkelMessageText(value) {
 
 function cleanBengkelTextLine(value) {
   return String(value || "")
-    .replace(/[*_`~]/g, "")
+    .replace(/[_`~]/g, "")
     .replace(/\s+/g, " ")
     .replace(/^[^\w@+.-]+/, "")
     .trim();
@@ -3338,21 +3338,37 @@ function getBindInfoResultText(result = {}, limitData = null) {
   const deviceLines = hasDeviceLogin ? getDeviceLoginResultLines(deviceLogin) : [];
 
   const lines = [
+    // "🔗 <b>Ulanmalar</b>",
+    // "",
+    // `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
+    // `🌐 <b>Server:</b> <code>${escapeHtml(result.zoneId)}</code>`,
+    // `📧 <b>Moonton:</b> ${escapeHtml(formatBindValue(bindings.moonton))}`,
+    // `🔵 <b>VK:</b> ${escapeHtml(formatBindValue(bindings.vk))}`,
+    // `🎮 <b>Google Play:</b> ${escapeHtml(formatBindValue(bindings.googlePlay))}`,
+    // `🎵 <b>TikTok:</b> ${escapeHtml(formatBindValue(bindings.tiktok))}`,
+    // `${bindProviderEmoji("facebook", "📘")} <b>Facebook:</b> ${escapeHtml(
+    //   formatBindValue(bindings.facebook)
+    // )}`,
+    // `🍎 <b>Apple:</b> ${escapeHtml(formatBindValue(bindings.apple))}`,
+    // `🕹 <b>GCID:</b> ${escapeHtml(formatBindValue(bindings.gcid))}`,
+    // `✈️ <b>Telegram:</b> ${escapeHtml(formatBindValue(bindings.telegram))}`,
+    // `🟢 <b>WhatsApp:</b> ${escapeHtml(formatBindValue(bindings.whatsapp))}`,
+    // ...deviceLines,
     "🔗 <b>Ulanmalar</b>",
     "",
     `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
     `🌐 <b>Server:</b> <code>${escapeHtml(result.zoneId)}</code>`,
-    `📧 <b>Moonton:</b> ${escapeHtml(maskSensitiveValue(bindings.moonton))}`,
-    `🔵 <b>VK:</b> ${escapeHtml(maskSensitiveValue(bindings.vk))}`,
-    `🎮 <b>Google Play:</b> ${escapeHtml(maskSensitiveValue(bindings.googlePlay))}`,
-    `🎵 <b>TikTok:</b> ${escapeHtml(maskSensitiveValue(bindings.tiktok))}`,
+    `📧 <b>Moonton:</b> ${escapeHtml(bindings.moonton)}`,
+    `🔵 <b>VK:</b> ${escapeHtml(bindings.vk)}`,
+    `🎮 <b>Google Play:</b> ${escapeHtml(bindings.googlePlay)}`,
+    `🎵 <b>TikTok:</b> ${escapeHtml(bindings.tiktok)}`,
     `${bindProviderEmoji("facebook", "📘")} <b>Facebook:</b> ${escapeHtml(
-      maskSensitiveValue(bindings.facebook)
+      bindings.facebook
     )}`,
-    `🍎 <b>Apple:</b> ${escapeHtml(maskSensitiveValue(bindings.apple))}`,
-    `🕹 <b>GCID:</b> ${escapeHtml(maskSensitiveValue(bindings.gcid))}`,
-    `✈️ <b>Telegram:</b> ${escapeHtml(maskSensitiveValue(bindings.telegram))}`,
-    `🟢 <b>WhatsApp:</b> ${escapeHtml(maskSensitiveValue(bindings.whatsapp))}`,
+    `🍎 <b>Apple:</b> ${escapeHtml(bindings.apple)}`,
+    `🕹 <b>GCID:</b> ${escapeHtml(bindings.gcid)}`,
+    `✈️ <b>Telegram:</b> ${escapeHtml(bindings.telegram)}`,
+    `🟢 <b>WhatsApp:</b> ${escapeHtml(bindings.whatsapp)}`,
     ...deviceLines,
   ];
 
@@ -3395,7 +3411,7 @@ function getFeedbackThanksText(result = {}) {
     "✅ <b>Fikringiz yuborildi.</b>",
     "",
     delivered
-      ? "Adminlar ko‘rib chiqadi. Javob berilsa, bot orqali sizga yuboriladi."
+      ? "Javobni kuting va u shu yerga keladi."
       : "Hozir adminlarga yetkazishda xatolik bo‘ldi. Iltimos, birozdan keyin qayta urinib ko‘ring.",
   ].join("\n");
 }
@@ -3409,16 +3425,13 @@ function getAdminFeedbackText(feedback) {
   return [
     "💬 <b>Yangi fikr yoki izoh</b>",
     "",
-    `Feedback ID: <code>${escapeHtml(feedback.id)}</code>`,
-    `User ID: <code>${escapeHtml(feedback.userId)}</code>`,
-    `Chat ID: <code>${escapeHtml(feedback.chatId)}</code>`,
     `User: ${escapeHtml(displayName)}`,
-    `Vaqt: ${formatDate(feedback.createdAt)}`,
     "",
     "<b>Xabar:</b>",
     escapeHtml(feedback.text),
     "",
     "Shu xabarga reply qilib javob berishingiz mumkin.",
+    `<tg-spoiler>Feedback ID: <code>${escapeHtml(feedback.id)}</code>\nUser ID: <code>${escapeHtml(feedback.userId)}</code>\nChat ID: <code>${escapeHtml(feedback.chatId)}</code></tg-spoiler>`,
   ].join("\n");
 }
 
@@ -3723,11 +3736,8 @@ function extractCustomEmojiEntities(text, entities = []) {
 
 function getUnknownText() {
   return [
-    "Men siz yuborgan xabarni tushunmadim 🙂",
-    "",
-    "Serverni aniqlash uchun quyidagi formatda yuboring:",
-    "1289050 (10050)",
-    "Yoki pastdagi tugmalardan foydalaning.",
+    "Nima demoqchiligizni tushunmadim 🙂",
+    "Yaxshisi pastdagi tugmalardan foydalaning.",
   ].join("\n");
 }
 
@@ -4676,6 +4686,28 @@ function maskSensitiveValue(value) {
   }
 
   return maskTokenValue(text);
+}
+
+function formatBindValue(value) {
+  if (isEmptyBindValue(value)) {
+    return "empty.";
+  }
+
+  if (value === true) {
+    return "linked.";
+  }
+
+  const text = sanitizeTelegramText(String(value)).trim();
+
+  if (!text) {
+    return "empty.";
+  }
+
+  if (["1", "true", "yes", "linked", "bound", "connected"].includes(text.toLowerCase())) {
+    return "linked.";
+  }
+
+  return text;
 }
 
 function maskEmailValue(value) {
