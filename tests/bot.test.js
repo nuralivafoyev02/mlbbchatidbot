@@ -401,13 +401,12 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
   assert.equal(userKeyboard.keyboard[0][0].text, "🔗 Ulanmalar");
-  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam/);
+  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu/);
   assert.match(userKeyboardText, /💬 Fikr va izohlar/);
-  assert.match(userKeyboardText, /🏠 Menyu/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
   assert.match(JSON.stringify(adminKeyboard), /⚙️ Majburiylikni sozlash/);
-  assert.doesNotMatch(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar|📣 Xabar yuborish|📋 Buyruqlar|ℹ️ Yordam/);
+  assert.doesNotMatch(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar|📣 Xabar yuborish|📋 Buyruqlar|ℹ️ Yordam|🏠 Menyu/);
 });
 
 test("bind info button prompts for account and server ids", async () => {

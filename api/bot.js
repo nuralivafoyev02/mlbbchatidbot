@@ -3838,7 +3838,6 @@ function mainKeyboard(user = {}) {
     [{ text: BUTTON_BIND_INFO }],
     [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
     [{ text: BUTTON_FEEDBACK }],
-    [{ text: BUTTON_MENU }],
   ];
 
   if (isAdmin(user.id)) {
