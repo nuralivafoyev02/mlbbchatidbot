@@ -16,6 +16,7 @@ delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const handler = require("../api/bot.js");
 const {
+  buildRuntimeDailyReport,
   enrichPremiumEmojis,
   extractTelegramId,
   extractTelegramPhoneNumber,
@@ -25,6 +26,7 @@ const {
   getBindInfoWaitText,
   getCommandsText,
   getCustomEmojiIdText,
+  getDailyReportText,
   getErrorsText,
   getFailedLookupText,
   getResultText,
@@ -49,6 +51,7 @@ const {
   parseRequestBody,
   resolveSupabaseConfig,
   sanitizeTelegramUsername,
+  trackFeatureUse,
   trackUser,
   validateSupabaseServiceKey,
 } = handler.__private;
@@ -319,6 +322,78 @@ test("stats text includes today's users and monthly active section", () => {
   assert.doesNotMatch(text, /Oxirgi xatoliklar/);
 });
 
+test("daily report endpoint requires auth and triggers report", async () => {
+  const reportHandler = require("../api/daily-report.js");
+  const originalFetch = global.fetch;
+
+  global.fetch = async () => {
+    return new Response(JSON.stringify({ ok: true, result: {} }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const infoRes = createRes();
+    await reportHandler({ method: "GET", headers: {} }, infoRes);
+    assert.equal(infoRes.statusCode, 200);
+    assert.equal(infoRes.body.ok, true);
+
+    const deniedRes = createRes();
+    await reportHandler(
+      { method: "POST", headers: { authorization: "Bearer wrong-secret" } },
+      deniedRes
+    );
+    assert.equal(deniedRes.statusCode, 401);
+
+    const okRes = createRes();
+    await reportHandler(
+      { method: "POST", headers: { authorization: "Bearer test-secret" } },
+      okRes
+    );
+    assert.equal(okRes.statusCode, 200);
+    assert.equal(okRes.body.ok, true);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("daily report text lists actions and top users", () => {
+  const text = getDailyReportText({
+    date: "2026-08-13",
+    actions: [
+      { action: "server_check", count: 42 },
+      { action: "bind_info", count: 18 },
+    ],
+    top_users: [
+      { user_id: "111", username: "ali", first_name: "Ali", count: 25 },
+      { user_id: "222", username: null, first_name: "Vali", last_name: "Karimov", count: 10 },
+    ],
+  });
+
+  assert.match(text, /Kunlik foydalanish statistikasi/);
+  assert.match(text, /2026-08-13/);
+  assert.match(text, /Server tekshiruv: <b>42<\/b> ta/);
+  assert.match(text, /Ulanmalar: <b>18<\/b> ta/);
+  assert.match(text, /1\. @ali — <b>25<\/b> ta/);
+  assert.match(text, /2\. Vali Karimov — <b>10<\/b> ta/);
+});
+
+test("trackFeatureUse counts meaningful actions for runtime report", () => {
+  trackFeatureUse({ id: 99011, username: "ali" }, { id: 99011, type: "private" }, "server_check");
+  trackFeatureUse({ id: 99011, username: "ali" }, { id: 99011, type: "private" }, "bind_info");
+  trackFeatureUse({ id: 99012 }, { id: 99012, type: "private" }, "server_check");
+
+  const report = buildRuntimeDailyReport();
+  const serverCheck = report.actions.find((entry) => entry.action === "server_check");
+  const bindInfo = report.actions.find((entry) => entry.action === "bind_info");
+
+  assert.equal(Number(serverCheck.count), 2);
+  assert.equal(Number(bindInfo.count), 1);
+  assert.equal(report.top_users.length, 2);
+  assert.equal(report.top_users[0].user_id, "99011");
+});
+
 test("main keyboard has no placeholder and hides admin buttons from users", () => {
   const userKeyboard = mainKeyboard({ id: 777 });
   const adminKeyboard = mainKeyboard({ id: 5081175125 });
@@ -326,11 +401,13 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
   assert.equal(userKeyboard.keyboard[0][0].text, "🔗 Ulanmalar");
-  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar/);
+  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam/);
   assert.match(userKeyboardText, /💬 Fikr va izohlar/);
+  assert.match(userKeyboardText, /🏠 Menyu/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
-  assert.match(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar/);
+  assert.match(JSON.stringify(adminKeyboard), /⚙️ Majburiylikni sozlash/);
+  assert.doesNotMatch(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar|📣 Xabar yuborish|📋 Buyruqlar|ℹ️ Yordam/);
 });
 
 test("bind info button prompts for account and server ids", async () => {

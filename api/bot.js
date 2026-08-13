@@ -30,6 +30,20 @@ const BROADCAST_USERS_PAGE_SIZE = 1000;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const FEEDBACK_PENDING_TTL_MS = 30 * 60 * 1000;
 const FEEDBACK_MAX_LENGTH = 3000;
+const FEATURE_ACTIONS = Object.freeze({
+  START: "start",
+  SERVER_CHECK: "server_check",
+  BIND_INFO: "bind_info",
+  TG_PROFILE: "tg_profile",
+  FEEDBACK: "feedback",
+});
+const DAILY_REPORT_ACTION_LABELS = Object.freeze({
+  start: "🚀 /start",
+  server_check: "🔎 Server tekshiruv",
+  bind_info: "🔗 Ulanmalar",
+  tg_profile: "👤 TG profil",
+  feedback: "💬 Fikrlar",
+});
 const PREMIUM_EMOJIS = Object.freeze({
   "🏪": "5208573502046610594",
   "✅": "5316561083085895267",
@@ -133,6 +147,8 @@ if (!global.__MLBB_BOT_STATS__) {
     phoneProfiles: new Map(),
     errors: [],
     errorCounts: {},
+    featureCounts: {},
+    userActionCounts: new Map(),
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
     lastKnownUsersSyncAt: 0,
@@ -167,6 +183,10 @@ if (!(stats.phoneProfiles instanceof Map)) {
 }
 stats.errors ||= [];
 stats.errorCounts ||= {};
+stats.featureCounts ||= {};
+if (!(stats.userActionCounts instanceof Map)) {
+  stats.userActionCounts = new Map(Object.entries(stats.userActionCounts || {}));
+}
 stats.lastKnownUsersSyncAt ||= 0;
 stats.supabaseAuthDisabledUntil ||= 0;
 stats.supabaseLastAuthError ||= null;
@@ -433,6 +453,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "start")) {
     stats.starts += 1;
+    trackFeatureUse(user, message.chat, FEATURE_ACTIONS.START, updateMeta);
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     return;
   }
@@ -985,6 +1006,7 @@ async function handleFeedbackSubmission(chatId, user, message) {
   }
 
   clearPendingFeedback(user.id);
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.FEEDBACK);
 
   const feedback = {
     id: createFeedbackId(),
@@ -1104,7 +1126,7 @@ async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
     return;
   }
 
-  await handleTelegramProfileById(chatId, tgId, replyMarkup);
+  await handleTelegramProfileById(chatId, tgId, replyMarkup, { user });
 }
 
 async function handleTelegramProfileContact(chatId, user, message = {}, options = {}) {
@@ -1130,6 +1152,7 @@ async function handleTelegramProfileContact(chatId, user, message = {}, options 
   rememberPhoneProfile(contact.phoneNumber, createTelegramProfileFromContact(contact));
   void queueSupabasePhoneProfileTrack(contact);
   await handleTelegramProfileById(chatId, contact.userId, replyMarkup, {
+    user,
     phoneNumber: contact.phoneNumber,
     fallbackProfile: createTelegramProfileFromContact(contact),
   });
@@ -1153,6 +1176,8 @@ async function handleTelegramPhoneProfileLookup(chatId, user, phoneNumber, optio
     return;
   }
 
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
+
   await sendMessage(
     chatId,
     getTelegramProfileText({
@@ -1167,7 +1192,7 @@ async function handleTelegramProfileById(
   chatId,
   tgId,
   replyMarkup,
-  { phoneNumber = "", fallbackProfile = null } = {}
+  { user = {}, phoneNumber = "", fallbackProfile = null } = {}
 ) {
   void safeSendChatAction(chatId, "typing");
 
@@ -1175,6 +1200,7 @@ async function handleTelegramProfileById(
 
   if (!profile.ok) {
     if (fallbackProfile?.id) {
+      trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
       await sendMessage(
         chatId,
         getTelegramProfileText({
@@ -1193,6 +1219,8 @@ async function handleTelegramProfileById(
     );
     return;
   }
+
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
 
   if (phoneNumber) {
     rememberPhoneProfile(phoneNumber, profile.data);
@@ -1258,6 +1286,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   }
 
   const bindInfo = await lookupMlbbBindInfo(parsed.accountId, parsed.zoneId);
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.BIND_INFO);
 
   if (!bindInfo.ok) {
     recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
@@ -1367,6 +1396,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
 
   stats.checks += 1;
   stats.lastCheckAt = new Date().toISOString();
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.SERVER_CHECK);
 
   if (!lookup.ok) {
     stats.failedChecks += 1;
@@ -3808,7 +3838,7 @@ function mainKeyboard(user = {}) {
     [{ text: BUTTON_BIND_INFO }],
     [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
     [{ text: BUTTON_FEEDBACK }],
-    [{ text: BUTTON_COMMANDS }, { text: BUTTON_HELP }],
+    [{ text: BUTTON_MENU }],
   ];
 
   if (isAdmin(user.id)) {
@@ -3816,7 +3846,6 @@ function mainKeyboard(user = {}) {
       1,
       0,
       [{ text: BUTTON_STATS }, { text: BUTTON_USERS }],
-      [{ text: BUTTON_ERRORS }, { text: BUTTON_BROADCAST }],
       [{ text: BUTTON_MANDATORY_SETUP }]
     );
   }
@@ -5046,6 +5075,32 @@ function trackUser(user = {}, chat = {}, updateMeta = {}) {
   });
 }
 
+function trackFeatureUse(user, chat, action, updateMeta = {}) {
+  if (!action) {
+    return;
+  }
+
+  recordRuntimeAction(user, action);
+  trackUser(user, chat, {
+    ...updateMeta,
+    action,
+  });
+}
+
+function recordRuntimeAction(user, action) {
+  const userId = user?.id ? String(user.id) : "";
+
+  if (!userId || !action) {
+    return;
+  }
+
+  stats.featureCounts[action] = (stats.featureCounts[action] || 0) + 1;
+  stats.userActionCounts.set(
+    userId,
+    Number(stats.userActionCounts.get(userId) || 0) + 1
+  );
+}
+
 function rememberRuntimeUser(user = {}, chat = {}, updateMeta = {}) {
   const userId = user.id ? String(user.id) : "";
   const now = new Date().toISOString();
@@ -5066,7 +5121,7 @@ function rememberRuntimeUser(user = {}, chat = {}, updateMeta = {}) {
       is_bot: typeof user.is_bot === "boolean" ? user.is_bot : previous.is_bot ?? null,
       first_seen_at: previous.first_seen_at || now,
       last_seen_at: now,
-      updates_count: Number(previous.updates_count || 0) + (updateMeta.updateType ? 1 : 0),
+      updates_count: Number(previous.updates_count || 0) + (updateMeta.action ? 1 : 0),
       last_update_type: updateMeta.updateType || previous.last_update_type || null,
     });
   }
@@ -5253,6 +5308,7 @@ function buildSupabaseTrackPayload(user = {}, chat = {}, updateMeta = {}) {
     p_is_bot: typeof user.is_bot === "boolean" ? user.is_bot : null,
     p_update_id: toPgBigint(updateMeta.updateId),
     p_update_type: cleanTextValue(updateMeta.updateType, 32),
+    p_action: cleanTextValue(updateMeta.action, 32),
   };
 }
 
@@ -5538,6 +5594,113 @@ function getTashkentDayBounds(now = new Date()) {
     startIso: new Date(startMs).toISOString(),
     endIso: new Date(endMs).toISOString(),
   };
+}
+
+function getTashkentDateString(now = new Date()) {
+  const tashkentOffsetMs = 5 * 60 * 60 * 1000;
+
+  return new Date(now.getTime() + tashkentOffsetMs).toISOString().slice(0, 10);
+}
+
+async function sendDailyUsageReport() {
+  const chatId = MAIN_GROUP_ID;
+
+  if (!chatId) {
+    return { ok: false, reason: "main_group_not_configured" };
+  }
+
+  let report = null;
+
+  if (isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+    try {
+      report = await supabaseRpc("get_daily_usage_report", {
+        p_date: getTashkentDateString(),
+      });
+    } catch (error) {
+      console.error("[DAILY_USAGE_REPORT_ERROR]", error);
+      recordError("daily_usage_report_failed", error.message);
+    }
+  }
+
+  if (!report || typeof report !== "object") {
+    report = buildRuntimeDailyReport();
+  }
+
+  await safeSendMessage(chatId, getDailyReportText(report), null);
+
+  return { ok: true };
+}
+
+function buildRuntimeDailyReport() {
+  const actions = Object.entries(stats.featureCounts || {})
+    .map(([action, count]) => ({ action, count }))
+    .sort((left, right) => Number(right.count || 0) - Number(left.count || 0));
+  const topUsers = Array.from(stats.userActionCounts.entries())
+    .map(([userId, count]) => {
+      const profile = stats.userProfiles.get(String(userId)) || {};
+
+      return {
+        user_id: userId,
+        username: profile.username || null,
+        first_name: profile.first_name || null,
+        last_name: profile.last_name || null,
+        count,
+      };
+    })
+    .sort((left, right) => Number(right.count || 0) - Number(left.count || 0))
+    .slice(0, 3);
+
+  return {
+    date: getTashkentDateString(),
+    actions,
+    top_users: topUsers,
+    source: "runtime",
+  };
+}
+
+function getDailyReportText(report = {}) {
+  const actions = Array.isArray(report.actions) ? report.actions : [];
+  const topUsers = Array.isArray(report.top_users) ? report.top_users : [];
+  const date = cleanEnv(report.date);
+
+  const lines = [
+    "📊 <b>Kunlik foydalanish statistikasi</b>",
+    "",
+    date ? `📅 Sana: <b>${escapeHtml(date)}</b>` : "",
+    "",
+    "<b>Funksiyalar bo'yicha:</b>",
+    ...(actions.length
+      ? actions.map((entry) => {
+          const label =
+            DAILY_REPORT_ACTION_LABELS[entry.action] ||
+            escapeHtml(String(entry.action || "noma'lum"));
+
+          return `${label}: <b>${Number(entry.count || 0)}</b> ta`;
+        })
+      : ["Bugun funksiya ishlatilishi qayd etilmagan."]),
+    "",
+    "<b>Top 3 foydalanuvchi:</b>",
+    ...(topUsers.length
+      ? topUsers.map((user, index) => {
+          const name = [user.first_name, user.last_name]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          const label = user.username
+            ? `@${user.username}`
+            : name || String(user.user_id || "Noma'lum");
+
+          return `${index + 1}. ${escapeHtml(label)} — <b>${Number(
+            user.count || 0
+          )}</b> ta`;
+        })
+      : ["Bugun foydalanish qayd etilmagan."]),
+    report.source === "runtime"
+      ? "⚠️ Supabase o'qilmadi — joriy runtime xotirasidan."
+      : "",
+  ].filter(Boolean);
+
+  return lines.join("\n");
 }
 
 async function syncKnownUsersToSupabase() {
@@ -5969,12 +6132,20 @@ function sanitizeTelegramText(value) {
   return result;
 }
 
+module.exports.sendDailyUsageReport = sendDailyUsageReport;
+
 module.exports.__private = {
   buildBengkelBindInfoRequest,
   buildBindInfoRequest,
   broadcastMessage,
+  buildRuntimeDailyReport,
   buildSupabaseTrackPayload,
   detectServerType,
+  getDailyReportText,
+  getTashkentDateString,
+  recordRuntimeAction,
+  sendDailyUsageReport,
+  trackFeatureUse,
   extractTelegramId,
   extractTelegramPhoneNumber,
   enrichPremiumEmojis,

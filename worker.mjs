@@ -38,6 +38,14 @@ export default {
       }
     }
   },
+
+  async scheduled(event, env, ctx) {
+    try {
+      await handler.sendDailyUsageReport(env);
+    } catch (error) {
+      console.error("[DAILY_USAGE_REPORT_ERROR]", error);
+    }
+  },
 };
 
 async function runVercelHandler(req) {

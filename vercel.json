@@ -5,6 +5,15 @@
     },
     "api/bengkel.js": {
       "maxDuration": 60
+    },
+    "api/daily-report.js": {
+      "maxDuration": 10
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/daily-report",
+      "schedule": "59 18 * * *"
+    }
+  ]
 }
