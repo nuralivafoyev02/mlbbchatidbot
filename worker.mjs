@@ -4,6 +4,9 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
 };
 const BIND_INFO_COMMAND_RE = /^\/(?:info|bind|ulanish|ulamalar|ulanmalar)(?:@\w+)?(?:\s|$)/i;
+const BROADCAST_QUEUE_NAME = "mlbbchatidbot-broadcast";
+const BROADCAST_CONSUMER_CHUNK_SIZE = 10;
+const BROADCAST_CHUNK_DELAY_MS = 250;
 
 export default {
   async fetch(request, env, ctx) {
@@ -20,10 +23,26 @@ export default {
       });
     }
 
-    return runVercelHandler(req);
+    return runVercelHandler(req, env);
   },
 
   async queue(batch, env) {
+    if (batch.queue === BROADCAST_QUEUE_NAME) {
+      for (const message of batch.messages) {
+        try {
+          await processBroadcastMessage(message.body, env);
+          if (typeof message.ack === "function") {
+            message.ack();
+          }
+        } catch (error) {
+          console.error("[QUEUE_BROADCAST_ERROR]", error);
+          // ack qilinmaydi — platform max_retries bo'yicha qayta yuboradi
+        }
+      }
+
+      return;
+    }
+
     for (const message of batch.messages) {
       try {
         await runVercelHandler(createInternalRequest(message.body, env));
@@ -48,12 +67,111 @@ export default {
   },
 };
 
-async function runVercelHandler(req) {
+async function runVercelHandler(req, env = {}) {
   const res = createVercelResponse();
 
-  await handler(req, res);
+  await handler(req, res, env);
 
   return res.toResponse();
+}
+
+async function processBroadcastMessage(body = {}, env = {}) {
+  const { chatIds, payload, adminChatId, total, sent = 0, failed = 0 } = body || {};
+
+  if (!payload) {
+    return;
+  }
+
+  if (!Array.isArray(chatIds) || chatIds.length === 0) {
+    const recipients = await handler.getBroadcastChatIds();
+
+    if (!recipients.length) {
+      console.error("[QUEUE_BROADCAST_EMPTY_RECIPIENTS]");
+      await sendBroadcastReportSafe(adminChatId, { total: 0, sent: 0, failed: 0 });
+      return;
+    }
+
+    await processBroadcastChunk(recipients, payload, env, {
+      adminChatId,
+      total: recipients.length,
+      sent,
+      failed,
+    });
+    return;
+  }
+
+  await processBroadcastChunk(chatIds, payload, env, {
+    adminChatId,
+    total,
+    sent,
+    failed,
+  });
+}
+
+async function processBroadcastChunk(chatIds, payload, env, meta = {}) {
+  const chunk = chatIds.slice(0, BROADCAST_CONSUMER_CHUNK_SIZE);
+
+  const results = await Promise.allSettled(
+    chunk.map((chatId) => sendBroadcastWithRetry(chatId, payload))
+  );
+
+  const sent =
+    Number(meta.sent || 0) +
+    results.filter((result) => result.status === "fulfilled").length;
+  const failed =
+    Number(meta.failed || 0) +
+    results.filter((result) => result.status === "rejected").length;
+
+  const remaining = chatIds.slice(chunk.length);
+
+  if (remaining.length > 0 && env?.BROADCAST_QUEUE?.send) {
+    try {
+      await env.BROADCAST_QUEUE.send({
+        chatIds: remaining,
+        payload,
+        adminChatId: meta.adminChatId,
+        total: meta.total,
+        sent,
+        failed,
+      });
+    } catch (error) {
+      console.error("[QUEUE_BROADCAST_CONTINUE_ERROR]", error);
+    }
+  } else if (meta.adminChatId) {
+    await sendBroadcastReportSafe(meta.adminChatId, {
+      total: Number(meta.total) || chatIds.length,
+      sent,
+      failed,
+    });
+  }
+
+  await sleep(BROADCAST_CHUNK_DELAY_MS);
+}
+
+async function sendBroadcastReportSafe(adminChatId, result) {
+  if (!adminChatId) {
+    return;
+  }
+
+  try {
+    await handler.sendBroadcastReport(adminChatId, result);
+  } catch (error) {
+    console.error("[QUEUE_BROADCAST_REPORT_ERROR]", error);
+  }
+}
+
+async function sendBroadcastWithRetry(chatId, payload) {
+  try {
+    await handler.sendBroadcastPayload(chatId, payload);
+  } catch (error) {
+    // O'tkinchi xatolik (masalan 429 rate limit) bo'lsa bir marta qayta urinamiz
+    await sleep(1000);
+    await handler.sendBroadcastPayload(chatId, payload);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function createVercelRequest(request, body) {

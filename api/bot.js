@@ -5,6 +5,9 @@ const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 const SUPPORT_USERNAME = sanitizeTelegramUsername(
   process.env.SUPPORT_USERNAME || "Oblto_org"
 );
+const SUGGESTIONS_GROUP_USERNAME = sanitizeOptionalTelegramUsername(
+  process.env.SUGGESTIONS_GROUP_USERNAME || "checkmlbbidbot_takliflari"
+);
 const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );
@@ -142,6 +145,8 @@ if (!global.__MLBB_BOT_STATS__) {
     broadcastChats: new Set(BROADCAST_USER_IDS),
     pendingBroadcasts: new Map(),
     pendingFeedbacks: new Map(),
+    membershipCache: new Map(),
+    suggestionsInviteDates: new Map(),
     userModes: new Map(),
     userProfiles: new Map(),
     phoneProfiles: new Map(),
@@ -169,6 +174,8 @@ const botSettings = global.__MLBB_BOT_SETTINGS__;
 stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
+stats.membershipCache ||= new Map();
+stats.suggestionsInviteDates ||= new Map();
 if (!(stats.pendingFeedbacks instanceof Map)) {
   stats.pendingFeedbacks = new Map(Object.entries(stats.pendingFeedbacks || {}));
 }
@@ -193,7 +200,7 @@ stats.supabaseLastAuthError ||= null;
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 BROADCAST_USER_IDS.forEach((chatId) => rememberKnownPrivateChat(chatId));
 
-module.exports = async function handler(req, res) {
+module.exports = async function handler(req, res, env = {}) {
   let update = null;
 
   try {
@@ -233,7 +240,7 @@ module.exports = async function handler(req, res) {
     }
 
     update = parseRequestBody(req.body);
-    await processUpdate(update);
+    await processUpdate(update, { env });
 
     return res.status(200).json({ ok: true });
   } catch (error) {
@@ -256,7 +263,7 @@ module.exports = async function handler(req, res) {
   }
 };
 
-async function processUpdate(update) {
+async function processUpdate(update, options = {}) {
   if (!update || typeof update !== "object") {
     return;
   }
@@ -279,10 +286,14 @@ async function processUpdate(update) {
   }
 
   if (update.callback_query) {
-    await handleCallbackQuery(update.callback_query, {
-      updateId: update.update_id,
-      updateType: "callback_query",
-    });
+    await handleCallbackQuery(
+      update.callback_query,
+      {
+        updateId: update.update_id,
+        updateType: "callback_query",
+      },
+      options
+    );
     return;
   }
 }
@@ -297,13 +308,51 @@ async function checkUserMembership(chatId, userId) {
   }
 }
 
+const MEMBERSHIP_CACHE_TTL_MS = 5 * 60 * 1000;
+const MEMBERSHIP_CACHE_NEGATIVE_TTL_MS = 60 * 1000;
+
+function getCachedMembership(userId) {
+  const key = String(userId || "");
+  const entry = stats.membershipCache.get(key);
+
+  if (!entry) {
+    return null;
+  }
+
+  const ttl = entry.member ? MEMBERSHIP_CACHE_TTL_MS : MEMBERSHIP_CACHE_NEGATIVE_TTL_MS;
+
+  if (Date.now() - entry.at >= ttl) {
+    stats.membershipCache.delete(key);
+    return null;
+  }
+
+  return entry.member;
+}
+
+function cacheMembership(userId, member) {
+  const key = String(userId || "");
+
+  if (!key) {
+    return;
+  }
+
+  stats.membershipCache.set(key, {
+    member: !!member,
+    at: Date.now(),
+  });
+}
+
 async function enforceMandatoryMembership(chatId, user) {
   if (isAdmin(user.id)) return true;
-  
+
+  const cached = getCachedMembership(user.id);
+  if (cached !== null) return cached;
+
   const mandatoryChannel = await getMandatoryChannel();
   if (!mandatoryChannel) return true;
 
   const isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+  cacheMembership(user.id, isMember);
   if (isMember) return true;
 
   const text = `⚠️ <b>Botdan foydalanish uchun guruhga qo'shilishingiz majburiy!</b>\n\nIltimos, quyidagi guruhga qo'shiling va botdan to'liq foydalanish imkoniga ega bo'ling.`;
@@ -393,22 +442,9 @@ async function handleMessage(message, updateMeta = {}) {
       const bindInput = stripBindInfoCommand(addressedText);
 
       if (!bindInput) {
-        if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
-          try {
-            const limitResult = await supabaseRpc("check_bind_limit_only", {
-              p_user_id: toPgBigint(user.id),
-              p_limit: 10
-            });
-            if (limitResult && limitResult.allowed === false) {
-              await sendMessage(chatId, getBindInfoLimitReachedText(), null);
-              return;
-            }
-          } catch (error) {
-            console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
-          }
-        }
-
-        await sendMessage(chatId, getBindInfoPromptText(), null);
+        const promptPromise = sendMessage(chatId, getBindInfoPromptText(), null);
+        await warnIfBindLimitReached(chatId, user, null);
+        await promptPromise;
         return;
       }
 
@@ -591,23 +627,10 @@ async function handleMessage(message, updateMeta = {}) {
     const input = stripBindInfoCommand(text);
 
     if (!input) {
-      if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
-        try {
-          const limitResult = await supabaseRpc("check_bind_limit_only", {
-            p_user_id: toPgBigint(user.id),
-            p_limit: 10
-          });
-          if (limitResult && limitResult.allowed === false) {
-            await sendMessage(chatId, getBindInfoLimitReachedText(), mainKeyboard(user));
-            return;
-          }
-        } catch (error) {
-          console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
-        }
-      }
-
       rememberUserMode(user.id, "bind_info");
-      await sendMessage(chatId, getBindInfoPromptText(), mainKeyboard(user));
+      const promptPromise = sendMessage(chatId, getBindInfoPromptText(), mainKeyboard(user));
+      await warnIfBindLimitReached(chatId, user, mainKeyboard(user));
+      await promptPromise;
       return;
     }
 
@@ -632,23 +655,10 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   if (isKeyboardButton(text, BUTTON_BIND_INFO)) {
-    if (!isAdmin(user.id) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
-      try {
-        const limitResult = await supabaseRpc("check_bind_limit_only", {
-          p_user_id: toPgBigint(user.id),
-          p_limit: 10
-        });
-        if (limitResult && limitResult.allowed === false) {
-          await sendMessage(chatId, getBindInfoLimitReachedText(), mainKeyboard(user));
-          return;
-        }
-      } catch (error) {
-        console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
-      }
-    }
-
     rememberUserMode(user.id, "bind_info");
-    await sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply());
+    const promptPromise = sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply());
+    await warnIfBindLimitReached(chatId, user, mainKeyboard(user));
+    await promptPromise;
     return;
   }
 
@@ -803,7 +813,7 @@ async function handleMessage(message, updateMeta = {}) {
   await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
 }
 
-async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
+async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {}) {
   if (!callbackQuery?.id) {
     return;
   }
@@ -821,6 +831,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
     if (mandatoryChannel) {
       const isMember = await checkUserMembership(mandatoryChannel.id, user.id);
       if (isMember) {
+        cacheMembership(user.id, true);
         await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
         await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "✅ A'zolik tasdiqlandi!" });
         await sendMessage(chatId, "✅ Guruhga a'zo bo'lganingiz tasdiqlandi. Botdan bemalol foydalanishingiz mumkin!", mainKeyboard(user));
@@ -881,7 +892,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}) {
   }
 
   if (data.startsWith("broadcast_confirm:")) {
-    await handleBroadcastConfirm(chatId, user, data);
+    await handleBroadcastConfirm(chatId, user, data, options);
     return;
   }
 
@@ -1093,6 +1104,7 @@ async function handleMessageCommand(chatId, user, message) {
     tokenHash: hashBroadcastToken(confirmToken),
     createdAt: Date.now(),
     status: "pending",
+    recipientCount,
   });
 
   await sendMessage(
@@ -1243,6 +1255,25 @@ async function handleTelegramProfileById(
   );
 }
 
+async function warnIfBindLimitReached(chatId, user, replyMarkup) {
+  if (isAdmin(user.id) || !isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  try {
+    const limitResult = await supabaseRpc("check_bind_limit_only", {
+      p_user_id: toPgBigint(user.id),
+      p_limit: 10,
+    });
+
+    if (limitResult && limitResult.allowed === false) {
+      await sendMessage(chatId, getBindInfoLimitReachedText(), replyMarkup);
+    }
+  } catch (error) {
+    console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
+  }
+}
+
 async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   const parsed = parseMlbbInput(input);
   const replyMarkup =
@@ -1321,7 +1352,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   }
 }
 
-async function handleBroadcastConfirm(chatId, user, data) {
+async function handleBroadcastConfirm(chatId, user, data, options = {}) {
   if (!isAdmin(user.id)) {
     await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
     return;
@@ -1344,6 +1375,28 @@ async function handleBroadcastConfirm(chatId, user, data) {
   pending.status = "confirmed";
   stats.pendingBroadcasts.delete(broadcastId);
   await sendMessage(chatId, "📣 <b>Xabar yuborish boshlandi.</b>", mainKeyboard(user));
+
+  const broadcastQueue = options.env?.BROADCAST_QUEUE;
+
+  if (broadcastQueue && typeof broadcastQueue.send === "function") {
+    try {
+      await broadcastQueue.send({
+        payload: pending.payload,
+        adminChatId: String(chatId),
+      });
+      await sendMessage(
+        chatId,
+        getBroadcastQueuedText(pending.recipientCount),
+        mainKeyboard(user)
+      );
+    } catch (error) {
+      console.error("[BROADCAST_ENQUEUE_ERROR]", error);
+      recordError("broadcast_enqueue_failed", error.message);
+      await sendMessage(chatId, getBroadcastQueuedErrorText(), mainKeyboard(user));
+    }
+
+    return;
+  }
 
   const result = await broadcastMessage(pending.payload);
 
@@ -1428,6 +1481,8 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
   };
 
   await sendMessage(chatId, getResultText(result), replyMarkup);
+
+  await sendSuggestionsGroupInvite(chatId);
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
@@ -3091,6 +3146,71 @@ function getCheckPromptText() {
   ].join("\n");
 }
 
+function getSuggestionsGroupInviteText() {
+  return [
+    `@${SUGGESTIONS_GROUP_USERNAME} guruhimizda bot haqidagi fikringiz yoki takliflaringizni yozib o'zaro muhokama qilishingiz mumkin.`,
+    "",
+    "Guruhimizda sizni kutamiz😇",
+  ].join("\n");
+}
+
+function suggestionsGroupKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "👥 Guruhga kirish", url: `https://t.me/${SUGGESTIONS_GROUP_USERNAME}` }],
+    ],
+  };
+}
+
+async function sendSuggestionsGroupInvite(chatId) {
+  if (!SUGGESTIONS_GROUP_USERNAME || !chatId) {
+    return;
+  }
+
+  // Faqat shaxsiy chatlarga (guruh/channel ID manfiy bo'ladi)
+  if (String(chatId).trim().startsWith("-")) {
+    return;
+  }
+
+  const today = getTashkentDateString();
+
+  if (isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+    try {
+      const rows = await supabaseRequest(
+        `/bot_users?user_id=eq.${encodeURIComponent(String(chatId))}&select=suggestions_invite_sent_date&limit=1`
+      );
+
+      if (rows?.[0]?.suggestions_invite_sent_date === today) {
+        return;
+      }
+
+      await sendMessage(chatId, getSuggestionsGroupInviteText(), suggestionsGroupKeyboard());
+
+      await supabaseRequest(`/bot_users?on_conflict=user_id`, {
+        method: "POST",
+        prefer: "resolution=merge-duplicates",
+        body: {
+          user_id: toPgBigint(String(chatId)),
+          suggestions_invite_sent_date: today,
+        },
+      });
+
+      return;
+    } catch (error) {
+      console.error("[SUGGESTIONS_INVITE_SYNC_ERROR]", error);
+      // Supabase ishlamasa runtime cache'ga tayanamiz
+    }
+  }
+
+  // Fallback: runtime dedup — bir xil instance'da kuniga bir marta
+  if (stats.suggestionsInviteDates.get(String(chatId)) === today) {
+    return;
+  }
+
+  stats.suggestionsInviteDates.set(String(chatId), today);
+  await sendMessage(chatId, getSuggestionsGroupInviteText(), suggestionsGroupKeyboard());
+}
+
 function getResultText(result) {
   return [
     "🔍 <b>Server Aniqlash Natijasi</b>",
@@ -3823,6 +3943,24 @@ function getBroadcastConfirmText(payload, recipientCount = stats.broadcastChats.
   ].join("\n");
 }
 
+function getBroadcastQueuedText(queued) {
+  return [
+    "📣 <b>Xabar yuborish navbatga qo‘yildi</b>",
+    "",
+    `Qabul qiluvchilar: <b>${queued}</b>`,
+    "Yuborish fonda (queue orqali) amalga oshirilmoqda — bir necha daqiqa davom etishi mumkin.",
+    "Hammasi tugagach yakuniy hisobot (Jami / Yuborildi / Xato) shu chatga keladi.",
+  ].join("\n");
+}
+
+async function sendBroadcastReport(chatId, result) {
+  return sendMessage(chatId, getBroadcastResultText(result), mainKeyboard());
+}
+
+function getBroadcastQueuedErrorText() {
+  return "❌ Xabarni navbatga qo‘yishda xatolik yuz berdi. Qaytadan urinib ko‘ring (/message).";
+}
+
 function getBroadcastResultText(result) {
   return [
     "📣 <b>Yuborish yakunlandi</b>",
@@ -3837,7 +3975,6 @@ function mainKeyboard(user = {}) {
   const keyboard = [
     [{ text: BUTTON_BIND_INFO }],
     [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
-    [{ text: BUTTON_FEEDBACK }],
   ];
 
   if (isAdmin(user.id)) {
@@ -6132,6 +6269,9 @@ function sanitizeTelegramText(value) {
 }
 
 module.exports.sendDailyUsageReport = sendDailyUsageReport;
+module.exports.sendBroadcastPayload = sendBroadcastPayload;
+module.exports.sendBroadcastReport = sendBroadcastReport;
+module.exports.getBroadcastChatIds = getBroadcastChatIds;
 
 module.exports.__private = {
   buildBengkelBindInfoRequest,
@@ -6167,6 +6307,7 @@ module.exports.__private = {
   mainKeyboard,
   normalizeSecretEnv,
   parseContentRangeTotal,
+  sendSuggestionsGroupInvite,
   isValidWebhookSecret,
   isAdmin,
   isKeyboardButton,

@@ -16,6 +16,10 @@
       {
         "binding": "BIND_INFO_QUEUE",
         "queue": "mlbbchatidbot-bind-info"
+      },
+      {
+        "binding": "BROADCAST_QUEUE",
+        "queue": "mlbbchatidbot-broadcast"
       }
     ],
     "consumers": [
@@ -24,6 +28,12 @@
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 1
+      },
+      {
+        "queue": "mlbbchatidbot-broadcast",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 2
       }
     ]
   },

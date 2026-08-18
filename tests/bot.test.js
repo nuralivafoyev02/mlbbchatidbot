@@ -401,8 +401,7 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
   assert.equal(userKeyboard.keyboard[0][0].text, "🔗 Ulanmalar");
-  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu/);
-  assert.match(userKeyboardText, /💬 Fikr va izohlar/);
+  assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu|💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
   assert.match(JSON.stringify(adminKeyboard), /⚙️ Majburiylikni sozlash/);
@@ -2416,7 +2415,7 @@ test("non-admin users cannot open stats", async () => {
   }
 });
 
-test("feedback button sends user comments to all admins", async () => {
+test("feedback command sends user comments to all admins", async () => {
   const originalFetch = global.fetch;
   const calls = [];
 
@@ -2442,7 +2441,7 @@ test("feedback button sends user comments to all admins", async () => {
           message: {
             chat: { id: 777, type: "private" },
             from: { id: 777, first_name: "Ali", username: "ali_test" },
-            text: "💬 Fikr va izohlar",
+            text: "/feedback",
           },
         },
       },
@@ -3002,6 +3001,116 @@ test("broadcast is not sent when confirmation token is invalid", async () => {
     );
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("broadcast confirm dispatches the broadcast to BROADCAST_QUEUE", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  const queued = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 90,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text: "/message Navbat orqali salom",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const callbackData =
+      calls[0].payload.reply_markup.inline_keyboard[0][0].callback_data;
+    calls.length = 0;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 91,
+          callback_query: {
+            id: "callback-broadcast",
+            data: callbackData,
+            from: { id: 5081175125 },
+            message: { chat: { id: 5081175125, type: "private" } },
+          },
+        },
+      },
+      createRes(),
+      {
+        BROADCAST_QUEUE: {
+          send: async (job) => {
+            queued.push(job);
+          },
+        },
+      }
+    );
+
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].payload.text, "Navbat orqali salom");
+    assert.equal(queued[0].adminChatId, "5081175125");
+    assert.equal(
+      calls.some((call) => call.payload.text === "Navbat orqali salom"),
+      false
+    );
+    assert.match(
+      calls.map((call) => call.payload.text).join(" "),
+      /navbatga qo‘yildi/
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("suggestions group invite is sent at most once per day per user", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const isInvite = (call) =>
+    String(call.payload.text || "").includes("takliflaringizni");
+
+  try {
+    const { sendSuggestionsGroupInvite } = handler.__private;
+
+    await sendSuggestionsGroupInvite(777);
+    await sendSuggestionsGroupInvite(777);
+    await sendSuggestionsGroupInvite(424242);
+
+    assert.equal(calls.filter(isInvite).length, 2);
+    assert.equal(
+      calls.filter((call) => isInvite(call) && call.payload.chat_id === 777).length,
+      1
+    );
+  } finally {
+    global.fetch = originalFetch;
+    global.__MLBB_BOT_STATS__.suggestionsInviteDates.delete("777");
+    global.__MLBB_BOT_STATS__.suggestionsInviteDates.delete("424242");
   }
 });
 
