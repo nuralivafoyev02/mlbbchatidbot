@@ -4,12 +4,12 @@ const { pathToFileURL } = require("node:url");
 
 process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
-process.env.SUPPORT_USERNAME = "@Oblto_org";
-process.env.ADMIN_IDS = "5081175125,8500085987";
+process.env.SUPPORT_USERNAME = "@Ksava_org";
+process.env.ADMIN_IDS = "5081175125,8500085987,7396686285";
 process.env.TELEGRAM_BOT_USERNAME = "mlbb_test_bot";
 process.env.MLBB_BIND_INFO_API_URL = "https://bind.example.test/bind";
 process.env.MLBB_BIND_INFO_API_METHOD = "POST";
-process.env.MLBB_BIND_INFO_API_KEY = "test-bind-key";
+process.env.MLBB_BIND_INFO_API_KEY = "test-bind-key"; 
 delete process.env.SUPABASE_URL;
 delete process.env.SUPABASE_SERVICE_KEY;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -19,6 +19,7 @@ const {
   buildRuntimeDailyReport,
   enrichPremiumEmojis,
   extractTelegramId,
+  extractTelegramUsername,
   extractTelegramPhoneNumber,
   formatPhoneNumber,
   getAdminFeedbackText,
@@ -33,6 +34,7 @@ const {
   getStatsText,
   getUsersListText,
   getTelegramProfileText,
+  getTelegramProfileByUsernameFailedText,
   isAdmin,
   isValidWebhookSecret,
   isKeyboardButton,
@@ -203,6 +205,20 @@ test("telegram profile helpers parse ids and format profile text", () => {
   assert.equal(normalizePhoneNumber("tel:+998 (90) 123-45-67"), "998901234567");
   assert.equal(formatPhoneNumber("998901234567"), "+998901234567");
   assert.equal(maskPhoneNumber("+998901234567"), "+99890*****67");
+  
+  // Username extraction tests
+  assert.equal(extractTelegramUsername("/tg @ali_test"), "ali_test");
+  assert.equal(extractTelegramUsername("/tg @username123"), "username123");
+  assert.equal(extractTelegramUsername("/tg user_test"), "user_test");
+  assert.equal(extractTelegramUsername("/tg start"), "");
+  assert.equal(extractTelegramUsername("/tg help"), "");
+  assert.equal(extractTelegramUsername("/tg @ab"), "");
+  assert.equal(extractTelegramUsername("/tg 12345"), "");
+  
+  // Username failed text test
+  const failedText = getTelegramProfileByUsernameFailedText("testuser");
+  assert.match(failedText, /@testuser/);
+  assert.match(failedText, /topilmadi/);
 
   const text = getTelegramProfileText({
     id: 5081175125,
@@ -2469,16 +2485,16 @@ test("feedback command sends user comments to all admins", async () => {
       createRes()
     );
 
-    const adminMessages = calls.filter((call) =>
-      ["5081175125", "8500085987"].includes(String(call.payload.chat_id))
+    const mainGroupMessages = calls.filter((call) =>
+      String(call.payload.chat_id) === "-1003832186200"
     );
     const userAck = calls.find((call) => call.payload.chat_id === 777);
 
-    assert.equal(adminMessages.length, 2);
+    assert.equal(mainGroupMessages.length, 1);
     assert.ok(userAck);
-    assert.match(adminMessages[0].payload.text, /Feedback ID/);
-    assert.match(adminMessages[0].payload.text, /User ID: <code>777<\/code>/);
-    assert.match(adminMessages[0].payload.text, /Botga reyting funksiyasi kerak/);
+    assert.match(mainGroupMessages[0].payload.text, /Feedback ID/);
+    assert.match(mainGroupMessages[0].payload.text, /User ID: <code>777<\/code>/);
+    assert.match(mainGroupMessages[0].payload.text, /Botga reyting funksiyasi kerak/);
     assert.match(userAck.payload.text, /Fikringiz yuborildi/);
   } finally {
     global.fetch = originalFetch;
@@ -2515,7 +2531,7 @@ test("admin reply to feedback notification is delivered to the user", async () =
           update_id: 36,
           message: {
             chat: { id: 5081175125, type: "private" },
-            from: { id: 5081175125, first_name: "Admin" },
+            from: { id: 5081175125, first_name: "Admin", username: "ksava_org" },
             text: "Taklif qabul qilindi, qo‘shamiz.",
             reply_to_message: {
               message_id: 90,
@@ -2532,7 +2548,7 @@ test("admin reply to feedback notification is delivered to the user", async () =
     const adminAck = calls.find((call) => call.payload.chat_id === 5081175125);
 
     assert.ok(userReply);
-    assert.match(userReply.payload.text, /Admin javobi/);
+    assert.match(userReply.payload.text, /Admin @ksava_org javob berdi/);
     assert.match(userReply.payload.text, /Taklif qabul qilindi/);
     assert.equal(userReply.payload.parse_mode, undefined);
     assert.ok(adminAck);

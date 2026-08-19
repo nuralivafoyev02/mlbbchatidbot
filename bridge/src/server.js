@@ -49,6 +49,10 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === "POST" && url.pathname === "/resolve-username") {
+      return handleResolveUsername(req, res, url);
+    }
+
     if (req.method !== "POST" || url.pathname !== "/bengkel") {
       return sendJson(res, 404, {
         ok: false,
@@ -97,6 +101,71 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`MLBB Bengkel bridge listening on :${PORT}`);
 });
+
+async function handleResolveUsername(req, res, url) {
+  try {
+    const body = await readJsonBody(req);
+    const auth = validateBridgeSecret(req, body, url);
+
+    if (!auth.ok) {
+      return sendJson(res, 401, {
+        ok: false,
+        error: "unauthorized",
+      });
+    }
+
+    const username = sanitizeTelegramUsername(body.username);
+
+    if (!username) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: "username_invalid",
+      });
+    }
+
+    const result = await enqueueLookup(() => resolveUsername(username));
+
+    return sendJson(res, 200, {
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    console.error("[RESOLVE_USERNAME_ERROR]", error);
+    return sendJson(res, error.statusCode || 500, {
+      ok: false,
+      error: error.publicMessage || "resolve_failed",
+    });
+  }
+}
+
+async function resolveUsername(username) {
+  const client = await getClient();
+  const peer = await client.getEntity(username);
+
+  if (!peer) {
+    throw createPublicError(404, "user_not_found");
+  }
+
+  const profile = {
+    id: Number(peer.id || 0),
+    username: peer.username || "",
+    first_name: peer.firstName || peer.first_name || "",
+    last_name: peer.lastName || peer.last_name || "",
+    type: peer.className || "User",
+    is_self: peer.self || false,
+    is_contact: peer.contact || false,
+    is_mutual_contact: peer.mutualContact || false,
+    isremium: peer.premium || false,
+    is_fake: peer.fake || false,
+    is_scam: peer.scam || false,
+    is_support: peer.support || false,
+    is_verified: peer.verified || false,
+    restriction_reason: peer.restrictionReason || "",
+    access_hash: Number(peer.accessHash || 0),
+  };
+
+  return profile;
+}
 
 function enqueueLookup(task) {
   const run = requestChain.then(task, task);

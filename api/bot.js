@@ -11,7 +11,7 @@ const SUGGESTIONS_GROUP_USERNAME = sanitizeOptionalTelegramUsername(
 const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );
-const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987");
+const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987,7396686285");
 const MAIN_GROUP_ID = cleanEnv(process.env.MAIN_GROUP_ID) || "-1003832186200";
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
@@ -103,6 +103,7 @@ const MLBB_BIND_INFO_API_METHOD = normalizeHttpMethod(
 );
 const MLBB_BIND_INFO_API_KEY_FIELD =
   cleanEnv(process.env.MLBB_BIND_INFO_API_KEY_FIELD) || "x_key";
+const MLBB_BRIDGE_URL = cleanEnv(process.env.MLBB_BRIDGE_URL || process.env.MLBB_BIND_INFO_API_URL);
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, "");
 const SUPABASE_CONFIG = resolveSupabaseConfig(process.env, SUPABASE_URL);
 const SUPABASE_SERVICE_KEY = SUPABASE_CONFIG.serviceKey;
@@ -154,6 +155,7 @@ if (!global.__MLBB_BOT_STATS__) {
     errorCounts: {},
     featureCounts: {},
     userActionCounts: new Map(),
+    startNotifiedUsers: new Set(),
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
     lastKnownUsersSyncAt: 0,
@@ -197,6 +199,9 @@ if (!(stats.userActionCounts instanceof Map)) {
 stats.lastKnownUsersSyncAt ||= 0;
 stats.supabaseAuthDisabledUntil ||= 0;
 stats.supabaseLastAuthError ||= null;
+if (!(stats.startNotifiedUsers instanceof Set)) {
+  stats.startNotifiedUsers = new Set(Object.entries(stats.startNotifiedUsers || {}));
+}
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 BROADCAST_USER_IDS.forEach((chatId) => rememberKnownPrivateChat(chatId));
 
@@ -423,6 +428,12 @@ async function handleMessage(message, updateMeta = {}) {
     }
   }
 
+  // Feedback javobi — guruhda ham ishlashi kerak (admin reply qilganda)
+  if (isFeedbackAdminReply(message)) {
+    await handleFeedbackAdminReply(chatId, user, message);
+    return;
+  }
+
   if (isGroupChat(message.chat)) {
     const addressing = getGroupAddressing(message);
     const addressedText = addressing.commandText || addressing.input;
@@ -472,11 +483,6 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isFeedbackAdminReply(message)) {
-    await handleFeedbackAdminReply(chatId, user, message);
-    return;
-  }
-
   if (isFeedbackSubmissionMessage(message, user)) {
     await handleFeedbackSubmission(chatId, user, message);
     return;
@@ -491,6 +497,12 @@ async function handleMessage(message, updateMeta = {}) {
     stats.starts += 1;
     trackFeatureUse(user, message.chat, FEATURE_ACTIONS.START, updateMeta);
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
+    
+    // Yangi foydalanuvchi bildirishnomasi — fonda (webhook kechiktirmasdan)
+    if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
+      void notifyMainGroupIfNewUser(user).catch(() => {});
+    }
+    
     return;
   }
 
@@ -838,7 +850,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
         await sendMessage(chatId, getStartText(user), mainKeyboard(user));
         if (MAIN_GROUP_ID) {
           const userLink = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name) || 'Foydalanuvchi'}</a>`;
-          await sendMessage(MAIN_GROUP_ID, `🆕 <b>Yangi a'zo:</b> ${userLink}\nUshbu foydalanuvchi majburiy guruhga a'zo bo'ldi va botdan foydalanish huquqiga ega bo'ldi.`);
+          await sendMessage(MAIN_GROUP_ID, `#yangi_obunachi\n\n🆕 <b>Yangi a'zo:</b> ${userLink}\nUshbu foydalanuvchi majburiy guruhga a'zo bo'ldi va botdan foydalanish huquqiga ega bo'ldi.`);
         }
       } else {
         await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "❌ Siz hali guruhga a'zo bo'lmadingiz! Iltimos guruhga qo'shiling.", show_alert: true });
@@ -1034,7 +1046,7 @@ async function handleFeedbackSubmission(chatId, user, message) {
 
 async function handleFeedbackAdminReply(chatId, admin, message) {
   const target = parseFeedbackAdminReplyTarget(message.reply_to_message);
-  const replyPayload = createFeedbackAdminReplyPayload(message);
+  const replyPayload = createFeedbackAdminReplyPayload(message, admin);
 
   if (!target) {
     return;
@@ -1117,6 +1129,7 @@ async function handleMessageCommand(chatId, user, message) {
 async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
   const phoneNumber = extractTelegramPhoneNumber(text);
   const tgId = extractTelegramId(text);
+  const username = extractTelegramUsername(text);
   const replyMarkup = Object.hasOwn(options, "replyMarkup")
     ? options.replyMarkup
     : mainKeyboard(user);
@@ -1125,6 +1138,11 @@ async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
     await handleTelegramPhoneProfileLookup(chatId, user, phoneNumber, {
       replyMarkup,
     });
+    return;
+  }
+
+  if (username) {
+    await handleTelegramProfileByUsername(chatId, username, replyMarkup, { user });
     return;
   }
 
@@ -1255,6 +1273,61 @@ async function handleTelegramProfileById(
   );
 }
 
+async function handleTelegramProfileByUsername(
+  chatId,
+  username,
+  replyMarkup,
+  { user = {} } = {}
+) {
+  void safeSendChatAction(chatId, "typing");
+
+  // Avval Bot API orqali urinib ko'ramiz
+  const botProfile = await lookupTelegramProfile(`@${username}`);
+
+  if (botProfile.ok) {
+    trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
+    await sendMessage(
+      chatId,
+      getTelegramProfileText(botProfile.data),
+      replyMarkup
+    );
+    return;
+  }
+
+  // Bot API ishlamasa, bridge (GramJS) orqali username resolution
+  if (MLBB_BRIDGE_URL) {
+    const bridgeProfile = await lookupTelegramProfileByUsernameBridge(username);
+
+    if (bridgeProfile.ok) {
+      trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
+      await sendMessage(
+        chatId,
+        getTelegramProfileText(bridgeProfile.data),
+        replyMarkup
+      );
+      return;
+    }
+  }
+
+  // Hech qanday usul ishlamadi
+  await sendMessage(
+    chatId,
+    getTelegramProfileByUsernameFailedText(username),
+    replyMarkup
+  );
+}
+
+function getTelegramProfileByUsernameFailedText(username) {
+  return [
+    `❌ <b>@${escapeHtml(username)}</b> username bo'yicha profil topilmadi.`,
+    "",
+    "Telegram Bot API cheklovlari tufayli ba'zi username'lar topilmaydi.",
+    "Bu normal holat — bot faqat o'zi bilan gaplashgan foydalanuvchilarni topa oladi.",
+    "",
+    "TG ID yoki telefon raqamini sinab ko'ring.",
+  ].join("\n");
+}
+
 async function warnIfBindLimitReached(chatId, user, replyMarkup) {
   if (isAdmin(user.id) || !isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
     return;
@@ -1344,7 +1417,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
-    const notificationText = `${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni ulanmalarini tekshirdi.`;
+    const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni ulanmalarini tekshirdi.`;
     const inlineKeyboard = {
       inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
     };
@@ -1486,7 +1559,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
-    const notificationText = `${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni check qildi.`;
+    const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni check qildi.`;
     const inlineKeyboard = {
       inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
     };
@@ -2523,6 +2596,75 @@ async function lookupTelegramProfileByPhone(phoneNumber) {
   };
 }
 
+async function lookupTelegramProfileByUsernameBridge(username) {
+  if (!MLBB_BRIDGE_URL) {
+    return {
+      ok: false,
+      reason: "bridge_not_configured",
+    };
+  }
+
+  try {
+    const url = new URL(MLBB_BRIDGE_URL);
+    url.pathname = url.pathname.replace(/\/bengkel\/?$/, "/resolve-username");
+    if (url.pathname.endsWith("/")) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
+    if (!url.pathname.endsWith("/resolve-username")) {
+      url.pathname += "/resolve-username";
+    }
+
+    const response = await fetchWithTimeout(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(MLBB_BIND_INFO_API_KEY ? { "x-bridge-secret": MLBB_BIND_INFO_API_KEY } : {}),
+      },
+      body: JSON.stringify({ username }),
+      timeoutMs: 15000,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const bodyText = await response.text();
+    const data = contentType.includes("application/json")
+      ? safeJsonParse(bodyText)
+      : null;
+
+    if (!response.ok || !data?.ok) {
+      return {
+        ok: false,
+        reason: data?.error || `bridge_http_${response.status}`,
+      };
+    }
+
+    const profile = data.result;
+
+    if (!profile?.id) {
+      return {
+        ok: false,
+        reason: "bridge_no_profile",
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: profile.id,
+        type: profile.type || "private",
+        first_name: profile.first_name || "",
+        last_name: profile.last_name || "",
+        username: profile.username || "",
+      },
+    };
+  } catch (error) {
+    console.error("[BRIDGE_USERNAME_LOOKUP_ERROR]", error.message);
+    return {
+      ok: false,
+      reason: error.message || "bridge_error",
+    };
+  }
+}
+
 function normalizeLookupResponse(data) {
   if (!data) {
     return {
@@ -2651,7 +2793,7 @@ function detectServerType(zoneId) {
 }
 
 function parseAdvancedRanges() {
-  const raw = process.env.ADVANCED_SERVER_RANGES || "30000-39999,90000-99999";
+  const raw = process.env.ADVANCED_SERVER_RANGES || "57001-57999";
 
   return raw
     .split(",")
@@ -2714,6 +2856,32 @@ function extractTelegramId(text) {
   const match = commandless.match(/-?\d{5,20}/);
 
   return match ? match[0] : "";
+}
+
+function extractTelegramUsername(text) {
+  const commandless = String(text || "")
+    .replace(/^\/(?:tg|user|profile)(@\w+)?/i, "")
+    .replace(/\u00A0/g, " ")
+    .trim();
+
+  // @username format
+  const atMatch = commandless.match(/^@(\w{5,32})$/);
+  if (atMatch) {
+    return atMatch[1];
+  }
+
+  // username without @
+  const plainMatch = commandless.match(/^(\w{5,32})$/);
+  if (plainMatch && !/^\d+$/.test(plainMatch[1]) && !isReservedKeyword(plainMatch[1])) {
+    return plainMatch[1];
+  }
+
+  return "";
+}
+
+function isReservedKeyword(word) {
+  const reserved = ["start", "help", "commands", "check", "bind", "info", "tg", "user", "profile", "stat", "stats", "feedback", "fikr", "cancel", "bekor", "message", "limit", "errors", "xatoliklar", "users", "foydalanuvchilar", "emoji"];
+  return reserved.includes(word.toLowerCase());
 }
 
 function extractTelegramPhoneNumber(text) {
@@ -2937,31 +3105,27 @@ async function sendBroadcastPayload(chatId, payload) {
 }
 
 async function sendFeedbackToAdmins(feedback) {
-  const adminIds = ADMIN_IDS.map(String);
   const text = getAdminFeedbackText(feedback);
   let sent = 0;
   let failed = 0;
 
-  const results = await Promise.allSettled(
-    adminIds.map((adminId) => sendMessage(adminId, text, null))
-  );
-
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") {
+  // Feedback faqat asosiy guruhga yuboriladi
+  if (MAIN_GROUP_ID) {
+    try {
+      await safeSendMessage(MAIN_GROUP_ID, text, null);
       sent += 1;
-      return;
+    } catch (error) {
+      failed += 1;
+      console.error("[FEEDBACK_MAIN_GROUP_SEND_ERROR]", error.message);
+      recordError("feedback_main_group_send_failed", error.message, {
+        mainGroupId: MAIN_GROUP_ID,
+        feedbackId: feedback.id,
+      });
     }
-
-    failed += 1;
-    console.error("[FEEDBACK_ADMIN_SEND_ERROR]", result.reason);
-    recordError("feedback_admin_send_failed", result.reason?.message || String(result.reason), {
-      adminId: adminIds[index],
-      feedbackId: feedback.id,
-    });
-  });
+  }
 
   return {
-    total: adminIds.length,
+    total: MAIN_GROUP_ID ? 1 : 0,
     sent,
     failed,
   };
@@ -3057,7 +3221,7 @@ function shiftMessageEntities(entities = [], offsetDelta = 0) {
     .filter(Boolean);
 }
 
-function createFeedbackAdminReplyPayload(message = {}) {
+function createFeedbackAdminReplyPayload(message = {}, admin = {}) {
   const replyText = getFeedbackMessageText(message);
 
   if (!replyText) {
@@ -3068,7 +3232,8 @@ function createFeedbackAdminReplyPayload(message = {}) {
     return null;
   }
 
-  const prefix = "👮 Admin javobi:\n\n";
+  const adminUsername = admin.username ? `@${admin.username}` : (admin.first_name || "Admin");
+  const prefix = `👮 Admin ${escapeHtml(adminUsername)} javob berdi:\n\n`;
   const sourceEntities = message.text ? message.entities : message.caption_entities;
 
   return {
@@ -3077,8 +3242,8 @@ function createFeedbackAdminReplyPayload(message = {}) {
     entities: [
       {
         type: "bold",
-        offset: 3,
-        length: "Admin javobi".length,
+        offset: 7,
+        length: adminUsername.length + 14,
       },
       ...shiftMessageEntities(sourceEntities || [], prefix.length),
     ],
@@ -3301,12 +3466,15 @@ function getTelegramProfilePromptText() {
   return [
     "👤 <b>TG profil topish</b>",
     "",
-    "Telegram ID yoki oldin botga yuborilgan kontakt telefonini yuboring:",
-    "<code>/tg 5081175125</code>",
-    "<code>/tg +998901234567</code>",
+    "Telegram ID, username yoki telefon raqamini yuboring:",
     "",
-    "Telefon saqlangan bo‘lsa profil ma’lumoti chiqadi, aks holda Telegram clientda ochish linki beriladi.",
-    "Eslatma: telefon linkining ochilishi Telegram client va user privacy sozlamalariga bog‘liq.",
+    "<b>Namunalar:</b>",
+    "<code>/tg 5081175125</code> — Telegram ID orqali",
+    "<code>/tg @username</code> — Username orqali",
+    "<code>/tg +998901234567</code> — Telefon raqam orqali",
+    "",
+    "📱 Kontakt yuborsangiz, profil ma'lumotlari to'liq ko'rsatiladi.",
+    "Eslatma: username yoki ID orqali topish botning privacy sozlamalariga bog'liq.",
   ].join("\n");
 }
 
@@ -5630,6 +5798,34 @@ async function getSupabaseUsersCount() {
   return Number.isFinite(result.count) ? result.count : 0;
 }
 
+async function notifyMainGroupIfNewUser(user) {
+  if (!MAIN_GROUP_ID) return;
+
+  const isKnown = await isKnownUserInSupabase(user.id);
+  if (isKnown) return;
+
+  const userLink = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+  const notificationText = `#yangi_foydalanuvchi\n\n🆕 <b>Yangi foydalanuvchi botga start bosib botimiz foydalanuvchisiga aylandi</b>\n\n👤 ${userLink}`;
+  await safeSendMessage(MAIN_GROUP_ID, notificationText, null);
+}
+
+async function isKnownUserInSupabase(userId) {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return false;
+  }
+
+  try {
+    const data = await supabaseRequest(
+      `/bot_users?user_id=eq.${toPgBigint(userId)}&select=user_id&limit=1`
+    );
+    return Array.isArray(data) && data.length > 0;
+  } catch (error) {
+    // Xatolik bo'lsa — xavfsiz tomon: foydalanuvchini "yangi" deb hisoblaymiz
+    console.error("[SUPABASE_USER_CHECK_ERROR]", error.message);
+    return false;
+  }
+}
+
 async function lookupSupabaseUserByPhone(phoneNumber) {
   if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
     return null;
@@ -6286,6 +6482,7 @@ module.exports.__private = {
   sendDailyUsageReport,
   trackFeatureUse,
   extractTelegramId,
+  extractTelegramUsername,
   extractTelegramPhoneNumber,
   enrichPremiumEmojis,
   formatPhoneNumber,
@@ -6317,6 +6514,7 @@ module.exports.__private = {
   maskPhoneNumber,
   normalizeBengkelBindInfoResponse,
   normalizePhoneNumber,
+  getTelegramProfileByUsernameFailedText,
   normalizeLookupResponse,
   normalizeBindInfoResponse,
   parseBengkelBindInfoText,
