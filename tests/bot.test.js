@@ -3096,39 +3096,6 @@ test("broadcast confirm dispatches the broadcast to BROADCAST_QUEUE", async () =
   }
 });
 
-test("suggestions group invite is sent at most once per day per user", async () => {
-  const originalFetch = global.fetch;
-  const calls = [];
-
-  global.fetch = async (url, options) => {
-    calls.push({ url, payload: JSON.parse(options.body) });
-    return new Response(JSON.stringify({ ok: true, result: true }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-
-  const isInvite = (call) =>
-    String(call.payload.text || "").includes("takliflaringizni");
-
-  try {
-    const { sendSuggestionsGroupInvite } = handler.__private;
-
-    await sendSuggestionsGroupInvite(777);
-    await sendSuggestionsGroupInvite(777);
-    await sendSuggestionsGroupInvite(424242);
-
-    assert.equal(calls.filter(isInvite).length, 2);
-    assert.equal(
-      calls.filter((call) => isInvite(call) && call.payload.chat_id === 777).length,
-      1
-    );
-  } finally {
-    global.fetch = originalFetch;
-    global.__MLBB_BOT_STATS__.suggestionsInviteDates.delete("777");
-    global.__MLBB_BOT_STATS__.suggestionsInviteDates.delete("424242");
-  }
-});
 
 test("bind info wait message is deleted after zite lookup finishes", async () => {
   const modulePath = require.resolve("../api/bot.js");

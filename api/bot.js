@@ -5,9 +5,6 @@ const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 const SUPPORT_USERNAME = sanitizeTelegramUsername(
   process.env.SUPPORT_USERNAME || "Oblto_org"
 );
-const SUGGESTIONS_GROUP_USERNAME = sanitizeOptionalTelegramUsername(
-  process.env.SUGGESTIONS_GROUP_USERNAME || "checkmlbbidbot_takliflari"
-);
 const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );
@@ -147,7 +144,6 @@ if (!global.__MLBB_BOT_STATS__) {
     pendingBroadcasts: new Map(),
     pendingFeedbacks: new Map(),
     membershipCache: new Map(),
-    suggestionsInviteDates: new Map(),
     userModes: new Map(),
     userProfiles: new Map(),
     phoneProfiles: new Map(),
@@ -177,7 +173,6 @@ stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
 stats.membershipCache ||= new Map();
-stats.suggestionsInviteDates ||= new Map();
 if (!(stats.pendingFeedbacks instanceof Map)) {
   stats.pendingFeedbacks = new Map(Object.entries(stats.pendingFeedbacks || {}));
 }
@@ -1555,7 +1550,6 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
 
   await sendMessage(chatId, getResultText(result), replyMarkup);
 
-  await sendSuggestionsGroupInvite(chatId);
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
@@ -3311,70 +3305,7 @@ function getCheckPromptText() {
   ].join("\n");
 }
 
-function getSuggestionsGroupInviteText() {
-  return [
-    `@${SUGGESTIONS_GROUP_USERNAME} guruhimizda bot haqidagi fikringiz yoki takliflaringizni yozib o'zaro muhokama qilishingiz mumkin.`,
-    "",
-    "Guruhimizda sizni kutamiz😇",
-  ].join("\n");
-}
 
-function suggestionsGroupKeyboard() {
-  return {
-    inline_keyboard: [
-      [{ text: "👥 Guruhga kirish", url: `https://t.me/${SUGGESTIONS_GROUP_USERNAME}` }],
-    ],
-  };
-}
-
-async function sendSuggestionsGroupInvite(chatId) {
-  if (!SUGGESTIONS_GROUP_USERNAME || !chatId) {
-    return;
-  }
-
-  // Faqat shaxsiy chatlarga (guruh/channel ID manfiy bo'ladi)
-  if (String(chatId).trim().startsWith("-")) {
-    return;
-  }
-
-  const today = getTashkentDateString();
-
-  if (isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
-    try {
-      const rows = await supabaseRequest(
-        `/bot_users?user_id=eq.${encodeURIComponent(String(chatId))}&select=suggestions_invite_sent_date&limit=1`
-      );
-
-      if (rows?.[0]?.suggestions_invite_sent_date === today) {
-        return;
-      }
-
-      await sendMessage(chatId, getSuggestionsGroupInviteText(), suggestionsGroupKeyboard());
-
-      await supabaseRequest(`/bot_users?on_conflict=user_id`, {
-        method: "POST",
-        prefer: "resolution=merge-duplicates",
-        body: {
-          user_id: toPgBigint(String(chatId)),
-          suggestions_invite_sent_date: today,
-        },
-      });
-
-      return;
-    } catch (error) {
-      console.error("[SUGGESTIONS_INVITE_SYNC_ERROR]", error);
-      // Supabase ishlamasa runtime cache'ga tayanamiz
-    }
-  }
-
-  // Fallback: runtime dedup — bir xil instance'da kuniga bir marta
-  if (stats.suggestionsInviteDates.get(String(chatId)) === today) {
-    return;
-  }
-
-  stats.suggestionsInviteDates.set(String(chatId), today);
-  await sendMessage(chatId, getSuggestionsGroupInviteText(), suggestionsGroupKeyboard());
-}
 
 function getResultText(result) {
   return [
@@ -6504,7 +6435,6 @@ module.exports.__private = {
   mainKeyboard,
   normalizeSecretEnv,
   parseContentRangeTotal,
-  sendSuggestionsGroupInvite,
   isValidWebhookSecret,
   isAdmin,
   isKeyboardButton,
