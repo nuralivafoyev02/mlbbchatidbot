@@ -416,7 +416,7 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
   const userKeyboardText = JSON.stringify(userKeyboard);
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
-  assert.equal(userKeyboard.keyboard[0][0].text, "🔗 Ulanmalar");
+  assert.equal(userKeyboard.keyboard[0][0].text, "🔎 Server aniqlash");
   assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu|💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);

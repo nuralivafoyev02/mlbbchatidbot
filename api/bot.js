@@ -1,4 +1,534 @@
 const crypto = require("node:crypto");
+// --- i18n: Inline translations ---
+const SUPPORTED_LANGS = ["uz", "ru"];
+const DEFAULT_LANG = "uz";
+
+const translations = {
+  uz: {
+  "start_welcome": "Salom, <b>{name}</b>! 👋\n\nMLBB Account ID va Server/Zone ID yuboring, men serverini aniqlab beraman.\nTG ID yoki oldin yuborilgan kontakt telefoni orqali Telegram profil ma'lumotlarini ham tekshirishingiz mumkin.\n\nKo'p ishlatiladigan funksiyalar pastdagi klaviaturada.",
+  "check_prompt": "🔎 <b>Server aniqlash</b>\n\nIltimos, MLBB <b>Account ID</b> va <b>Server/Zone ID</b> ni yuboring.\n\n<b>Namuna:</b>\n1289050 (10050)\n/check 1289050 (10050)\n\n📌 Faqat Account ID yuborilsa, serverni aniq topib bo'lmaydi.",
+  "result_title": "🔍 <b>Server Aniqlash Natijasi</b>",
+  "result_account_id": "🆔 <b>Account ID:</b> <code>{accountId}</code>",
+  "result_server_zone": "🌐 <b>Server / Zone ID:</b> <code>{zoneId}</code>",
+  "result_server_type": "🖥 <b>Server turi:</b> <b>{serverType}</b>",
+  "result_region": "📍 <b>Region:</b> {region}",
+  "result_region_missing": "📍 <b>Region:</b> API qaytarmadi",
+  "result_nickname": "👤 <b>Nickname:</b> {nickname}",
+  "result_status": "✅ <b>Holat:</b> {status}",
+  "failed_lookup_title": "❌ <b>Profil topilmadi.</b>",
+  "failed_lookup_body": "Foydalanuvchi yoki server topilmadi.",
+  "invalid_mlbb_input": "Server topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.",
+  "help_title": "ℹ️ <b>Yordam</b>",
+  "help_section_server": "<b>1. MLBB server aniqlash</b>\nAccount ID va Server/Zone ID ni yuboring. Bot profilni MLBB official serveri orqali aniqlaydi.\n\n<b>Formatlar:</b>\n<code>1289050 (10050)</code>\n<code>1289050 10050</code>\n<code>/check 1289050 10050</code>",
+  "help_section_tg_profile": "<b>2. Telegram profil topish</b>\nTG ID orqali bot ko'ra oladigan profil ma'lumotlarini chiqaradi. Telefon yuborilsa, saqlangan profil topiladi yoki Telegram clientda ochish linki beriladi.\n<code>/tg 5081175125</code>\n<code>/tg +998901234567</code>\n<code>/user 5081175125</code>\n<code>/profile 5081175125</code>",
+  "help_section_keyboard": "<b>3. Klaviatura</b>\nPastdagi tugmalar orqali asosiy funksiyalarni command yozmasdan ishlatishingiz mumkin.",
+  "help_section_limitations": "<b>4. Cheklovlar</b>\nFaqat Account ID yuborilsa, MLBB serverini aniq topib bo'lmaydi. TG profil lookup esa Telegram botga ko'rinadigan public ma'lumotlargina qaytaradi; telefon linkining ochilishi Telegram client va user privacy sozlamalariga bog'liq.",
+  "help_contact": "Aloqa: @{supportUsername}",
+  "commands_title": "📋 <b>Buyruqlar</b>",
+  "cmd_start": "<code>/start</code> — botni ishga tushirish va klaviaturani chiqarish",
+  "cmd_help": "<code>/help</code> — batafsil yordam",
+  "cmd_commands": "<code>/commands</code> — barcha buyruqlar ro'yxati",
+  "cmd_check": "<code>/check 1289050 10050</code> — MLBB server/profil tekshirish",
+  "cmd_info": "<code>/info 1006613098 13019</code> yoki <code>/bind</code> — akkaunt ulanmalarini tekshirish",
+  "cmd_tg_id": "<code>/tg 5081175125</code> — Telegram ID orqali profil topish",
+  "cmd_tg_phone": "<code>/tg +998901234567</code> — botga oldin yuborilgan kontakt telefoni orqali profil topish",
+  "cmd_user": "<code>/user 5081175125</code> — /tg bilan bir xil",
+  "cmd_profile": "<code>/profile 5081175125</code> — /tg bilan bir xil",
+  "cmd_feedback": "<code>/feedback</code> yoki <code>/fikr</code> — taklif yoki shikoyat yuborish",
+  "cmd_language": "<code>/language</code> — tilni almashtirish",
+  "admin_commands_title": "<b>Admin buyruqlari:</b>",
+  "cmd_stats": "<code>/stats</code> yoki <code>/stat</code> — bot statistikasi",
+  "cmd_users": "<code>/users</code> — barcha saqlangan foydalanuvchilar ro'yxati",
+  "cmd_errors": "<code>/errors</code> — bot xatoliklari",
+  "cmd_emoji": "<code>/emoji</code> — premium/custom emoji ID larini chiqarish",
+  "cmd_message": "<code>/message Matn</code> — barcha userlarga tasdiq bilan xabar yuborish",
+  "tg_profile_prompt": "👤 <b>TG profil topish</b>\n\nTelegram ID, username yoki telefon raqamini yuboring:\n\n<b>Namunalar:</b>\n<code>/tg 5081175125</code> — Telegram ID orqali\n<code>/tg @username</code> — Username orqali\n<code>/tg +998901234567</code> — Telefon raqam orqali\n\n📱 Kontakt yuborsangiz, profil ma'lumotlari to'liq ko'rsatiladi.\nEslatma: username yoki ID orqali topish botning privacy sozlamalariga bog'liq.",
+  "invalid_tg_id": "Foydalanuvchi topilmadi. TG ID ni tekshirib qayta yuboring.",
+  "tg_contact_no_phone": "Kontakt ichida telefon raqam topilmadi. Iltimos, telefon raqami bor kontakt yuboring.",
+  "tg_phone_no_user": "Bu kontaktda Telegram user_id ko'rinmadi.\nTelefon: <code>{phone}</code>\n\nTelegram botlar user_id bo'lmagan kontaktni profilga aylantira olmaydi.",
+  "tg_phone_not_found": "Bu telefon bo'yicha saqlangan Telegram profil topilmadi.\nTelefon: <code>{phone}</code>\n\nRaqamdan topish uchun avval shu kontaktni botga yuboring. Kontakt ichida Telegram user_id bo'lsa, keyingi safar raqam orqali ham ishlaydi.",
+  "tg_profile_title": "👤 <b>Telegram profil</b>",
+  "tg_profile_id": "🆔 <b>ID:</b> <code>{id}</code>",
+  "tg_profile_name": "👤 <b>Ism:</b> {name}",
+  "tg_profile_title_label": "🏷 <b>Nomi:</b> {title}",
+  "tg_profile_phone": "📱 <b>Telefon:</b> <code>{phone}</code>",
+  "tg_profile_username": "🔗 <b>Username:</b> {username}",
+  "tg_profile_type": "📌 <b>Turi:</b> {type}",
+  "tg_profile_link": "🌐 <b>Link:</b> {link}",
+  "tg_profile_bio": "📝 <b>Bio:</b> {bio}",
+  "tg_profile_username_failed": "❌ <b>@{username}</b> username bo'yicha profil topilmadi.\n\nTelegram Bot API cheklovlari tufayli ba'zi username'lar topilmaydi.\nBu normal holat — bot faqat o'zi bilan gaplashgan foydalanuvchilarni topa oladi.\n\nTG ID yoki telefon raqamini sinab ko'ring.",
+  "unknown_text": "Nima demoqchiligizni tushunmadim 🙂\nYaxshisi pastdagi tugmalardan foydalaning.",
+  "admin_only": "Bu bo'lim faqat adminlar uchun!",
+  "error_unexpected": "Kutilmagan xatolik bo'ldi, lekin men ishlayapman.\n\nIltimos, ID'ni yana shu formatda yuboring:\n1289050 (10050)",
+  "bind_info_limit_reached": "⛔️ <b>Kunlik limitga yetdingiz!</b>\n\nUlanmalarni tekshirish xizmatidan kuniga faqat <b>10 marta</b> foydalanishi mumkin.\n@obitomlb yoki @vafoyev_n ga murojaat qilsangiz kunlik limitingizni uzaytirib berishi mumkin.\nIltimos, ertaga yoki soat 00:00 dan keyin qayta urinib ko'ring.",
+  "invalid_bind_input": "Ulanmalar topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.",
+  "bind_failed_bridge_not_configured": "Provider orqali ulanmalarni tekshirish uchun bridge endpoint sozlanmagan.\nAdminlarga xatolik yozib qo'yildi, sozlama yangilangandan keyin qayta urinib ko'ring.",
+  "bind_failed_bengkel_parse": "Bengkel bot javobidan ulanmalar ma'lumotini o'qib bo'lmadi.\nIltimos, ID va Server/Zone ID ni tekshirib qayta yuboring.",
+  "bind_failed_no_data": "Ulanmalar ma'lumotini olish imkoni bo'lmadi.\nProvider bu akkaunt uchun linked-account ma'lumotini qaytarmadi.",
+  "bind_failed_auth_required": "Ulanmalar provideriga ulanish uchun avtorizatsiya kerak.\nAdminlarga xatolik yozib qo'yildi, sozlama yangilangandan keyin qayta urinib ko'ring.",
+  "bind_failed_provider_down": "Ulanmalar provider manzili ishlamayapti yoki o'zgargan.\nAdminlarga xatolik yozib qo'yildi, birozdan keyin qayta urinib ko'ring.",
+  "bind_failed_provider_timeout": "Ulanmalar provideri sekin javob berdi.\nIltimos, birozdan keyin qayta urinib ko'ring.",
+  "bind_failed_provider_unavailable": "Ulanmalar provideri vaqtincha javob bermayapti.\nIltimos, birozdan keyin qayta urinib ko'ring.",
+  "bind_failed_generic": "Ma'lumot olish uchun bazadan javob olib bo'lmadi.\nIltimos, birozdan keyin qayta urinib ko'ring.",
+  "bind_info_wait": "⏳ <b>Ulanmalar tekshirilmoqda...</b>\n\nIltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
+  "bind_info_title": "🔗 <b>Ulanmalar</b>",
+  "bind_info_id": "🆔 <b>ID:</b> <code>{accountId}</code>",
+  "bind_info_server": "🌐 <b>Server:</b> <code>{zoneId}</code>",
+  "bind_moonton": "🌟 <b>Moonton:</b> {value}",
+  "bind_vk": "🔵 <b>VK:</b> {value}",
+  "bind_google_play": "🎮 <b>Google Play:</b> {value}",
+  "bind_tiktok": "😎 <b>TikTok:</b> {value}",
+  "bind_facebook": "😎 <b>Facebook:</b> {value}",
+  "bind_apple": "⚪️ <b>Apple:</b> {value}",
+  "bind_gcid": "🕹 <b>GCID:</b> {value}",
+  "bind_telegram": "✈️ <b>Telegram:</b> {value}",
+  "bind_whatsapp": "🟢 <b>WhatsApp:</b> {value}",
+  "bind_device_login": "📱 <b>Device Login:</b> {value}",
+  "bind_limit_remaining": "<i>😄 Bugungi tekshirishlar qoldig'i: {remaining}/{total} ta</i>",
+  "feedback_prompt": "💬 <b>Fikr va izohlar</b>\n\nBotga kerakli funksiya, taklif yoki shikoyatingizni yozib yuboring.\nXabaringiz adminlarga yetkaziladi. Admin javob bersa, javobi bot orqali sizga keladi.\n\nBekor qilish uchun /cancel buyrug'ini bosing.",
+  "feedback_text_required": "Fikr yoki izoh matn ko'rinishida bo'lishi kerak.\nIltimos, taklif yoki shikoyatingizni yozib yuboring.",
+  "feedback_too_long": "Fikr juda uzun. Iltimos, {maxLength} belgidan qisqaroq yozing.",
+  "feedback_thanks": "✅ <b>Fikringiz yuborildi.</b>\n\nJavobni kuting va u shu yerga keladi.",
+  "feedback_thanks_failed": "✅ <b>Fikringiz yuborildi.</b>\n\nHozir adminlarga yetkazishda xatolik bo'ldi. Iltimos, birozdan keyin qayta urinib ko'ring.",
+  "admin_feedback_title": "💬 <b>Yangi fikr yoki izoh</b>",
+  "admin_feedback_user": "User: {displayName}",
+  "admin_feedback_message": "<b>Xabar:</b>",
+  "admin_feedback_hint": "Shu xabarga reply qilib javob berishingiz mumkin.",
+  "admin_feedback_reply_sent": "✅ Javob userga yuborildi.\n\nUser ID: <code>{userId}</code>{feedbackLine}",
+  "admin_feedback_reply_required": "Userga yuboriladigan javob matn ko'rinishida bo'lishi kerak.",
+  "admin_feedback_reply_failed": "❌ Javobni userga yuborib bo'lmadi.\n\nUser ID: <code>{userId}</code>{feedbackLine}{reasonLine}",
+  "stats_title": "📊 <b>Bot statistikasi</b>",
+  "stats_total_users": "👥 <b>Jami foydalanuvchilar:</b> {count}",
+  "stats_today_users": "🟢 <b>Bugun foydalanganlar:</b> {count}",
+  "stats_broadcast_chats": "📣 <b>Broadcast chatlar:</b> {count}",
+  "stats_pending_broadcasts": "⏳ <b>Kutilayotgan broadcast:</b> {count}",
+  "stats_starts": "🚀 <b>/start:</b> {count}",
+  "stats_total_checks": "🔎 <b>Jami tekshiruv:</b> {count}",
+  "stats_success": "✅ <b>Muvaffaqiyatli:</b> {count}",
+  "stats_failed": "❌ <b>MLBB tekshiruv xatolari:</b> {count}",
+  "stats_started_at": "🕒 <b>Ishga tushgan:</b> {date}",
+  "stats_last_check": "✅ <b>Oxirgi tekshiruv:</b> {date}",
+  "stats_today_header": "<b>Bugun botdan foydalanganlar:</b>",
+  "stats_monthly_header": "<b>Oylik aktiv userlar:</b>",
+  "stats_errors_moved": "Xatoliklar alohida admin tugmasiga ko'chirildi: <b>⚠️ Xatoliklar</b>.",
+  "stats_today_user_line": "{index}. <code>{userId}</code> — {name} — {updates} update — {lastSeen}",
+  "stats_monthly_line": "{month}: <b>{users}</b> user, {updates} update",
+  "stats_monthly_no_data": "Hali oylik aktivlik qayd etilmagan.",
+  "stats_monthly_supabase_error": "Supabase o'qishda xatolik bor, oylik statistika vaqtincha olinmadi.",
+  "stats_monthly_not_configured": "Supabase ulanmagan. Joriy runtime: <b>{count}</b> user.",
+  "stats_today_no_users": "Bugun hali user qayd etilmagan.",
+  "stats_today_supabase_error": "Supabase o'qishda xatolik bor, bugungi lokal user topilmadi.",
+  "users_title": "👥 <b>Bot foydalanuvchilari</b>",
+  "users_total": "Jami: <b>{total}</b>",
+  "users_page": "Sahifa: <b>{page}/{totalPages}</b>",
+  "users_source": "Manba: <b>{source}</b>",
+  "users_sync_line": "🔄 <b>Known user sync:</b> {saved}/{total} yuborildi",
+  "users_supabase_config_error": "Supabase sozlamasi: {error}",
+  "users_supabase_read_error": "Supabase o'qishda xatolik bor.",
+  "users_not_found": "User topilmadi.",
+  "users_read_error": "Foydalanuvchilarni o'qib bo'lmadi.",
+  "errors_title": "⚠️ <b>Bot xatoliklari</b>",
+  "errors_types_header": "<b>Xatolik turlari:</b>",
+  "errors_recent_header": "<b>Oxirgi xatoliklar:</b>",
+  "errors_no_errors": "Xatolik qayd etilmagan.",
+  "broadcast_usage_title": "📣 <b>Umumiy xabar yuborish</b>",
+  "broadcast_usage_format": "Format:\n<code>/message Sizning xabaringiz</code>",
+  "broadcast_usage_hint": "Formatlangan text, premium emoji va linklar saqlanadi.\nSticker/media yuborish uchun o'sha xabarga reply qilib <code>/message</code> yozing.\n\nKeyingi qadamda tasdiqlash tugmasi chiqadi.",
+  "broadcast_too_long": "Xabar juda uzun. Iltimos, 3500 belgidan qisqaroq matn yuboring.",
+  "broadcast_expired": "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.",
+  "broadcast_confirm_title": "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
+  "broadcast_confirm_body": "Hali hech kimga yuborilmadi. Yuborish faqat pastdagi tasdiq tugmasidan keyin boshlanadi.\n\nQabul qiluvchilar: <b>{count}</b>",
+  "broadcast_confirm_message": "<b>Xabar:</b>",
+  "broadcast_queued_title": "📣 <b>Xabar yuborish navbatga qo‘yildi</b>",
+  "broadcast_queued_recipients": "Qabul qiluvchilar: <b>{count}</b>",
+  "broadcast_queued_body": "Yuborish fonda (queue orqali) amalga oshirilmoqda — bir necha daqiqa davom etishi mumkin.\nHammasi tugagach yakuniy hisobot (Jami / Yuborildi / Xato) shu chatga keladi.",
+  "broadcast_queued_error": "❌ Xabarni navbatga qo'yishda xatolik yuz berdi. Qaytadan urinib ko'ring (/message).",
+  "broadcast_result_title": "📣 <b>Yuborish yakunlandi</b>",
+  "broadcast_result_total": "Jami: <b>{total}</b>",
+  "broadcast_result_sent": "Yuborildi: <b>{sent}</b>",
+  "broadcast_result_failed": "Xato: <b>{failed}</b>",
+  "mandatory_setup_title": "⚙️ <b>Majburiy guruh sozlamalari</b>",
+  "mandatory_setup_current": "Hozirgi guruh: <b>{title}</b> ({id})\n\nYangi guruhni o'rnatish uchun guruh ID sini (yoki @username) yuboring. O'chirish uchun /unset_mandatory buyrug'ini bosing.",
+  "mandatory_setup_empty": "Hozirda hech qanday guruh majburiy emas.\n\nGuruhni o'rnatish uchun uning ID sini (yoki @username) yuboring. Eslatma: Bot o'sha guruh yoki kanalda admin bo'lishi shart!",
+  "mandatory_setup_confirm": "<b>{title}</b> ({id}) guruhini majburiy qilib belgilansinmi?",
+  "mandatory_setup_not_found": "❌ Guruh topilmadi yoki bot u yerda admin emas:\n<code>{error}</code>",
+  "mandatory_unset": "✅ Majburiy guruh o'chirildi.",
+  "mandatory_confirm_yes": "✅ Ha",
+  "mandatory_confirm_no": "❌ Yo'q",
+  "mandatory_set_success": "✅ <b>{title}</b> majburiy guruh etib belgilandi!",
+  "mandatory_set_error": "Xatolik: {error}",
+  "mandatory_not_invite_link": "❌ Guruhning public username yoki invite linki yo'q. Avval link yarating.",
+  "check_membership_title": "⚠️ <b>Botdan foydalanish uchun guruhga qo'shilishingiz majburiy!</b>\n\nIltimos, quyidagi guruhga qo'shiling va botdan to'liq foydalanish imkoniga ega bo'ling.",
+  "check_membership_join": "📣 A'zo bo'lish",
+  "check_membership_done": "✅ Qo'shilib keldim",
+  "check_membership_confirmed": "✅ A'zolik tasdiqlandi!",
+  "check_membership_success": "✅ Guruhga a'zo bo'lganingiz tasdiqlandi. Botdan bemalol foydalanishingiz mumkin!",
+  "check_membership_not_member": "❌ Siz hali guruhga a'zo bo'lmadingiz! Iltimos guruhga qo'shiling.",
+  "check_membership_cancelled": "Bekor qilindi.",
+  "broadcast_confirm_yes": "✅ Tasdiqlash",
+  "broadcast_confirm_no": "❌ Bekor qilish",
+  "broadcast_started": "📣 <b>Xabar yuborish boshlandi.</b>",
+  "errors_refresh": "🔄 Yangilash",
+  "pagination_prev": "⬅️ Oldingi 10",
+  "pagination_next": "Keyingi 10 ➡️",
+  "contact_send": "📱 Kontakt yuborish",
+  "feedback_placeholder": "Fikringizni yozing...",
+  "bind_info_placeholder": "1006613098 (13019)",
+  "new_user_notification": "#yangi_foydalanuvchi\n\n🆕 <b>Yangi foydalanuvchi botga start bosib botimiz foydalanuvchisiga aylandi</b>\n\n👤 {userLink}",
+  "new_member_notification": "#yangi_obunachi\n\n🆕 <b>Yangi a'zo:</b> {userLink}\nUshbu foydalanuvchi majburiy guruhga a'zo bo'ldi va botdan foydalanish huquqiga ega bo'ldi.",
+  "server_check_notification": "#foydalanish\n{userMention} <b>{accountId} ({zoneId})</b> ni check qildi.",
+  "bind_info_notification": "#foydalanish\n{userMention} <b>{accountId} ({zoneId})</b> ni ulanmalarini tekshirdi.",
+  "open_profile": "👤 Profilni ochish",
+  "daily_report_title": "📊 <b>Kunlik foydalanish statistikasi</b>",
+  "daily_report_date": "📅 Sana: <b>{date}</b>",
+  "daily_report_functions": "<b>Funksiyalar bo'yicha:</b>",
+  "daily_report_no_functions": "Bugun funksiya ishlatilishi qayd etilmagan.",
+  "daily_report_top3": "<b>Top 3 foydalanuvchi:</b>",
+  "daily_report_no_users": "Bugun foydalanish qayd etilmagan.",
+  "daily_report_runtime_warning": "⚠️ Supabase o'qilmadi — joriy runtime xotirasidan.",
+  "bind_limit_precheck_failed": "⚠️ Kunlik limitga yetdingiz! Ulanmalarni tekshirish xizmatidan kuniga faqat <b>10 marta</b> foydalanish mumkin.\nIltimos, ertaga yoki soat 00:00 dan keyin qayta urinib ko'ring.",
+  "limit_usage": "<b>Noto'g'ri format!</b>\n\nTo'g'ri foydalanish: /limit [tgid] [miqdor]",
+  "limit_invalid": "<b>Xato!</b> ID va limit faqat musbat sonlardan iborat bo'lishi kerak.",
+  "limit_success_admin": "Muvaffaqiyatli! Foydalanuvchi ({targetTgId}) limiti <b>{newLimit}</b> ga o'zgartirildi ✅",
+  "limit_success_user": "Tabriklaymiz! Sizning ulanmalarni tekshirish limitingiz <b>{newLimit}</b> ta ga o'zgartirildi ✅",
+  "limit_db_error": "Bazada xatolik yuz berdi.",
+  "limit_server_error": "Serverda xatolik yuz berdi.",
+  "user_check_result": "📊 Foydalanuvchi botdan <b>{count}</b> marta foydalangan.\n🕒 Oxirgi faollik: <b>{lastSeen}</b> (Toshkent vaqti)",
+  "user_check_not_found": "❌ Foydalanuvchi topilmadi yoxud u hali botdan foydalanmagan.",
+  "user_check_error": "⚠️ Ma'lumotni olishda xatolik yuz berdi.",
+  "lang_title": "🌐 <b>Tilni tanlang</b>",
+  "lang_current": "Joriy til: <b>{currentLang}</b>",
+  "lang_select": "Tilni tanlang:",
+  "lang_changed": "✅ Til muvaffaqiyatli o'zgartirildi: <b>{langName}</b>",
+  "lang_uz": "O'zbek",
+  "lang_ru": "Русский",
+  "lang_button": "🌐 Til almashtirish",
+  "lang_callback_confirm": "✅ Tanlash",
+  "btn_bind_info": "🔗 Ulanmalar",
+  "btn_check": "🔎 Server aniqlash",
+  "btn_tg_profile": "👤 TG profil topish",
+  "btn_language": "🌐 Til almashtirish",
+  "btn_stats": "📊 Statistika",
+  "btn_users": "👥 Foydalanuvchilar",
+  "btn_errors": "⚠️ Xatoliklar",
+  "btn_feedback": "💬 Fikr va izohlar",
+  "btn_broadcast": "📣 Xabar yuborish",
+  "btn_commands": "📋 Buyruqlar",
+  "btn_help": "ℹ️ Yordam",
+  "btn_menu": "🏠 Menyu",
+  "btn_check_again": "🔍 Yana tekshirish",
+  "btn_mandatory_setup": "⚙️ Majburiylikni sozlash",
+  "btn_refresh": "🔄 Yangilash",
+  "btn_pagination_prev": "⬅️ Oldingi 10",
+  "btn_pagination_next": "Keyingi 10 ➡️",
+  "btn_confirm_yes": "✅ Tasdiqlash",
+  "btn_confirm_no": "❌ Bekor qilish",
+  "btn_contact_send": "📱 Kontakt yuborish",
+  "btn_open_profile": "👤 Profilni ochish",
+  "btn_join": "📣 A'zo bo'lish",
+  "btn_done": "✅ Qo'shilib keldim",
+  "btn_lang_uz": "🇺🇿 O'zbek",
+  "btn_lang_ru": "🇷🇺 Русский",
+  "placeholder_feedback": "Fikringizni yozing...",
+  "placeholder_bind_info": "1006613098 (13019)",
+  "label_start": "🚀 /start",
+  "label_server_check": "🔎 Server tekshiruv",
+  "label_bind_info": "🔗 Ulanmalar",
+  "label_tg_profile": "👤 TG profil",
+  "label_feedback": "💬 Fikrlar",
+  "bind_wait_message": "⏳ <b>Ulanmalar tekshirilmoqda...</b>\n\nIltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
+  "channel_notification_user": "#foydalanish\n{userMention} <b>{accountId} ({zoneId})</b> ni ulanmalarini tekshirdi."
+},
+  ru: {
+  "start_welcome": "Привет, <b>{name}</b>! 👋\n\nОтправьте MLBB Account ID и Server/Zone ID, я определю сервер.\nТакже можете проверить профиль Telegram по TG ID или ранее отправленному контакту.\n\nЧасто используемые функции доступны на клавиатуре внизу.",
+  "check_prompt": "🔎 <b>Определение сервера</b>\n\nПожалуйста, отправьте <b>Account ID</b> и <b>Server/Zone ID</b> MLBB.\n\n<b>Пример:</b>\n1289050 (10050)\n/check 1289050 (10050)\n\n📌 Если отправить только Account ID, сервер определить не получится.",
+  "result_title": "🔍 <b>Результат определения сервера</b>",
+  "result_account_id": "🆔 <b>Account ID:</b> <code>{accountId}</code>",
+  "result_server_zone": "🌐 <b>Server / Zone ID:</b> <code>{zoneId}</code>",
+  "result_server_type": "🖥 <b>Тип сервера:</b> <b>{serverType}</b>",
+  "result_region": "📍 <b>Регион:</b> {region}",
+  "result_region_missing": "📍 <b>Регион:</b> API не вернул",
+  "result_nickname": "👤 <b>Никнейм:</b> {nickname}",
+  "result_status": "✅ <b>Статус:</b> {status}",
+  "failed_lookup_title": "❌ <b>Профиль не найден.</b>",
+  "failed_lookup_body": "Пользователь или сервер не найдены.",
+  "invalid_mlbb_input": "Сервер не найден. Проверьте Account ID и Server/Zone ID и отправьте снова.",
+  "help_title": "ℹ️ <b>Помощь</b>",
+  "help_section_server": "<b>1. Определение сервера MLBB</b>\nОтправьте Account ID и Server/Zone ID. Бот определит профиль через официальный сервер MLBB.\n\n<b>Форматы:</b>\n<code>1289050 (10050)</code>\n<code>1289050 10050</code>\n<code>/check 1289050 10050</code>",
+  "help_section_tg_profile": "<b>2. Поиск профиля Telegram</b>\nПо TG ID выведет информацию профиля, которую видит бот. Если отправить телефон — найдёт сохранённый профиль или даст ссылку на открытие в Telegram.\n<code>/tg 5081175125</code>\n<code>/tg +998901234567</code>\n<code>/user 5081175125</code>\n<code>/profile 5081175125</code>",
+  "help_section_keyboard": "<b>3. Клавиатура</b>\nОсновные функции доступны через кнопки клавиатуры без ввода команд.",
+  "help_section_limitations": "<b>4. Ограничения</b>\nЕсли отправить только Account ID, сервер MLBB определить невозможно. Поиск TG профиля возвращает только публичную информацию, доступную боту; открытие ссылки на телефон зависит от настроек приватности Telegram.",
+  "help_contact": "Поддержка: @{supportUsername}",
+  "commands_title": "📋 <b>Команды</b>",
+  "cmd_start": "<code>/start</code> — запустить бота и показать клавиатуру",
+  "cmd_help": "<code>/help</code> — подробная помощь",
+  "cmd_commands": "<code>/commands</code> — список всех команд",
+  "cmd_check": "<code>/check 1289050 10050</code> — проверка сервера/профиля MLBB",
+  "cmd_info": "<code>/info 1006613098 13019</code> или <code>/bind</code> — проверка привязок аккаунта",
+  "cmd_tg_id": "<code>/tg 5081175125</code> — поиск профиля по Telegram ID",
+  "cmd_tg_phone": "<code>/tg +998901234567</code> — поиск профиля по номеру телефона из ранее отправленного контакта",
+  "cmd_user": "<code>/user 5081175125</code> — то же, что /tg",
+  "cmd_profile": "<code>/profile 5081175125</code> — то же, что /tg",
+  "cmd_feedback": "<code>/feedback</code> или <code>/fikr</code> — отправить отзыв или жалобу",
+  "cmd_language": "<code>/language</code> — сменить язык",
+  "admin_commands_title": "<b>Команды администратора:</b>",
+  "cmd_stats": "<code>/stats</code> или <code>/stat</code> — статистика бота",
+  "cmd_users": "<code>/users</code> — список всех сохранённых пользователей",
+  "cmd_errors": "<code>/errors</code> — ошибки бота",
+  "cmd_emoji": "<code>/emoji</code> — показать ID premium/custom эмодзи",
+  "cmd_message": "<code>/message Текст</code> — отправить сообщение всем пользователям с подтверждением",
+  "tg_profile_prompt": "👤 <b>Поиск профиля Telegram</b>\n\nОтправьте Telegram ID, username или номер телефона:\n\n<b>Примеры:</b>\n<code>/tg 5081175125</code> — по Telegram ID\n<code>/tg @username</code> — по username\n<code>/tg +998901234567</code> — по номеру телефона\n\n📱 При отправке контакта — полная информация профиля.\nОбратите внимание: поиск по username или ID зависит от настроек приватности Telegram.",
+  "invalid_tg_id": "Пользователь не найден. Проверьте TG ID и отправьте снова.",
+  "tg_contact_no_phone": "В контакте не найден номер телефона. Пожалуйста, отправьте контакт с номером телефона.",
+  "tg_phone_no_user": "В этом контакте не отображается Telegram user_id.\nТелефон: <code>{phone}</code>\n\nTelegram-боты не могут получить профиль контакта без user_id.",
+  "tg_phone_not_found": "Сохранённый профиль Telegram для этого номера не найден.\nТелефон: <code>{phone}</code>\n\nЧтобы найти по номеру, сначала отправьте этот контакт боту. Если контакт содержит Telegram user_id, в следующий раз поиск по номеру тоже сработает.",
+  "tg_profile_title": "👤 <b>Профиль Telegram</b>",
+  "tg_profile_id": "🆔 <b>ID:</b> <code>{id}</code>",
+  "tg_profile_name": "👤 <b>Имя:</b> {name}",
+  "tg_profile_title_label": "🏷 <b>Название:</b> {title}",
+  "tg_profile_phone": "📱 <b>Телефон:</b> <code>{phone}</code>",
+  "tg_profile_username": "🔗 <b>Username:</b> {username}",
+  "tg_profile_type": "📌 <b>Тип:</b> {type}",
+  "tg_profile_link": "🌐 <b>Ссылка:</b> {link}",
+  "tg_profile_bio": "📝 <b>Bio:</b> {bio}",
+  "tg_profile_username_failed": "❌ Профиль <b>@{username}</b> не найден по username.\n\nИз-за ограничений Telegram Bot API некоторые username не находятся.\nЭто нормально — бот может найти только тех пользователей, с которыми ранее взаимодействовал.\n\nПопробуйте TG ID или номер телефона.",
+  "unknown_text": "Я не понял, что вы хотели сказать 🙂\nЛучше воспользуйтесь кнопками внизу.",
+  "admin_only": "Этот раздел только для администраторов!",
+  "error_unexpected": "Произошла непредвиденная ошибка, но я работаю.\n\nПожалуйста, отправьте ID в таком формате:\n1289050 (10050)",
+  "bind_info_limit_reached": "⛔️ <b>Достигнут дневной лимит!</b>\n\nПроверка привязок доступна <b>10 раз в день</b>.\nОбратитесь к @obitomlb или @vafoyev_n для увеличения лимита.\nПожалуйста, попробуйте завтра или после 00:00.",
+  "invalid_bind_input": "Привязки не найдены. Проверьте Account ID и Server/Zone ID и отправьте снова.",
+  "bind_failed_bridge_not_configured": "Bridge endpoint для проверки привязок через провайдер не настроен.\nАдминистраторам отправлен отчёт об ошибке. Попробуйте снова после настройки.",
+  "bind_failed_bengkel_parse": "Не удалось прочитать данные привязок из ответа Bengkel бота.\nПожалуйста, проверьте ID и Server/Zone ID и отправьте снова.",
+  "bind_failed_no_data": "Не удалось получить данные привязок.\nПровайдер не вернул информацию о привязках для этого аккаунта.",
+  "bind_failed_auth_required": "Для доступа к провайдеру привязок требуется авторизация.\nАдминистраторам отправлен отчёт об ошибке. Попробуйте снова после настройки.",
+  "bind_failed_provider_down": "Адрес провайдера привязок не работает или изменился.\nАдминистраторам отправлен отчёт об ошибке. Попробуйте через некоторое время.",
+  "bind_failed_provider_timeout": "Провайдер привязок отвечает слишком долго.\nПожалуйста, попробуйте через некоторое время.",
+  "bind_failed_provider_unavailable": "Провайдер привязок временно не отвечает.\nПожалуйста, попробуйте через некоторое время.",
+  "bind_failed_generic": "Не удалось получить данные из базы.\nПожалуйста, попробуйте через некоторое время.",
+  "bind_info_wait": "⏳ <b>Проверка привязок...</b>\n\nПожалуйста, подождите. Это может занять некоторое время.",
+  "bind_info_title": "🔗 <b>Привязки</b>",
+  "bind_info_id": "🆔 <b>ID:</b> <code>{accountId}</code>",
+  "bind_info_server": "🌐 <b>Сервер:</b> <code>{zoneId}</code>",
+  "bind_moonton": "🌟 <b>Moonton:</b> {value}",
+  "bind_vk": "🔵 <b>VK:</b> {value}",
+  "bind_google_play": "🎮 <b>Google Play:</b> {value}",
+  "bind_tiktok": "😎 <b>TikTok:</b> {value}",
+  "bind_facebook": "😎 <b>Facebook:</b> {value}",
+  "bind_apple": "⚪️ <b>Apple:</b> {value}",
+  "bind_gcid": "🕹 <b>GCID:</b> {value}",
+  "bind_telegram": "✈️ <b>Telegram:</b> {value}",
+  "bind_whatsapp": "🟢 <b>WhatsApp:</b> {value}",
+  "bind_device_login": "📱 <b>Вход с устройства:</b> {value}",
+  "bind_limit_remaining": "<i>😄 Осталось проверок сегодня: {remaining}/{total}</i>",
+  "feedback_prompt": "💬 <b>Отзывы и предложения</b>\n\nНапишите нужную функцию, предложение или жалобу.\nВаше сообщение будет передано администраторам. Если ответят — ответ придёт через бота.\n\nДля отмены нажмите /cancel.",
+  "feedback_text_required": "Отзыв или комментарий должен быть в виде текста.\nПожалуйста, напишите ваше предложение или жалобу.",
+  "feedback_too_long": "Отзыв слишком длинный. Пожалуйста, напишите короче {maxLength} символов.",
+  "feedback_thanks": "✅ <b>Ваш отзыв отправлен.</b>\n\nОжидайте ответа, он появится здесь.",
+  "feedback_thanks_failed": "✅ <b>Ваш отзыв отправлен.</b>\n\nПроизошла ошибка при доставке администраторам. Пожалуйста, попробуйте через некоторое время.",
+  "admin_feedback_title": "💬 <b>Новый отзыв или комментарий</b>",
+  "admin_feedback_user": "Пользователь: {displayName}",
+  "admin_feedback_message": "<b>Сообщение:</b>",
+  "admin_feedback_hint": "Вы можете ответить, ответив на это сообщение.",
+  "admin_feedback_reply_sent": "✅ Ответ отправлен пользователю.\n\nUser ID: <code>{userId}</code>{feedbackLine}",
+  "admin_feedback_reply_required": "Ответ пользователю должен быть в виде текста.",
+  "admin_feedback_reply_failed": "❌ Не удалось отправить ответ пользователю.\n\nUser ID: <code>{userId}</code>{feedbackLine}{reasonLine}",
+  "stats_title": "📊 <b>Статистика бота</b>",
+  "stats_total_users": "👥 <b>Всего пользователей:</b> {count}",
+  "stats_today_users": "🟢 <b>Активные сегодня:</b> {count}",
+  "stats_broadcast_chats": "📣 <b>Broadcast чаты:</b> {count}",
+  "stats_pending_broadcasts": "⏳ <b>Ожидающие broadcast:</b> {count}",
+  "stats_starts": "🚀 <b>/start:</b> {count}",
+  "stats_total_checks": "🔎 <b>Всего проверок:</b> {count}",
+  "stats_success": "✅ <b>Успешных:</b> {count}",
+  "stats_failed": "❌ <b>Ошибок MLBB:</b> {count}",
+  "stats_started_at": "🕒 <b>Запущен:</b> {date}",
+  "stats_last_check": "✅ <b>Последняя проверка:</b> {date}",
+  "stats_today_header": "<b>Активные сегодня:</b>",
+  "stats_monthly_header": "<b>Активные за месяц:</b>",
+  "stats_errors_moved": "Ошибки перенесены в отдельную кнопку: <b>⚠️ Ошибки</b>.",
+  "stats_today_user_line": "{index}. <code>{userId}</code> — {name} — {updates} обновлений — {lastSeen}",
+  "stats_monthly_line": "{month}: <b>{users}</b> пользователей, {updates} обновлений",
+  "stats_monthly_no_data": "Активность за месяц пока не зафиксирована.",
+  "stats_monthly_supabase_error": "Ошибка чтения Supabase, месячная статистика временно недоступна.",
+  "stats_monthly_not_configured": "Supabase не подключён. Текущий runtime: <b>{count}</b> пользователей.",
+  "stats_today_no_users": "Сегодня пользователи ещё не зафиксированы.",
+  "stats_today_supabase_error": "Ошибка чтения Supabase, локальные пользователи за сегодня не найдены.",
+  "users_title": "👥 <b>Пользователи бота</b>",
+  "users_total": "Всего: <b>{total}</b>",
+  "users_page": "Страница: <b>{page}/{totalPages}</b>",
+  "users_source": "Источник: <b>{source}</b>",
+  "users_sync_line": "🔄 <b>Синхронизация:</b> {saved}/{total} отправлено",
+  "users_supabase_config_error": "Настройка Supabase: {error}",
+  "users_supabase_read_error": "Ошибка чтения Supabase.",
+  "users_not_found": "Пользователи не найдены.",
+  "users_read_error": "Не удалось прочитать пользователей.",
+  "errors_title": "⚠️ <b>Ошибки бота</b>",
+  "errors_types_header": "<b>Типы ошибок:</b>",
+  "errors_recent_header": "<b>Последние ошибки:</b>",
+  "errors_no_errors": "Ошибки не зафиксированы.",
+  "broadcast_usage_title": "📣 <b>Массовая рассылка</b>",
+  "broadcast_usage_format": "Формат:\n<code>/message Ваше сообщение</code>",
+  "broadcast_usage_hint": "Форматированный текст, premium эмодзи и ссылки сохраняются.\nДля отправки стикера/медиа ответьте на сообщение командой <code>/message</code>.\n\nНа следующем шаге появится кнопка подтверждения.",
+  "broadcast_too_long": "Сообщение слишком длинное. Пожалуйста, отправьте текст shorter 3500 символов.",
+  "broadcast_expired": "Это подтверждение устарело или не найдено. Начните заново через /message.",
+  "broadcast_confirm_title": "📣 <b>Отправить всем пользователям?</b>",
+  "broadcast_confirm_body": "Пока никому не отправлено. Отправка начнётся только после нажатия кнопки подтверждения.\n\nПолучатели: <b>{count}</b>",
+  "broadcast_confirm_message": "<b>Сообщение:</b>",
+  "broadcast_queued_title": "📣 <b>Рассылка поставлена в очередь</b>",
+  "broadcast_queued_recipients": "Получатели: <b>{count}</b>",
+  "broadcast_queued_body": "Отправка идёт в фоне (через очередь) — может занять несколько минут.\nПосле завершения итоговый отчёт (Всего / Отправлено / Ошибки) придёт в этот чат.",
+  "broadcast_queued_error": "❌ Ошибка при постановке в очередь. Попробуйте снова (/message).",
+  "broadcast_result_title": "📣 <b>Рассылка завершена</b>",
+  "broadcast_result_total": "Всего: <b>{total}</b>",
+  "broadcast_result_sent": "Отправлено: <b>{sent}</b>",
+  "broadcast_result_failed": "Ошибки: <b>{failed}</b>",
+  "mandatory_setup_title": "⚙️ <b>Настройка обязательной группы</b>",
+  "mandatory_setup_current": "Текущая группа: <b>{title}</b> ({id})\n\nДля установки новой группы отправьте её ID (или @username). Для удаления используйте /unset_mandatory.",
+  "mandatory_setup_empty": "Сейчас нет обязательной группы.\n\nДля установки группы отправьте её ID (или @username). Важно: бот должен быть администратором в этой группе или канале!",
+  "mandatory_setup_confirm": "Сделать группу <b>{title}</b> ({id}) обязательной?",
+  "mandatory_setup_not_found": "❌ Группа не найдена или бот не является администратором:\n<code>{error}</code>",
+  "mandatory_unset": "✅ Обязательная группа удалена.",
+  "mandatory_confirm_yes": "✅ Да",
+  "mandatory_confirm_no": "❌ Нет",
+  "mandatory_set_success": "✅ Группа <b>{title}</b> назначена обязательной!",
+  "mandatory_set_error": "Ошибка: {error}",
+  "mandatory_not_invite_link": "❌ У группы нет публичного username или invite ссылки. Сначала создайте ссылку.",
+  "check_membership_title": "⚠️ <b>Для использования бота необходимо вступить в группу!</b>\n\nПожалуйста, вступите в группу ниже для полного доступа к боту.",
+  "check_membership_join": "📣 Вступить",
+  "check_membership_done": "✅ Я вступил",
+  "check_membership_confirmed": "✅ Администраторство подтверждено!",
+  "check_membership_success": "✅ Ваше участие в группе подтверждено. Можете пользоваться ботом!",
+  "check_membership_not_member": "❌ Вы ещё не вступили в группу! Пожалуйста, вступите.",
+  "check_membership_cancelled": "Отменено.",
+  "broadcast_confirm_yes": "✅ Подтвердить",
+  "broadcast_confirm_no": "❌ Отмена",
+  "broadcast_started": "📣 <b>Рассылка начата.</b>",
+  "errors_refresh": "🔄 Обновить",
+  "pagination_prev": "⬅️ Предыдущие 10",
+  "pagination_next": "Следующие 10 ➡️",
+  "contact_send": "📱 Отправить контакт",
+  "feedback_placeholder": "Напишите ваш отзыв...",
+  "bind_info_placeholder": "1006613098 (13019)",
+  "new_user_notification": "#новый_пользователь\n\n🆕 <b>Новый пользователь нажал /start и стал пользователем нашего бота</b>\n\n👤 {userLink}",
+  "new_member_notification": "#новый_участник\n\n🆕 <b>Новый участник:</b> {userLink}\nЭтот пользователь вступил в обязательную группу и получил доступ к боту.",
+  "server_check_notification": "#использование\n{userMention} проверил <b>{accountId} ({zoneId})</b>.",
+  "bind_info_notification": "#использование\n{userMention} проверил привязки <b>{accountId} ({zoneId})</b>.",
+  "open_profile": "👤 Открыть профиль",
+  "daily_report_title": "📊 <b>Статистика использования за день</b>",
+  "daily_report_date": "📅 Дата: <b>{date}</b>",
+  "daily_report_functions": "<b>По функциям:</b>",
+  "daily_report_no_functions": "Сегодня использование функций не зафиксировано.",
+  "daily_report_top3": "<b>Топ 3 пользователя:</b>",
+  "daily_report_no_users": "Сегодня использование не зафиксировано.",
+  "daily_report_runtime_warning": "⚠️ Supabase не прочитан — из текущей runtime памяти.",
+  "bind_limit_precheck_failed": "⚠️ Достигнут дневной лимит! Проверка привязок доступна <b>10 раз в день</b>.\nПожалуйста, попробуйте завтра или после 00:00.",
+  "limit_usage": "<b>Неверный формат!</b>\n\nПравильное использование: /limit [tgid] [количество]",
+  "limit_invalid": "<b>Ошибка!</b> ID и лимит должны быть положительными числами.",
+  "limit_success_admin": "Готово! Лимит пользователя ({targetTgId}) изменён на <b>{newLimit}</b> ✅",
+  "limit_success_user": "Поздравляем! Ваш лимит проверки привязок изменён на <b>{newLimit}</b> ✅",
+  "limit_db_error": "Произошла ошибка базы данных.",
+  "limit_server_error": "Произошла ошибка сервера.",
+  "user_check_result": "📊 Пользователь использовал бот <b>{count}</b> раз.\n🕒 Последняя активность: <b>{lastSeen}</b> (время Ташкента)",
+  "user_check_not_found": "❌ Пользователь не найден или ещё не использовал бота.",
+  "user_check_error": "⚠️ Произошла ошибка при получении данных.",
+  "lang_title": "🌐 <b>Выберите язык</b>",
+  "lang_current": "Текущий язык: <b>{currentLang}</b>",
+  "lang_select": "Выберите язык:",
+  "lang_changed": "✅ Язык успешно изменён: <b>{langName}</b>",
+  "lang_uz": "O'zbek",
+  "lang_ru": "Русский",
+  "lang_button": "🌐 Сменить язык",
+  "lang_callback_confirm": "✅ Выбрать",
+  "btn_bind_info": "🔗 Привязки",
+  "btn_check": "🔎 Определить сервер",
+  "btn_tg_profile": "👤 Поиск TG профиля",
+  "btn_language": "🌐 Сменить язык",
+  "btn_stats": "📊 Статистика",
+  "btn_users": "👥 Пользователи",
+  "btn_errors": "⚠️ Ошибки",
+  "btn_feedback": "💬 Отзывы и предложения",
+  "btn_broadcast": "📣 Рассылка",
+  "btn_commands": "📋 Команды",
+  "btn_help": "ℹ️ Помощь",
+  "btn_menu": "🏠 Меню",
+  "btn_check_again": "🔍 Проверить снова",
+  "btn_mandatory_setup": "⚙️ Обязательная группа",
+  "btn_refresh": "🔄 Обновить",
+  "btn_pagination_prev": "⬅️ Предыдущие 10",
+  "btn_pagination_next": "Следующие 10 ➡️",
+  "btn_confirm_yes": "✅ Подтвердить",
+  "btn_confirm_no": "❌ Отмена",
+  "btn_contact_send": "📱 Отправить контакт",
+  "btn_open_profile": "👤 Открыть профиль",
+  "btn_join": "📣 Вступить",
+  "btn_done": "✅ Я вступил",
+  "btn_lang_uz": "🇺🇿 O'zbek",
+  "btn_lang_ru": "🇷🇺 Русский",
+  "placeholder_feedback": "Напишите ваш отзыв...",
+  "placeholder_bind_info": "1006613098 (13019)",
+  "label_start": "🚀 /start",
+  "label_server_check": "🔎 Проверка сервера",
+  "label_bind_info": "🔗 Привязки",
+  "label_tg_profile": "👤 TG профиль",
+  "label_feedback": "💬 Отзывы",
+  "bind_wait_message": "⏳ <b>Проверка привязок...</b>\n\nПожалуйста, подождите. Это может занять некоторое время.",
+  "channel_notification_user": "#использование\n{userMention} проверил привязки <b>{accountId} ({zoneId})</b>."
+},
+};
+
+function t(key, lang, params = {}) {
+  const safeLang = SUPPORTED_LANGS.includes(lang) ? lang : DEFAULT_LANG;
+  let text = translations[safeLang]?.[key] || translations[DEFAULT_LANG]?.[key] || key;
+
+  for (const [param, value] of Object.entries(params)) {
+    text = text.replace(new RegExp(`\{${param}\}`, "g"), String(value ?? ""));
+  }
+
+  return text;
+}
+
+function getUserLang(userId) {
+  return (stats.languageCache && stats.languageCache.get(String(userId))) || DEFAULT_LANG;
+}
+
+function setUserLang(userId, lang) {
+  if (!stats.languageCache) {
+    stats.languageCache = new Map();
+  }
+  const safeLang = SUPPORTED_LANGS.includes(lang) ? lang : DEFAULT_LANG;
+  stats.languageCache.set(String(userId), safeLang);
+}
+
+async function loadUserLangFromSupabase(userId) {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return DEFAULT_LANG;
+  }
+  try {
+    const data = await supabaseRequest(
+      `/bot_users?user_id=eq.${toPgBigint(userId)}&select=preferred_language&limit=1`
+    );
+    if (Array.isArray(data) && data[0]?.preferred_language) {
+      return SUPPORTED_LANGS.includes(data[0].preferred_language) ? data[0].preferred_language : DEFAULT_LANG;
+    }
+  } catch (error) {
+    console.error("[LOAD_LANG_ERROR]", error.message);
+  }
+  return DEFAULT_LANG;
+}
+
+async function saveUserLangToSupabase(userId, lang) {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+  try {
+    await supabaseRpc("set_user_preferred_language", {
+      p_user_id: toPgBigint(userId),
+      p_language: lang,
+    });
+  } catch (error) {
+    console.error("[SAVE_LANG_ERROR]", error.message);
+  }
+}
 
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
@@ -12,6 +542,7 @@ const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987,73
 const MAIN_GROUP_ID = cleanEnv(process.env.MAIN_GROUP_ID) || "-1003832186200";
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
+const BUTTON_LANGUAGE = "🌐 Til almashtirish";
 const BUTTON_CHECK = "🔎 Server aniqlash";
 const BUTTON_TG_PROFILE = "👤 TG profil topish";
 const BUTTON_BIND_INFO = "🔗 Ulanmalar";
@@ -37,13 +568,17 @@ const FEATURE_ACTIONS = Object.freeze({
   TG_PROFILE: "tg_profile",
   FEEDBACK: "feedback",
 });
-const DAILY_REPORT_ACTION_LABELS = Object.freeze({
-  start: "🚀 /start",
-  server_check: "🔎 Server tekshiruv",
-  bind_info: "🔗 Ulanmalar",
-  tg_profile: "👤 TG profil",
-  feedback: "💬 Fikrlar",
+const DAILY_REPORT_ACTION_KEYS = Object.freeze({
+  start: "label_start",
+  server_check: "label_server_check",
+  bind_info: "label_bind_info",
+  tg_profile: "label_tg_profile",
+  feedback: "label_feedback",
 });
+function getDailyReportActionLabel(action, lang) {
+  const key = DAILY_REPORT_ACTION_KEYS[action];
+  return key ? t(key, lang || DEFAULT_LANG) : escapeHtml(String(action || ""));
+}
 const PREMIUM_EMOJIS = Object.freeze({
   "🏪": "5208573502046610594",
   "✅": "5316561083085895267",
@@ -152,6 +687,7 @@ if (!global.__MLBB_BOT_STATS__) {
     featureCounts: {},
     userActionCounts: new Map(),
     startNotifiedUsers: new Set(),
+    languageCache: new Map(),
     startedAt: new Date().toISOString(),
     lastCheckAt: null,
     lastKnownUsersSyncAt: 0,
@@ -196,6 +732,9 @@ stats.supabaseAuthDisabledUntil ||= 0;
 stats.supabaseLastAuthError ||= null;
 if (!(stats.startNotifiedUsers instanceof Set)) {
   stats.startNotifiedUsers = new Set(Object.entries(stats.startNotifiedUsers || {}));
+}
+if (!(stats.languageCache instanceof Map)) {
+  stats.languageCache = new Map();
 }
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 BROADCAST_USER_IDS.forEach((chatId) => rememberKnownPrivateChat(chatId));
@@ -253,7 +792,7 @@ module.exports = async function handler(req, res, env = {}) {
     const chatId = getChatIdFromUpdate(update);
 
     if (chatId) {
-      await safeSendMessage(chatId, getErrorText(), mainKeyboard());
+      await safeSendMessage(chatId, getErrorText(DEFAULT_LANG), mainKeyboard());
     }
 
     return res.status(200).json({
@@ -380,6 +919,15 @@ async function handleMessage(message, updateMeta = {}) {
   trackUser(user, message.chat, {
     ...updateMeta,
   });
+
+  // Load user's preferred language from cache or Supabase
+  if (user.id) {
+    let lang = getUserLang(user.id);
+    if (!stats.languageCache.has(String(user.id))) {
+      lang = await loadUserLangFromSupabase(user.id);
+      setUserLang(user.id, lang);
+    }
+  }
 
   if (!isGroupChat(message.chat)) {
     const isAllowed = await enforceMandatoryMembership(chatId, user);
@@ -511,9 +1059,14 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isCommand(text, "language") || isCommand(text, "til")) {
+    await handleLanguageCommand(chatId, user);
+    return;
+  }
+
   if (isCommand(text, "stat") || isCommand(text, "stats")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -523,7 +1076,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "users") || isCommand(text, "foydalanuvchilar")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -533,7 +1086,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "limit")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -572,7 +1125,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "errors") || isCommand(text, "xatoliklar")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -582,7 +1135,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "emoji")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -604,7 +1157,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "message")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -649,49 +1202,54 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_CHECK, BUTTON_CHECK_AGAIN)) {
+  if (isTranslatedKeyboardButton(text, "btn_check") || isTranslatedKeyboardButton(text, "btn_check_again")) {
     rememberUserMode(user.id, "server_check");
     await sendMessage(chatId, getCheckPromptText(), mainKeyboard(user));
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_TG_PROFILE)) {
+  if (isTranslatedKeyboardButton(text, "btn_tg_profile")) {
     rememberUserMode(user.id, "tg_profile");
-    await sendMessage(chatId, getTelegramProfilePromptText(), telegramProfileKeyboard(user));
+    await sendMessage(chatId, getTelegramProfilePromptText(getUserLang(user.id)), telegramProfileKeyboard(user));
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_BIND_INFO)) {
+  if (isTranslatedKeyboardButton(text, "btn_bind_info")) {
     rememberUserMode(user.id, "bind_info");
-    const promptPromise = sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply());
+    const promptPromise = sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply(getUserLang(user.id)));
     await warnIfBindLimitReached(chatId, user, mainKeyboard(user));
     await promptPromise;
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_FEEDBACK)) {
+  if (isTranslatedKeyboardButton(text, "btn_feedback")) {
     await handleFeedbackPrompt(chatId, user);
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_HELP)) {
+  if (isTranslatedKeyboardButton(text, "btn_help")) {
     await sendMessage(chatId, getHelpText(user), mainKeyboard(user));
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_COMMANDS)) {
+  if (isTranslatedKeyboardButton(text, "btn_commands")) {
     await sendMessage(chatId, getCommandsText(user), mainKeyboard(user));
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_MENU)) {
+  if (isTranslatedKeyboardButton(text, "btn_menu")) {
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_STATS)) {
+  if (isTranslatedKeyboardButton(text, "btn_language")) {
+    await handleLanguageCommand(chatId, user);
+    return;
+  }
+
+  if (isTranslatedKeyboardButton(text, "btn_stats")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -699,9 +1257,9 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_USERS)) {
+  if (isTranslatedKeyboardButton(text, "btn_users")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -709,9 +1267,9 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_ERRORS)) {
+  if (isTranslatedKeyboardButton(text, "btn_errors")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -719,9 +1277,9 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_BROADCAST)) {
+  if (isTranslatedKeyboardButton(text, "btn_broadcast")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -736,9 +1294,9 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isKeyboardButton(text, BUTTON_MANDATORY_SETUP)) {
+  if (isTranslatedKeyboardButton(text, "btn_mandatory_setup")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
     rememberUserMode(user.id, "mandatory_setup");
@@ -817,7 +1375,7 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+  await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
 }
 
 async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {}) {
@@ -915,7 +1473,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
 
   if (data === "stats") {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -925,7 +1483,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
 
   if (data.startsWith("stats_today_page:")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -940,7 +1498,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
 
   if (data.startsWith("users_page:")) {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -955,7 +1513,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
 
   if (data === "errors") {
     if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
       return;
     }
 
@@ -967,12 +1525,57 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     return;
   }
+
+  if (data.startsWith("lang_select:")) {
+    const selectedLang = data.split(":")[1];
+    if (SUPPORTED_LANGS.includes(selectedLang) && user.id) {
+      setUserLang(user.id, selectedLang);
+      void saveUserLangToSupabase(user.id, selectedLang);
+      await telegram("answerCallbackQuery", {
+        callback_query_id: callbackQuery.id,
+        text: t("lang_changed", selectedLang, { langName: t(`lang_${selectedLang}`, selectedLang) }),
+      });
+      if (callbackQuery.message) {
+        await safeDeleteMessage(chatId, callbackQuery.message.message_id);
+      }
+      await sendMessage(chatId, t("lang_changed", selectedLang, { langName: t(`lang_${selectedLang}`, selectedLang) }), mainKeyboard(user));
+    } else {
+      await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id });
+    }
+    return;
+  }
+}
+
+async function handleLanguageCommand(chatId, user) {
+  const lang = getUserLang(user.id);
+  const langNames = {};
+  for (const l of SUPPORTED_LANGS) {
+    langNames[l] = t(`btn_lang_${l}`, lang);
+  }
+  const currentLangName = langNames[lang] || langNames[DEFAULT_LANG];
+
+  const lines = [
+    t("lang_title", lang),
+    "",
+    t("lang_current", lang, { currentLang: currentLangName }),
+    "",
+    t("lang_select", lang),
+  ];
+
+  const keyboard = {
+    inline_keyboard: SUPPORTED_LANGS.map((l) => [{
+      text: `${langNames[l]}${l === lang ? " ✓" : ""}`,
+      callback_data: `lang_select:${l}`,
+    }]),
+  };
+
+  await sendMessage(chatId, lines.join("\n"), keyboard);
 }
 
 async function handleStatsRequest(chatId, user, todayPage = 0, messageId = null) {
   const dbStats = await getSupabaseStats({ todayPage });
-  const text = getStatsText(dbStats);
-  const replyMarkup = dailyUsersPaginationKeyboard(dbStats);
+  const text = getStatsText(dbStats, getUserLang(user.id));
+  const replyMarkup = dailyUsersPaginationKeyboard({ ...dbStats, lang: getUserLang(user.id) });
 
   await sendOrEditAdminMessage(chatId, messageId, text, replyMarkup || mainKeyboard(user));
 }
@@ -980,8 +1583,8 @@ async function handleStatsRequest(chatId, user, todayPage = 0, messageId = null)
 async function handleUsersListRequest(chatId, user, page = 0, messageId = null) {
   const syncResult = await syncKnownUsersToSupabase();
   const pageData = await getUsersPageData(page);
-  const text = getUsersListText(pageData, syncResult);
-  const replyMarkup = usersPaginationKeyboard(pageData) || mainKeyboard(user);
+  const text = getUsersListText(pageData, syncResult, getUserLang(user.id));
+  const replyMarkup = usersPaginationKeyboard({ ...pageData, lang: getUserLang(user.id) }) || mainKeyboard(user);
 
   await sendOrEditAdminMessage(chatId, messageId, text, replyMarkup);
 }
@@ -990,8 +1593,8 @@ async function handleErrorsRequest(chatId, user, messageId = null) {
   await sendOrEditAdminMessage(
     chatId,
     messageId,
-    getErrorsText(),
-    errorsRefreshKeyboard() || mainKeyboard(user)
+    getErrorsText(getUserLang(user.id)),
+    errorsRefreshKeyboard(getUserLang(user.id)) || mainKeyboard(user)
   );
 }
 
@@ -1004,7 +1607,7 @@ async function handleEmojiIdRequest(chatId, user, message = {}) {
 async function handleFeedbackPrompt(chatId, user) {
   cleanupPendingFeedbacks();
 
-  const response = await sendMessage(chatId, getFeedbackPromptText(), feedbackForceReply());
+  const response = await sendMessage(chatId, getFeedbackPromptText(getUserLang(user.id)), feedbackForceReply(getUserLang(user.id)));
   const promptMessageId = response?.result?.message_id || null;
 
   rememberPendingFeedback(user.id, chatId, promptMessageId);
@@ -1014,12 +1617,12 @@ async function handleFeedbackSubmission(chatId, user, message) {
   const feedbackText = getFeedbackMessageText(message);
 
   if (!feedbackText) {
-    await sendMessage(chatId, getFeedbackTextRequiredText(), mainKeyboard(user));
+    await sendMessage(chatId, getFeedbackTextRequiredText(getUserLang(user.id)), mainKeyboard(user));
     return;
   }
 
   if (feedbackText.length > FEEDBACK_MAX_LENGTH) {
-    await sendMessage(chatId, getFeedbackTooLongText(), mainKeyboard(user));
+    await sendMessage(chatId, getFeedbackTooLongText(getUserLang(user.id)), mainKeyboard(user));
     return;
   }
 
@@ -1036,7 +1639,7 @@ async function handleFeedbackSubmission(chatId, user, message) {
   };
   const result = await sendFeedbackToAdmins(feedback);
 
-  await sendMessage(chatId, getFeedbackThanksText(result), mainKeyboard(user));
+  await sendMessage(chatId, getFeedbackThanksText(result, getUserLang(user.id)), mainKeyboard(user));
 }
 
 async function handleFeedbackAdminReply(chatId, admin, message) {
@@ -1048,7 +1651,7 @@ async function handleFeedbackAdminReply(chatId, admin, message) {
   }
 
   if (!replyPayload) {
-    await sendMessage(chatId, getFeedbackAdminReplyTextRequiredText(), mainKeyboard(admin));
+    await sendMessage(chatId, getFeedbackAdminReplyTextRequiredText(getUserLang(admin.id)), mainKeyboard(admin));
     return;
   }
 
@@ -1094,7 +1697,7 @@ async function handleMessageCommand(chatId, user, message) {
   }
 
   if (broadcastPayload.kind === "text" && broadcastPayload.text.length > 3500) {
-    await sendMessage(chatId, getBroadcastTooLongText(), mainKeyboard(user));
+    await sendMessage(chatId, getBroadcastTooLongText(getUserLang(user.id)), mainKeyboard(user));
     return;
   }
 
@@ -1116,8 +1719,8 @@ async function handleMessageCommand(chatId, user, message) {
 
   await sendMessage(
     chatId,
-    getBroadcastConfirmText(broadcastPayload, recipientCount),
-    broadcastConfirmKeyboard(broadcastId, confirmToken)
+    getBroadcastConfirmText(broadcastPayload, recipientCount, getUserLang(user.id)),
+    broadcastConfirmKeyboard(broadcastId, confirmToken, getUserLang(user.id))
   );
 }
 
@@ -1307,20 +1910,14 @@ async function handleTelegramProfileByUsername(
   // Hech qanday usul ishlamadi
   await sendMessage(
     chatId,
-    getTelegramProfileByUsernameFailedText(username),
+    getTelegramProfileByUsernameFailedText(username, getUserLang(user.id)),
     replyMarkup
   );
 }
 
-function getTelegramProfileByUsernameFailedText(username) {
-  return [
-    `❌ <b>@${escapeHtml(username)}</b> username bo'yicha profil topilmadi.`,
-    "",
-    "Telegram Bot API cheklovlari tufayli ba'zi username'lar topilmaydi.",
-    "Bu normal holat — bot faqat o'zi bilan gaplashgan foydalanuvchilarni topa oladi.",
-    "",
-    "TG ID yoki telefon raqamini sinab ko'ring.",
-  ].join("\n");
+function getTelegramProfileByUsernameFailedText(username, lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("tg_profile_username_failed", lang, { username: escapeHtml(username) });
 }
 
 async function warnIfBindLimitReached(chatId, user, replyMarkup) {
@@ -1335,7 +1932,7 @@ async function warnIfBindLimitReached(chatId, user, replyMarkup) {
     });
 
     if (limitResult && limitResult.allowed === false) {
-      await sendMessage(chatId, getBindInfoLimitReachedText(), replyMarkup);
+      await sendMessage(chatId, getBindInfoLimitReachedText(getUserLang(user.id)), replyMarkup);
     }
   } catch (error) {
     console.error("[BIND_LIMIT_PRECHECK_ERROR]", error);
@@ -1349,7 +1946,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   let waitMessage = options.waitMessage || null;
 
   if (!parsed.ok) {
-    await sendMessage(chatId, getInvalidBindInfoInputText(), replyMarkup);
+    await sendMessage(chatId, getInvalidBindInfoInputText(getUserLang(user.id)), replyMarkup);
     await safeDeleteBindWaitMessage(chatId, waitMessage);
     return;
   }
@@ -1363,7 +1960,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
       });
       if (limitResult && limitResult.allowed === false) {
         await safeDeleteBindWaitMessage(chatId, waitMessage);
-        await sendMessage(chatId, getBindInfoLimitReachedText(), replyMarkup);
+        await sendMessage(chatId, getBindInfoLimitReachedText(getUserLang(user.id)), replyMarkup);
         return;
       }
       if (limitResult && typeof limitResult.remaining === "number") {
@@ -1377,7 +1974,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   void safeSendChatAction(chatId, "typing");
 
   if ((isZiteBindInfoProvider() || isBengkelBindInfoProvider()) && !options.skipWait) {
-    const waitResponse = await safeSendMessage(chatId, getBindInfoWaitText(), replyMarkup);
+    const waitResponse = await safeSendMessage(chatId, getBindInfoWaitText(getUserLang(user.id)), replyMarkup);
     waitMessage = normalizeBindWaitMessage({
       chatId,
       messageId: waitResponse?.result?.message_id,
@@ -1394,7 +1991,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
       status: bindInfo.status,
     });
 
-    await sendMessage(chatId, getBindInfoFailedText(bindInfo.reason), replyMarkup);
+    await sendMessage(chatId, getBindInfoFailedText(bindInfo.reason, getUserLang(user.id)), replyMarkup);
     await safeDeleteBindWaitMessage(chatId, waitMessage);
     return;
   }
@@ -1422,7 +2019,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
 
 async function handleBroadcastConfirm(chatId, user, data, options = {}) {
   if (!isAdmin(user.id)) {
-    await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+    await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
     return;
   }
 
@@ -1454,13 +2051,13 @@ async function handleBroadcastConfirm(chatId, user, data, options = {}) {
       });
       await sendMessage(
         chatId,
-        getBroadcastQueuedText(pending.recipientCount),
+        getBroadcastQueuedText(pending.recipientCount, getUserLang(user.id)),
         mainKeyboard(user)
       );
     } catch (error) {
       console.error("[BROADCAST_ENQUEUE_ERROR]", error);
       recordError("broadcast_enqueue_failed", error.message);
-      await sendMessage(chatId, getBroadcastQueuedErrorText(), mainKeyboard(user));
+      await sendMessage(chatId, getBroadcastQueuedErrorText(getUserLang(user.id)), mainKeyboard(user));
     }
 
     return;
@@ -1477,7 +2074,7 @@ async function handleBroadcastConfirm(chatId, user, data, options = {}) {
 
 async function handleBroadcastCancel(chatId, user, data) {
   if (!isAdmin(user.id)) {
-    await sendMessage(chatId, getUnknownText(), mainKeyboard(user));
+    await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
     return;
   }
 
@@ -1504,7 +2101,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
 
     await sendMessage(
       chatId,
-      getInvalidMlbbInputText(),
+      getInvalidMlbbInputText(getUserLang(user.id)),
       Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : checkKeyboard(user)
     );
 
@@ -1529,7 +2126,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
 
     await sendMessage(
       chatId,
-      getFailedLookupText(parsed, lookup),
+      getFailedLookupText(parsed, lookup, getUserLang(user.id)),
       replyMarkup
     );
 
@@ -1548,7 +2145,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
     rawProvider: lookup.provider,
   };
 
-  await sendMessage(chatId, getResultText(result), replyMarkup);
+  await sendMessage(chatId, getResultText(result, getUserLang(user.id)), replyMarkup);
 
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
@@ -3279,142 +3876,108 @@ function getReplyMessagePreview(message = {}) {
 }
 
 function getStartText(user) {
-  const name = escapeHtml(user.first_name || "do‘stim");
-
-  return [
-    `Salom, <b>${name}</b>! 👋`,
-    "",
-    "MLBB Account ID va Server/Zone ID yuboring, men serverini aniqlab beraman.",
-    "TG ID yoki oldin yuborilgan kontakt telefoni orqali Telegram profil ma’lumotlarini ham tekshirishingiz mumkin.",
-    "",
-    "Ko‘p ishlatiladigan funksiyalar pastdagi klaviaturada.",
-  ].join("\n");
+  const lang = getUserLang(user.id);
+  const name = escapeHtml(user.first_name || (lang === "ru" ? "друг" : "do‘stim"));
+  return t("start_welcome", lang, { name });
 }
 
-function getCheckPromptText() {
-  return [
-    "🔎 <b>Server aniqlash</b>",
-    "",
-    "Iltimos, MLBB <b>Account ID</b> va <b>Server/Zone ID</b> ni yuboring.",
-    "",
-    "<b>Namuna:</b>",
-    "1289050 (10050)",
-    "/check 1289050 (10050)",
-    "",
-    "📌 Faqat Account ID yuborilsa, serverni aniq topib bo‘lmaydi.",
-  ].join("\n");
+function getCheckPromptText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("check_prompt", lang);
 }
 
 
 
-function getResultText(result) {
-  return [
-    "🔍 <b>Server Aniqlash Natijasi</b>",
+function getResultText(result, lang) {
+  lang = lang || DEFAULT_LANG;
+  const lines = [
+    t("result_title", lang),
     "",
-    `🆔 <b>Account ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
-    `🌐 <b>Server / Zone ID:</b> <code>${escapeHtml(result.zoneId)}</code>`,
-    `🖥 <b>Server turi:</b> <b>${escapeHtml(result.serverType)}</b>`,
-    result.region ? `📍 <b>Region:</b> ${escapeHtml(result.region)}` : "📍 <b>Region:</b> API qaytarmadi",
-    `👤 <b>Nickname:</b> ${escapeHtml(result.nickname)}`,
-    `✅ <b>Holat:</b> ${escapeHtml(result.status)}`,
-  ].join("\n");
+    t("result_account_id", lang, { accountId: result.accountId }),
+    t("result_server_zone", lang, { zoneId: result.zoneId }),
+    t("result_server_type", lang, { serverType: result.serverType }),
+    result.region ? t("result_region", lang, { region: escapeHtml(result.region) }) : t("result_region_missing", lang),
+    t("result_nickname", lang, { nickname: escapeHtml(result.nickname) }),
+    t("result_status", lang, { status: escapeHtml(result.status) }),
+  ];
+  return lines.join("\n");
 }
 
-function getFailedLookupText(parsed) {
-  return [
-    "❌ <b>Profil topilmadi.</b>",
-    "Foydalanuvchi yoki server topilmadi.",
-  ].join("\n");
+function getFailedLookupText(parsed, lookup, lang) {
+  lang = lang || DEFAULT_LANG;
+  return [t("failed_lookup_title", lang), t("failed_lookup_body", lang)].join("\n");
 }
 
-function getInvalidMlbbInputText() {
-  return "Server topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.";
+function getInvalidMlbbInputText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("invalid_mlbb_input", lang);
 }
 
 function getHelpText(user = {}) {
+  const lang = getUserLang(user.id);
   return [
-    "ℹ️ <b>Yordam</b>",
+    t("help_title", lang),
     "",
-    "<b>1. MLBB server aniqlash</b>",
-    "Account ID va Server/Zone ID ni yuboring. Bot profilni MLBB official serveri orqali aniqlaydi.",
+    t("help_section_server", lang),
     "",
-    "<b>Formatlar:</b>",
-    "<code>1289050 (10050)</code>",
-    "<code>1289050 10050</code>",
-    "<code>/check 1289050 10050</code>",
+    t("help_section_tg_profile", lang),
     "",
-    "<b>2. Telegram profil topish</b>",
-    "TG ID orqali bot ko‘ra oladigan profil ma’lumotlarini chiqaradi. Telefon yuborilsa, saqlangan profil topiladi yoki Telegram clientda ochish linki beriladi.",
-    "<code>/tg 5081175125</code>",
-    "<code>/tg +998901234567</code>",
-    "<code>/user 5081175125</code>",
-    "<code>/profile 5081175125</code>",
+    t("help_section_keyboard", lang),
     "",
-    "<b>3. Klaviatura</b>",
-    "Pastdagi tugmalar orqali asosiy funksiyalarni command yozmasdan ishlatishingiz mumkin.",
-    "",
-    "<b>4. Cheklovlar</b>",
-    "Faqat Account ID yuborilsa, MLBB serverini aniq topib bo‘lmaydi. TG profil lookup esa Telegram botga ko‘rinadigan public ma’lumotlargina qaytaradi; telefon linkining ochilishi Telegram client va user privacy sozlamalariga bog‘liq.",
+    t("help_section_limitations", lang),
     "",
     getCommandsText(user),
     "",
-    `Aloqa: @${escapeHtml(SUPPORT_USERNAME)}`,
+    t("help_contact", lang, { supportUsername: escapeHtml(SUPPORT_USERNAME) }),
   ].join("\n");
 }
 
 function getCommandsText(user = {}) {
+  const lang = getUserLang(user.id);
   const commands = [
-    "📋 <b>Buyruqlar</b>",
+    t("commands_title", lang),
     "",
-    "<code>/start</code> — botni ishga tushirish va klaviaturani chiqarish",
-    "<code>/help</code> — batafsil yordam",
-    "<code>/commands</code> — barcha buyruqlar ro‘yxati",
-    "<code>/check 1289050 10050</code> — MLBB server/profil tekshirish",
-    "<code>/info 1006613098 13019</code> yoki <code>/bind</code> — akkaunt ulanmalarini tekshirish",
-    "<code>/tg 5081175125</code> — Telegram ID orqali profil topish",
-    "<code>/tg +998901234567</code> — botga oldin yuborilgan kontakt telefoni orqali profil topish",
-    "<code>/user 5081175125</code> — /tg bilan bir xil",
-    "<code>/profile 5081175125</code> — /tg bilan bir xil",
-    "<code>/feedback</code> yoki <code>/fikr</code> — taklif yoki shikoyat yuborish",
+    t("cmd_start", lang),
+    t("cmd_help", lang),
+    t("cmd_commands", lang),
+    t("cmd_check", lang),
+    t("cmd_info", lang),
+    t("cmd_tg_id", lang),
+    t("cmd_tg_phone", lang),
+    t("cmd_user", lang),
+    t("cmd_profile", lang),
+    t("cmd_feedback", lang),
+    t("cmd_language", lang),
   ];
 
   if (isAdmin(user.id)) {
     commands.push(
       "",
-      "<b>Admin buyruqlari:</b>",
-      "<code>/stats</code> yoki <code>/stat</code> — bot statistikasi",
-      "<code>/users</code> — barcha saqlangan foydalanuvchilar ro‘yxati",
-      "<code>/errors</code> — bot xatoliklari",
-      "<code>/emoji</code> — premium/custom emoji ID larini chiqarish",
-      "<code>/message Matn</code> — barcha userlarga tasdiq bilan xabar yuborish"
+      t("admin_commands_title", lang),
+      t("cmd_stats", lang),
+      t("cmd_users", lang),
+      t("cmd_errors", lang),
+      t("cmd_emoji", lang),
+      t("cmd_message", lang)
     );
   }
 
   return commands.join("\n");
 }
 
-function getTelegramProfilePromptText() {
-  return [
-    "👤 <b>TG profil topish</b>",
-    "",
-    "Telegram ID, username yoki telefon raqamini yuboring:",
-    "",
-    "<b>Namunalar:</b>",
-    "<code>/tg 5081175125</code> — Telegram ID orqali",
-    "<code>/tg @username</code> — Username orqali",
-    "<code>/tg +998901234567</code> — Telefon raqam orqali",
-    "",
-    "📱 Kontakt yuborsangiz, profil ma'lumotlari to'liq ko'rsatiladi.",
-    "Eslatma: username yoki ID orqali topish botning privacy sozlamalariga bog'liq.",
-  ].join("\n");
+function getTelegramProfilePromptText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("tg_profile_prompt", lang);
 }
 
-function getInvalidTelegramIdText() {
-  return "Foydalanuvchi topilmadi. TG ID ni tekshirib qayta yuboring.";
+function getInvalidTelegramIdText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("invalid_tg_id", lang);
 }
 
-function getTelegramContactWithoutPhoneText() {
-  return "Kontakt ichida telefon raqam topilmadi. Iltimos, telefon raqami bor kontakt yuboring.";
+function getTelegramContactWithoutPhoneText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("tg_contact_no_phone", lang);
 }
 
 function getTelegramPhoneProfileUnavailableText(phoneNumber) {
@@ -3497,127 +4060,55 @@ function getBindInfoPromptText() {
   ].join("\n");
 }
 
-function getBindInfoLimitReachedText() {
-  return [
-    "⛔️ <b>Kunlik limitga yetdingiz!</b>",
-    "",
-    "Ulanmalarni tekshirish xizmatidan kuniga faqat <b>10 marta</b> foydalanishi mumkin.",
-    "@obitomlb yoki @vafoyev_n ga murojaat qilsangiz kunlik limitingizni uzaytirib berishi mumkin.",
-    "Iltimos, ertaga yoki soat 00:00 dan keyin qayta urinib ko'ring."
-  ].join("\n");
+function getBindInfoLimitReachedText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("bind_info_limit_reached", lang);
 }
 
-function getInvalidBindInfoInputText() {
-  return "Ulanmalar topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.";
+function getInvalidBindInfoInputText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("invalid_bind_input", lang);
 }
 
-function getBindInfoFailedText(reason = "") {
-  if (reason === "bengkel_bridge_not_configured") {
-    return [
-      "Provider orqali ulanmalarni tekshirish uchun bridge endpoint sozlanmagan.",
-      "Adminlarga xatolik yozib qo‘yildi, sozlama yangilangandan keyin qayta urinib ko‘ring.",
-    ].join("\n");
-  }
-
-  if (/Bengkel bot javobidan ulanmalar/i.test(reason)) {
-    return [
-      "Bengkel bot javobidan ulanmalar ma’lumotini o‘qib bo‘lmadi.",
-      "Iltimos, ID va Server/Zone ID ni tekshirib qayta yuboring.",
-    ].join("\n");
-  }
-
-  if (/ulanmalar ma’lumotini qaytarmadi|ulanmalar ma'lumotini qaytarmadi/i.test(reason)) {
-    return [
-      "Ulanmalar ma’lumotini olish imkoni bo‘lmadi.",
-      "Provider bu akkaunt uchun linked-account ma’lumotini qaytarmadi.",
-    ].join("\n");
-  }
-
-  if (reason === "bind_info_provider_auth_required") {
-    return [
-      "Ulanmalar provideriga ulanish uchun avtorizatsiya kerak.",
-      "Adminlarga xatolik yozib qo‘yildi, sozlama yangilangandan keyin qayta urinib ko‘ring.",
-    ].join("\n");
-  }
-
-  if (
-    reason === "bind_info_provider_not_found" ||
-    reason === "bind_info_provider_html_response"
-  ) {
-    return [
-      "Ulanmalar provider manzili ishlamayapti yoki o‘zgargan.",
-      "Adminlarga xatolik yozib qo‘yildi, birozdan keyin qayta urinib ko‘ring.",
-    ].join("\n");
-  }
-
-  if (reason === "bind_info_provider_timeout") {
-    return [
-      "Ulanmalar provideri sekin javob berdi.",
-      "Iltimos, birozdan keyin qayta urinib ko‘ring.",
-    ].join("\n");
-  }
-
-  if (
-    reason === "bind_info_provider_unavailable" ||
-    reason === "bind_info_provider_rate_limited"
-  ) {
-    return [
-      "Ulanmalar provideri vaqtincha javob bermayapti.",
-      "Iltimos, birozdan keyin qayta urinib ko‘ring.",
-    ].join("\n");
-  }
-
-  return [
-    "Ma’lumot olish uchun bazadan javob olib bo‘lmadi.",
-    "Iltimos, birozdan keyin qayta urinib ko‘ring.",
-  ].join("\n");
+function getBindInfoFailedText(reason = "", lang) {
+  lang = lang || DEFAULT_LANG;
+  if (reason === "bengkel_bridge_not_configured") return t("bind_failed_bridge_not_configured", lang);
+  if (/Bengkel bot javobidan ulanmalar/i.test(reason)) return t("bind_failed_bengkel_parse", lang);
+  if (/ulanmalar ma‘lumotini qaytarmadi|ulanmalar ma'lumotini qaytarmadi/i.test(reason)) return t("bind_failed_no_data", lang);
+  if (reason === "bind_info_provider_auth_required") return t("bind_failed_auth_required", lang);
+  if (reason === "bind_info_provider_not_found" || reason === "bind_info_provider_html_response") return t("bind_failed_provider_down", lang);
+  if (reason === "bind_info_provider_timeout") return t("bind_failed_provider_timeout", lang);
+  if (reason === "bind_info_provider_unavailable" || reason === "bind_info_provider_rate_limited") return t("bind_failed_provider_unavailable", lang);
+  return t("bind_failed_generic", lang);
 }
 
-function getBindInfoWaitText() {
-  return [
-    "⏳ <b>Ulanmalar tekshirilmoqda...</b>",
-    "",
-    "Iltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
-  ].join("\n");
+function getBindInfoWaitText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("bind_info_wait", lang);
 }
 
-function getBindInfoResultText(result = {}, limitData = null) {
+function getBindInfoResultText(result = {}, limitData = null, lang) {
+  lang = lang || DEFAULT_LANG;
   const bindings = result.bindings || {};
   const deviceLogin = result.deviceLogin || {};
   const hasDeviceLogin = MLBB_BIND_INFO_SHOW_DEVICES && hasDeviceLoginData(deviceLogin);
   const deviceLines = hasDeviceLogin ? getDeviceLoginResultLines(deviceLogin) : [];
 
   const lines = [
-    // "🔗 <b>Ulanmalar</b>",
-    // "",
-    // `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
-    // `🌐 <b>Server:</b> <code>${escapeHtml(result.zoneId)}</code>`,
-    // `📧 <b>Moonton:</b> ${escapeHtml(formatBindValue(bindings.moonton))}`,
-    // `🔵 <b>VK:</b> ${escapeHtml(formatBindValue(bindings.vk))}`,
-    // `🎮 <b>Google Play:</b> ${escapeHtml(formatBindValue(bindings.googlePlay))}`,
-    // `🎵 <b>TikTok:</b> ${escapeHtml(formatBindValue(bindings.tiktok))}`,
-    // `${bindProviderEmoji("facebook", "📘")} <b>Facebook:</b> ${escapeHtml(
-    //   formatBindValue(bindings.facebook)
-    // )}`,
-    // `🍎 <b>Apple:</b> ${escapeHtml(formatBindValue(bindings.apple))}`,
-    // `🕹 <b>GCID:</b> ${escapeHtml(formatBindValue(bindings.gcid))}`,
-    // `✈️ <b>Telegram:</b> ${escapeHtml(formatBindValue(bindings.telegram))}`,
-    // `🟢 <b>WhatsApp:</b> ${escapeHtml(formatBindValue(bindings.whatsapp))}`,
-    // ...deviceLines,
-    "🔗 <b>Ulanmalar</b>",
+    t("bind_info_title", lang),
     "",
-    `🆔 <b>ID:</b> <code>${escapeHtml(result.accountId)}</code>`,
-    `🌐 <b>Server:</b> <code>${escapeHtml(result.zoneId)}</code>`,
-    ``,
-    `🌟 <b>Moonton:</b> ${escapeHtml(bindings.moonton)}`,
-    `🔵 <b>VK:</b> ${escapeHtml(bindings.vk)}`,
-    `🎮 <b>Google Play:</b> ${escapeHtml(bindings.googlePlay)}`,
+    t("bind_info_id", lang, { accountId: escapeHtml(result.accountId) }),
+    t("bind_info_server", lang, { zoneId: escapeHtml(result.zoneId) }),
+    "",
+    t("bind_moonton", lang, { value: escapeHtml(bindings.moonton) }),
+    t("bind_vk", lang, { value: escapeHtml(bindings.vk) }),
+    t("bind_google_play", lang, { value: escapeHtml(bindings.googlePlay) }),
     `<tg-emoji emoji-id="5271527792641595125">😎</tg-emoji> <b>TikTok:</b> ${escapeHtml(bindings.tiktok)}`,
     `<tg-emoji emoji-id="5269427536453984598">😎</tg-emoji> <b>Facebook:</b> ${escapeHtml(bindings.facebook)}`,
     `<tg-emoji emoji-id="5821379843861778259">⚪️</tg-emoji> <b>Apple:</b> ${escapeHtml(bindings.apple)}`,
-    `🕹 <b>GCID:</b> ${escapeHtml(bindings.gcid)}`,
-    `✈️ <b>Telegram:</b> ${escapeHtml(bindings.telegram)}`,
-    `🟢 <b>WhatsApp:</b> ${escapeHtml(bindings.whatsapp)}`,
+    t("bind_gcid", lang, { value: escapeHtml(bindings.gcid) }),
+    t("bind_telegram", lang, { value: escapeHtml(bindings.telegram) }),
+    t("bind_whatsapp", lang, { value: escapeHtml(bindings.whatsapp) }),
     ...deviceLines,
   ];
 
@@ -3625,44 +4116,33 @@ function getBindInfoResultText(result = {}, limitData = null) {
     const remaining = limitData.remaining;
     const total = limitData.total_limit || 10;
     lines.push("");
-    lines.push(`<i><tg-emoji emoji-id="5249459056673825344">😄</tg-emoji> Bugungi tekshirishlar qoldig'i: ${remaining}/${total} ta</i>`);
+    lines.push(t("bind_limit_remaining", lang, { remaining, total }));
   }
 
   return lines.filter((line, index, arr) => line || arr[index + 1]).join("\n");
 }
 
-function getFeedbackPromptText() {
-  return [
-    "💬 <b>Fikr va izohlar</b>",
-    "",
-    "Botga kerakli funksiya, taklif yoki shikoyatingizni yozib yuboring.",
-    "Xabaringiz adminlarga yetkaziladi. Admin javob bersa, javobi bot orqali sizga keladi.",
-    "",
-    "Bekor qilish uchun /cancel buyrug'ini bosing.",
-  ].join("\n");
+function getFeedbackPromptText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("feedback_prompt", lang);
 }
 
-function getFeedbackTextRequiredText() {
-  return [
-    "Fikr yoki izoh matn ko‘rinishida bo‘lishi kerak.",
-    "Iltimos, taklif yoki shikoyatingizni yozib yuboring.",
-  ].join("\n");
+function getFeedbackTextRequiredText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("feedback_text_required", lang);
 }
 
-function getFeedbackTooLongText() {
-  return `Fikr juda uzun. Iltimos, ${FEEDBACK_MAX_LENGTH} belgidan qisqaroq yozing.`;
+function getFeedbackTooLongText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("feedback_too_long", lang, { maxLength: FEEDBACK_MAX_LENGTH });
 }
 
-function getFeedbackThanksText(result = {}) {
+function getFeedbackThanksText(result = {}, lang) {
+  lang = lang || DEFAULT_LANG;
   const delivered = Number(result.sent || 0);
-
-  return [
-    "✅ <b>Fikringiz yuborildi.</b>",
-    "",
-    delivered
-      ? "Javobni kuting va u shu yerga keladi."
-      : "Hozir adminlarga yetkazishda xatolik bo‘ldi. Iltimos, birozdan keyin qayta urinib ko‘ring.",
-  ].join("\n");
+  return delivered
+    ? t("feedback_thanks", lang)
+    : t("feedback_thanks_failed", lang);
 }
 
 function getAdminFeedbackText(feedback) {
@@ -3684,7 +4164,8 @@ function getAdminFeedbackText(feedback) {
   ].join("\n");
 }
 
-function getFeedbackReplySentText(target) {
+function getFeedbackReplySentText(target, lang) {
+  lang = lang || DEFAULT_LANG;
   return [
     "✅ Javob userga yuborildi.",
     "",
@@ -3695,13 +4176,15 @@ function getFeedbackReplySentText(target) {
     .join("\n");
 }
 
-function getFeedbackAdminReplyTextRequiredText() {
-  return "Userga yuboriladigan javob matn ko‘rinishida bo‘lishi kerak.";
+function getFeedbackAdminReplyTextRequiredText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("admin_feedback_reply_required", lang);
 }
 
-function getFeedbackReplyFailedText(target, reason) {
+function getFeedbackReplyFailedText(target, reason, lang) {
+  lang = lang || DEFAULT_LANG;
   return [
-    "❌ Javobni userga yuborib bo‘lmadi.",
+    "❌ Javobni userga yuborib bo'lmadi.",
     "",
     `User ID: <code>${escapeHtml(target.userId)}</code>`,
     target.feedbackId ? `Feedback ID: <code>${escapeHtml(target.feedbackId)}</code>` : "",
@@ -3717,33 +4200,34 @@ async function getStatsTextAsync(options = {}) {
   return getStatsText(dbStats);
 }
 
-function getStatsText(dbStats = null) {
+function getStatsText(dbStats = null, lang) {
+  lang = lang || DEFAULT_LANG;
   const todayLines = getStatsTodayUserLines(dbStats);
-  const monthlyLines = getStatsMonthlyLines(dbStats);
+  const monthlyLines = getStatsMonthlyLines(dbStats, lang);
   const totalUsers = getDisplayTotalUsers(dbStats);
   const todayTotal = getDisplayTodayTotal(dbStats);
 
   return [
-    "📊 <b>Bot statistikasi</b>",
+    t("stats_title", lang),
     "",
-    `👥 <b>Jami foydalanuvchilar:</b> ${totalUsers}`,
-    `🟢 <b>Bugun foydalanganlar:</b> ${todayTotal}`,
-    `📣 <b>Broadcast chatlar:</b> ${stats.broadcastChats.size}`,
-    `⏳ <b>Kutilayotgan broadcast:</b> ${stats.pendingBroadcasts.size}`,
-    `🚀 <b>/start:</b> ${stats.starts}`,
-    `🔎 <b>Jami tekshiruv:</b> ${stats.checks}`,
-    `✅ <b>Muvaffaqiyatli:</b> ${stats.successChecks}`,
-    `❌ <b>MLBB tekshiruv xatolari:</b> ${stats.failedChecks}`,
-    `🕒 <b>Ishga tushgan:</b> ${formatDate(stats.startedAt)}`,
-    stats.lastCheckAt ? `✅ <b>Oxirgi tekshiruv:</b> ${formatDate(stats.lastCheckAt)}` : "",
+    t("stats_total_users", lang, { count: totalUsers }),
+    t("stats_today_users", lang, { count: todayTotal }),
+    t("stats_broadcast_chats", lang, { count: stats.broadcastChats.size }),
+    t("stats_pending_broadcasts", lang, { count: stats.pendingBroadcasts.size }),
+    t("stats_starts", lang, { count: stats.starts }),
+    t("stats_total_checks", lang, { count: stats.checks }),
+    t("stats_success", lang, { count: stats.successChecks }),
+    t("stats_failed", lang, { count: stats.failedChecks }),
+    t("stats_started_at", lang, { date: formatDate(stats.startedAt) }),
+    stats.lastCheckAt ? t("stats_last_check", lang, { date: formatDate(stats.lastCheckAt) }) : "",
     "",
-    "<b>Bugun botdan foydalanganlar:</b>",
+    t("stats_today_header", lang),
     ...todayLines,
     "",
-    "<b>Oylik aktiv userlar:</b>",
+    t("stats_monthly_header", lang),
     ...monthlyLines,
     "",
-    "Xatoliklar alohida admin tugmasiga ko‘chirildi: <b>⚠️ Xatoliklar</b>.",
+    t("stats_errors_moved", lang),
   ]
     .filter(Boolean)
     .join("\n");
@@ -3813,30 +4297,30 @@ function formatUserLine(user, page = 0, pageSize = USERS_PAGE_SIZE, index = 0) {
     .join(" ");
 }
 
-function getUsersListText(pageData = {}, syncResult = null) {
+function getUsersListText(pageData = {}, syncResult = null, lang) {
+  lang = lang || DEFAULT_LANG;
   const users = Array.isArray(pageData.users) ? pageData.users : [];
   const total = Number(pageData.total || 0);
   const page = Number(pageData.page || 0);
   const pageSize = Number(pageData.pageSize || USERS_PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const sourceText = pageData.source === "runtime" ? "lokal xotira" : "Supabase";
+  const sourceText = pageData.source === "runtime" ? (lang === "ru" ? "локальная память" : "lokal xotira") : "Supabase";
   const lines = users.length
     ? users.map((user, index) => formatUserLine(user, page, pageSize, index))
-    : [pageData.error ? "Foydalanuvchilarni o‘qib bo‘lmadi." : "User topilmadi."];
-  const syncLine =
-    syncResult?.attempted && !syncResult.skipped
-      ? `🔄 <b>Known user sync:</b> ${syncResult.saved}/${syncResult.total} yuborildi`
-      : "";
+    : [pageData.error ? t("users_read_error", lang) : t("users_not_found", lang)];
+  const syncLine = syncResult?.attempted && !syncResult.skipped
+    ? t("users_sync_line", lang, { saved: syncResult.saved, total: syncResult.total })
+    : "";
 
   return [
-    "👥 <b>Bot foydalanuvchilari</b>",
+    t("users_title", lang),
     "",
-    `Jami: <b>${total}</b>`,
-    `Sahifa: <b>${page + 1}/${totalPages}</b>`,
-    `Manba: <b>${escapeHtml(sourceText)}</b>`,
+    t("users_total", lang, { total }),
+    t("users_page", lang, { page: page + 1, totalPages }),
+    t("users_source", lang, { source: escapeHtml(sourceText) }),
     syncLine,
-    pageData.configError ? `Supabase sozlamasi: ${escapeHtml(pageData.configError)}` : "",
-    pageData.error && !pageData.configError ? "Supabase o‘qishda xatolik bor." : "",
+    pageData.configError ? t("users_supabase_config_error", lang, { error: escapeHtml(pageData.configError) }) : "",
+    pageData.error && !pageData.configError ? t("users_supabase_read_error", lang) : "",
     "",
     ...lines,
   ]
@@ -3844,40 +4328,31 @@ function getUsersListText(pageData = {}, syncResult = null) {
     .join("\n");
 }
 
-function getStatsMonthlyLines(dbStats = null) {
+function getStatsMonthlyLines(dbStats = null, lang) {
+  lang = lang || DEFAULT_LANG;
   if (Array.isArray(dbStats?.monthly) && dbStats.monthly.length) {
     return dbStats.monthly.map((row) => {
       const month = formatMonth(row.month);
       const users = Number(row.active_users || 0);
       const updates = Number(row.updates || 0);
-
-      return `${escapeHtml(month)}: <b>${users}</b> user, ${updates} update`;
+      return t("stats_monthly_line", lang, { month: escapeHtml(month), users, updates });
     });
   }
-
-  if (dbStats?.configError) {
-    return [`Supabase sozlamasi: ${escapeHtml(dbStats.configError)}`];
-  }
-
-  if (dbStats?.error) {
-    return ["Supabase o‘qishda xatolik bor, oylik statistika vaqtincha olinmadi."];
-  }
-
-  if (!isSupabaseConfigured()) {
-    return [`Supabase ulanmagan. Joriy runtime: <b>${stats.users.size}</b> user.`];
-  }
-
-  return ["Hali oylik aktivlik qayd etilmagan."];
+  if (dbStats?.configError) return [t("users_supabase_config_error", lang, { error: escapeHtml(dbStats.configError) })];
+  if (dbStats?.error) return [t("stats_monthly_supabase_error", lang)];
+  if (!isSupabaseConfigured()) return [t("stats_monthly_not_configured", lang, { count: stats.users.size })];
+  return [t("stats_monthly_no_data", lang)];
 }
 
-function getErrorsText() {
+function getErrorsText(lang) {
+  lang = lang || DEFAULT_LANG;
   return [
-    "⚠️ <b>Bot xatoliklari</b>",
+    t("errors_title", lang),
     "",
-    "<b>Xatolik turlari:</b>",
+    t("errors_types_header", lang),
     ...getErrorCountLines(),
     "",
-    "<b>Oxirgi xatoliklar:</b>",
+    t("errors_recent_header", lang),
     ...getStatsErrorLines(),
   ].join("\n");
 }
@@ -3983,72 +4458,61 @@ function extractCustomEmojiEntities(text, entities = []) {
     });
 }
 
-function getUnknownText() {
+function getUnknownText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("unknown_text", lang);
+}
+
+function getAdminOnlyText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("admin_only", lang);
+}
+
+function getErrorText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("error_unexpected", lang);
+}
+
+function getBroadcastUsageText(lang) {
+  lang = lang || DEFAULT_LANG;
   return [
-    "Nima demoqchiligizni tushunmadim 🙂",
-    "Yaxshisi pastdagi tugmalardan foydalaning.",
+    t("broadcast_usage_title", lang),
+    "",
+    t("broadcast_usage_format", lang),
+    "",
+    t("broadcast_usage_hint", lang),
   ].join("\n");
 }
 
-function getAdminOnlyText() {
-  return "Bu bo‘lim faqat adminlar uchun!";
+function getBroadcastTooLongText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("broadcast_too_long", lang);
 }
 
-function getErrorText() {
+function getBroadcastExpiredText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("broadcast_expired", lang);
+}
+
+function getBroadcastConfirmText(payload, recipientCount = stats.broadcastChats.size, lang) {
+  lang = lang || DEFAULT_LANG;
+  const preview = typeof payload === "string" ? payload : payload?.previewText || payload?.text || "";
   return [
-    "Kutilmagan xatolik bo‘ldi, lekin men ishlayapman.",
+    t("broadcast_confirm_title", lang),
+    t("broadcast_confirm_body", lang, { count: recipientCount }),
     "",
-    "Iltimos, ID’ni yana shu formatda yuboring:",
-    "1289050 (10050)",
-  ].join("\n");
-}
-
-function getBroadcastUsageText() {
-  return [
-    "📣 <b>Umumiy xabar yuborish</b>",
-    "",
-    "Format:",
-    "<code>/message Sizning xabaringiz</code>",
-    "",
-    "Formatlangan text, premium emoji va linklar saqlanadi.",
-    "Sticker/media yuborish uchun o‘sha xabarga reply qilib <code>/message</code> yozing.",
-    "",
-    "Keyingi qadamda tasdiqlash tugmasi chiqadi.",
-  ].join("\n");
-}
-
-function getBroadcastTooLongText() {
-  return "Xabar juda uzun. Iltimos, 3500 belgidan qisqaroq matn yuboring.";
-}
-
-function getBroadcastExpiredText() {
-  return "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.";
-}
-
-function getBroadcastConfirmText(payload, recipientCount = stats.broadcastChats.size) {
-  const preview =
-    typeof payload === "string"
-      ? payload
-      : payload?.previewText || payload?.text || "Reply qilingan xabar";
-
-  return [
-    "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
-    "Hali hech kimga yuborilmadi. Yuborish faqat pastdagi tasdiq tugmasidan keyin boshlanadi.",
-    "",
-    `Qabul qiluvchilar: <b>${recipientCount}</b>`,
-    "",
-    "<b>Xabar:</b>",
+    t("broadcast_confirm_message", lang),
     escapeHtml(clipText(preview, 900)),
   ].join("\n");
 }
 
-function getBroadcastQueuedText(queued) {
+function getBroadcastQueuedText(queued, lang) {
+  lang = lang || DEFAULT_LANG;
   return [
-    "📣 <b>Xabar yuborish navbatga qo‘yildi</b>",
+    t("broadcast_queued_title", lang),
     "",
-    `Qabul qiluvchilar: <b>${queued}</b>`,
-    "Yuborish fonda (queue orqali) amalga oshirilmoqda — bir necha daqiqa davom etishi mumkin.",
-    "Hammasi tugagach yakuniy hisobot (Jami / Yuborildi / Xato) shu chatga keladi.",
+    t("broadcast_queued_recipients", lang, { count: queued }),
+    t("broadcast_queued_body", lang),
   ].join("\n");
 }
 
@@ -4056,32 +4520,35 @@ async function sendBroadcastReport(chatId, result) {
   return sendMessage(chatId, getBroadcastResultText(result), mainKeyboard());
 }
 
-function getBroadcastQueuedErrorText() {
-  return "❌ Xabarni navbatga qo‘yishda xatolik yuz berdi. Qaytadan urinib ko‘ring (/message).";
+function getBroadcastQueuedErrorText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("broadcast_queued_error", lang);
 }
 
-function getBroadcastResultText(result) {
+function getBroadcastResultText(result, lang) {
+  lang = lang || DEFAULT_LANG;
   return [
-    "📣 <b>Yuborish yakunlandi</b>",
+    t("broadcast_result_title", lang),
     "",
-    `Jami: <b>${result.total}</b>`,
-    `Yuborildi: <b>${result.sent}</b>`,
-    `Xato: <b>${result.failed}</b>`,
+    t("broadcast_result_total", lang, { total: result.total }),
+    t("broadcast_result_sent", lang, { sent: result.sent }),
+    t("broadcast_result_failed", lang, { failed: result.failed }),
   ].join("\n");
 }
 
 function mainKeyboard(user = {}) {
+  const lang = getUserLang(user.id);
   const keyboard = [
-    [{ text: BUTTON_BIND_INFO }],
-    [{ text: BUTTON_CHECK }, { text: BUTTON_TG_PROFILE }],
+    [{ text: t("btn_check", lang) }, { text: t("btn_bind_info", lang) }],
+    [{ text: t("btn_tg_profile", lang) }, { text: t("btn_language", lang) }],
   ];
 
   if (isAdmin(user.id)) {
     keyboard.splice(
-      1,
+      2,
       0,
-      [{ text: BUTTON_STATS }, { text: BUTTON_USERS }],
-      [{ text: BUTTON_MANDATORY_SETUP }]
+      [{ text: t("btn_stats", lang) }, { text: t("btn_users", lang) }],
+      [{ text: t("btn_mandatory_setup", lang) }]
     );
   }
 
@@ -4093,8 +4560,9 @@ function mainKeyboard(user = {}) {
 }
 
 function telegramProfileKeyboard(user = {}) {
+  const lang = getUserLang(user.id);
   const keyboard = [
-    [{ text: "📱 Kontakt yuborish", request_contact: true }],
+    [{ text: t("btn_contact_send", lang), request_contact: true }],
     ...mainKeyboard(user).keyboard,
   ];
 
@@ -4117,16 +4585,16 @@ function helpKeyboard(user = {}) {
   return mainKeyboard(user);
 }
 
-function broadcastConfirmKeyboard(broadcastId, confirmToken) {
+function broadcastConfirmKeyboard(broadcastId, confirmToken, lang) {
   return {
     inline_keyboard: [
       [
         {
-          text: "✅ Tasdiqlash",
+          text: t("btn_confirm_yes", lang || DEFAULT_LANG),
           callback_data: `broadcast_confirm:${broadcastId}:${confirmToken}`,
         },
         {
-          text: "❌ Bekor qilish",
+          text: t("btn_confirm_no", lang || DEFAULT_LANG),
           callback_data: `broadcast_cancel:${broadcastId}:${confirmToken}`,
         },
       ],
@@ -4139,6 +4607,7 @@ function dailyUsersPaginationKeyboard(pageData = {}) {
     page: pageData.todayPage || 0,
     pageSize: pageData.todayPageSize || USERS_PAGE_SIZE,
     total: pageData.todayTotal || 0,
+    lang: pageData.lang,
   });
 }
 
@@ -4147,15 +4616,16 @@ function usersPaginationKeyboard(pageData = {}) {
     page: pageData.page || 0,
     pageSize: pageData.pageSize || USERS_PAGE_SIZE,
     total: pageData.total || 0,
+    lang: pageData.lang,
   });
 }
 
-function errorsRefreshKeyboard() {
+function errorsRefreshKeyboard(lang) {
   return {
     inline_keyboard: [
       [
         {
-          text: "🔄 Yangilash",
+          text: t("btn_refresh", lang || DEFAULT_LANG),
           callback_data: "errors",
         },
       ],
@@ -4163,23 +4633,23 @@ function errorsRefreshKeyboard() {
   };
 }
 
-function feedbackForceReply() {
+function feedbackForceReply(lang) {
   return {
     force_reply: true,
     selective: true,
-    input_field_placeholder: "Fikringizni yozing...",
+    input_field_placeholder: t("placeholder_feedback", lang || DEFAULT_LANG),
   };
 }
 
-function bindInfoForceReply() {
+function bindInfoForceReply(lang) {
   return {
     force_reply: true,
     selective: true,
-    input_field_placeholder: "1006613098 (13019)",
+    input_field_placeholder: t("placeholder_bind_info", lang || DEFAULT_LANG),
   };
 }
 
-function paginationKeyboard(prefix, { page = 0, pageSize = USERS_PAGE_SIZE, total = 0 } = {}) {
+function paginationKeyboard(prefix, { page = 0, pageSize = USERS_PAGE_SIZE, total = 0, lang } = {}) {
   const safePage = Math.max(0, Number(page) || 0);
   const safePageSize = Math.max(1, Number(pageSize) || USERS_PAGE_SIZE);
   const safeTotal = Math.max(0, Number(total) || 0);
@@ -4187,14 +4657,14 @@ function paginationKeyboard(prefix, { page = 0, pageSize = USERS_PAGE_SIZE, tota
 
   if (safePage > 0) {
     buttons.push({
-      text: "⬅️ Oldingi 10",
+      text: t("btn_pagination_prev", lang || DEFAULT_LANG),
       callback_data: `${prefix}:${safePage - 1}`,
     });
   }
 
   if ((safePage + 1) * safePageSize < safeTotal) {
     buttons.push({
-      text: "Keyingi 10 ➡️",
+      text: t("btn_pagination_next", lang || DEFAULT_LANG),
       callback_data: `${prefix}:${safePage + 1}`,
     });
   }
@@ -4630,6 +5100,14 @@ function isKeyboardButton(text, ...buttons) {
   return buttons.includes(String(text || "").trim());
 }
 
+function isTranslatedKeyboardButton(text, translationKey) {
+  const normalized = String(text || "").trim();
+  for (const lang of SUPPORTED_LANGS) {
+    if (t(translationKey, lang) === normalized) return true;
+  }
+  return false;
+}
+
 function normalizeBindWaitMessage(value = {}) {
   if (!value || typeof value !== "object") {
     return null;
@@ -4697,7 +5175,7 @@ function parseFeedbackAdminReplyTarget(replyToMessage = {}) {
 function isFeedbackSubmissionMessage(message = {}, user = {}) {
   const text = getFeedbackMessageText(message);
 
-  if (!text || isCommandLike(text) || isKeyboardButton(text, BUTTON_FEEDBACK)) {
+  if (!text || isCommandLike(text) || isTranslatedKeyboardButton(text, "btn_feedback")) {
     return false;
   }
 
@@ -5921,46 +6399,34 @@ function buildRuntimeDailyReport() {
   };
 }
 
-function getDailyReportText(report = {}) {
+function getDailyReportText(report = {}, lang) {
+  lang = lang || DEFAULT_LANG;
   const actions = Array.isArray(report.actions) ? report.actions : [];
   const topUsers = Array.isArray(report.top_users) ? report.top_users : [];
   const date = cleanEnv(report.date);
 
   const lines = [
-    "📊 <b>Kunlik foydalanish statistikasi</b>",
+    t("daily_report_title", lang),
     "",
-    date ? `📅 Sana: <b>${escapeHtml(date)}</b>` : "",
+    date ? t("daily_report_date", lang, { date: escapeHtml(date) }) : "",
     "",
-    "<b>Funksiyalar bo'yicha:</b>",
+    t("daily_report_functions", lang),
     ...(actions.length
       ? actions.map((entry) => {
-          const label =
-            DAILY_REPORT_ACTION_LABELS[entry.action] ||
-            escapeHtml(String(entry.action || "noma'lum"));
-
+          const label = getDailyReportActionLabel(entry.action, lang);
           return `${label}: <b>${Number(entry.count || 0)}</b> ta`;
         })
-      : ["Bugun funksiya ishlatilishi qayd etilmagan."]),
+      : [t("daily_report_no_functions", lang)]),
     "",
-    "<b>Top 3 foydalanuvchi:</b>",
+    t("daily_report_top3", lang),
     ...(topUsers.length
       ? topUsers.map((user, index) => {
-          const name = [user.first_name, user.last_name]
-            .filter(Boolean)
-            .join(" ")
-            .trim();
-          const label = user.username
-            ? `@${user.username}`
-            : name || String(user.user_id || "Noma'lum");
-
-          return `${index + 1}. ${escapeHtml(label)} — <b>${Number(
-            user.count || 0
-          )}</b> ta`;
+          const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+          const label = user.username ? `@${user.username}` : name || String(user.user_id || "");
+          return `${index + 1}. ${escapeHtml(label)} — <b>${Number(user.count || 0)}</b> ta`;
         })
-      : ["Bugun foydalanish qayd etilmagan."]),
-    report.source === "runtime"
-      ? "⚠️ Supabase o'qilmadi — joriy runtime xotirasidan."
-      : "",
+      : [t("daily_report_no_users", lang)]),
+    report.source === "runtime" ? t("daily_report_runtime_warning", lang) : "",
   ].filter(Boolean);
 
   return lines.join("\n");
@@ -6457,4 +6923,10 @@ module.exports.__private = {
   sanitizeTelegramUsername,
   trackUser,
   validateSupabaseServiceKey,
+  t,
+  getUserLang,
+  setUserLang,
+  SUPPORTED_LANGS,
+  DEFAULT_LANG,
+  translations,
 };
