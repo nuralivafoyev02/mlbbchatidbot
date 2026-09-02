@@ -133,7 +133,7 @@ const translations = {
   "errors_no_errors": "Xatolik qayd etilmagan.",
   "broadcast_usage_title": "📣 <b>Umumiy xabar yuborish</b>",
   "broadcast_usage_format": "Format:\n<code>/message Sizning xabaringiz</code>",
-  "broadcast_usage_hint": "Formatlangan text, premium emoji va linklar saqlanadi.\nSticker/media yuborish uchun o'sha xabarga reply qilib <code>/message</code> yozing.\n\nKeyingi qadamda tasdiqlash tugmasi chiqadi.",
+  "broadcast_usage_hint": "Barcha formatlar saqlanadi:\n• <b>Qalin</b> — <code>**matn**</code> yoki Telegram formati\n• <i>Kursiv</i> — <code>_matn_</code>\n• __Tagishlangan__ — <code>__matn__</code>\n• ~~Chizilgan~~ — <code>~matn~</code>\n• ||Sekret (spoiler)|| — <code>||matn||</code>\n• \> Iqtibos (blockquote) — Telegram formati\n• <code>Kod</code> — <code>`matn`</code>\n• Link — <code>[matn](url)</code>\n• Premium emoji — saqlanadi\n\nSticker/media yuborish uchun o'sha xabarga reply qilib <code>/message</code> yozing.\n\nKeyingi qadamda tasdiqlash tugmasi chiqadi.",
   "broadcast_too_long": "Xabar juda uzun. Iltimos, 3500 belgidan qisqaroq matn yuboring.",
   "broadcast_expired": "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.",
   "broadcast_confirm_title": "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
@@ -368,7 +368,7 @@ const translations = {
   "errors_no_errors": "Ошибки не зафиксированы.",
   "broadcast_usage_title": "📣 <b>Массовая рассылка</b>",
   "broadcast_usage_format": "Формат:\n<code>/message Ваше сообщение</code>",
-  "broadcast_usage_hint": "Форматированный текст, premium эмодзи и ссылки сохраняются.\nДля отправки стикера/медиа ответьте на сообщение командой <code>/message</code>.\n\nНа следующем шаге появится кнопка подтверждения.",
+  "broadcast_usage_hint": "Все форматы сохраняются:\n• <b>Жирный</b> — <code>**текст**</code> или Telegram-формат\n• <i>Курсив</i> — <code>_текст_</code>\n• __Подчёркнутый__ — <code>__текст__</code>\n• ~~Зачёркнутый~~ — <code>~текст~</code>\n• ||Спойлер|| — <code>||текст||</code>\n• \> Цитата (blockquote) — Telegram-формат\n• <code>Код</code> — <code>`текст`</code>\n• Ссылка — <code>[текст](url)</code>\n• Premium эмодзи — сохраняются\n\nДля отправки стикера/медиа ответьте на сообщение командой <code>/message</code>.\n\nНа следующем шаге появится кнопка подтверждения.",
   "broadcast_too_long": "Сообщение слишком длинное. Пожалуйста, отправьте текст shorter 3500 символов.",
   "broadcast_expired": "Это подтверждение устарело или не найдено. Начните заново через /message.",
   "broadcast_confirm_title": "📣 <b>Отправить всем пользователям?</b>",
@@ -4497,13 +4497,87 @@ function getBroadcastExpiredText(lang) {
 function getBroadcastConfirmText(payload, recipientCount = stats.broadcastChats.size, lang) {
   lang = lang || DEFAULT_LANG;
   const preview = typeof payload === "string" ? payload : payload?.previewText || payload?.text || "";
-  return [
+  const entities = (typeof payload === "object" && payload?.kind === "text") ? (payload.entities || []) : [];
+  const header = [
     t("broadcast_confirm_title", lang),
     t("broadcast_confirm_body", lang, { count: recipientCount }),
     "",
     t("broadcast_confirm_message", lang),
-    escapeHtml(clipText(preview, 900)),
   ].join("\n");
+  const formattedPreview = entities.length
+    ? entitiesToHtml(preview, entities)
+    : escapeHtml(clipText(preview, 900));
+  return header + "\n" + formattedPreview;
+}
+
+function entitiesToHtml(text, entities = []) {
+  const safeText = clipText(text, 900);
+  if (!entities.length) return escapeHtml(safeText);
+
+  const sorted = [...entities]
+    .filter((e) => e && typeof e.offset === "number" && typeof e.length === "number" && e.length > 0)
+    .sort((a, b) => a.offset - b.offset || b.length - a.length);
+
+  const tags = [];
+  for (const entity of sorted) {
+    const end = entity.offset + entity.length;
+    if (entity.offset >= safeText.length) continue;
+    const actualEnd = Math.min(end, safeText.length);
+    const openTag = getEntityOpenTag(entity);
+    const closeTag = getEntityCloseTag(entity);
+    if (openTag) {
+      tags.push({ pos: entity.offset, tag: openTag, type: "open" });
+      tags.push({ pos: actualEnd, tag: closeTag, type: "close" });
+    }
+  }
+
+  tags.sort((a, b) => a.pos - b.pos || (a.type === "close" ? -1 : 1));
+
+  let result = "";
+  let cursor = 0;
+  for (const t of tags) {
+    if (t.pos > cursor && t.pos <= safeText.length) {
+      result += escapeHtml(safeText.slice(cursor, t.pos));
+    }
+    if (t.pos < safeText.length) result += t.tag;
+    cursor = Math.max(cursor, t.pos);
+  }
+  if (cursor < safeText.length) result += escapeHtml(safeText.slice(cursor));
+  return result;
+}
+
+function getEntityOpenTag(entity) {
+  switch (entity.type) {
+    case "bold": return "<b>";
+    case "italic": return "<i>";
+    case "underline": return "<u>";
+    case "strikethrough": return "<s>";
+    case "spoiler": return "<tg-spoiler>";
+    case "code": return "<code>";
+    case "pre": return entity.language ? `<pre><code class="language-${escapeHtml(entity.language)}">` : "<pre>";
+    case "blockquote": return "<blockquote>";
+    case "expandable_blockquote": return "<blockquote expandable>";
+    case "text_link": return `<a href="${escapeHtml(entity.url || "")}">`;
+    case "custom_emoji": return entity.custom_emoji_id ? `<tg-emoji emoji-id="${escapeHtml(entity.custom_emoji_id)}">` : "";
+    default: return "";
+  }
+}
+
+function getEntityCloseTag(entity) {
+  switch (entity.type) {
+    case "bold": return "</b>";
+    case "italic": return "</i>";
+    case "underline": return "</u>";
+    case "strikethrough": return "</s>";
+    case "spoiler": return "</tg-spoiler>";
+    case "code": return "</code>";
+    case "pre": return "</code></pre>";
+    case "blockquote": return "</blockquote>";
+    case "expandable_blockquote": return "</blockquote>";
+    case "text_link": return "</a>";
+    case "custom_emoji": return entity.custom_emoji_id ? "</tg-emoji>" : "";
+    default: return "";
+  }
 }
 
 function getBroadcastQueuedText(queued, lang) {

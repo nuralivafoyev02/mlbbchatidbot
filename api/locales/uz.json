@@ -127,7 +127,7 @@
   "errors_no_errors": "Xatolik qayd etilmagan.",
   "broadcast_usage_title": "📣 <b>Umumiy xabar yuborish</b>",
   "broadcast_usage_format": "Format:\n<code>/message Sizning xabaringiz</code>",
-  "broadcast_usage_hint": "Formatlangan text, premium emoji va linklar saqlanadi.\nSticker/media yuborish uchun o'sha xabarga reply qilib <code>/message</code> yozing.\n\nKeyingi qadamda tasdiqlash tugmasi chiqadi.",
+  "broadcast_usage_hint": "Barcha formatlar saqlanadi:\n• <b>Qalin</b> — <code>**matn**</code> yoki Telegram formati\n• <i>Kursiv</i> — <code>_matn_</code>\n• __Tagishlangan__ — <code>__matn__</code>\n• ~~Chizilgan~~ — <code>~matn~</code>\n• ||Sekret (spoiler)|| — <code>||matn||</code>\n• \> Iqtibos (blockquote) — Telegram formati\n• <code>Kod</code> — <code>`matn`</code>\n• Link — <code>[matn](url)</code>\n• Premium emoji — saqlanadi\n\nSticker/media yuborish uchun o'sha xabarga reply qilib <code>/message</code> yozing.\n\nKeyingi qadamda tasdiqlash tugmasi chiqadi.",
   "broadcast_too_long": "Xabar juda uzun. Iltimos, 3500 belgidan qisqaroq matn yuboring.",
   "broadcast_expired": "Bu tasdiqlash eskirgan yoki topilmadi. /message orqali qaytadan boshlang.",
   "broadcast_confirm_title": "📣 <b>Hamma foydalanuvchilarga yuborilsinmi?</b>",
