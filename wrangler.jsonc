@@ -43,7 +43,7 @@
     "ADMIN_IDS": "5081175125,8500085987,7396686285",
     "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
     "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
-    "ADVANCED_SERVER_RANGES": "57001-57999",
+    "ADVANCED_SERVER_RANGES": "5101-5800",
     "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",
     "MLBB_BIND_INFO_PROVIDER": "bengkel",
     "MLBB_BIND_INFO_API_URL": "https://mlbbchatidbot.vercel.app/api/bengkel",
