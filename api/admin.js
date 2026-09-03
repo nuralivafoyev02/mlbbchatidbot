@@ -55,9 +55,20 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "method_not_allowed" });
   } catch (error) {
     console.error("[ADMIN_PANEL_ERROR]", error);
-    return serveLogin(req, res, "Kutilmagan xatolik yuz berdi. Keyinroq urinib ko'ring.");
+    return serveLogin(req, res, "Kutilmagan xatolik yuz berdi: " + safeErrorMessage(error));
   }
 };
+
+function safeErrorMessage(error) {
+  try {
+    if (error instanceof Error) {
+      return String(error.message || "").slice(0, 220);
+    }
+    return String(error).slice(0, 220);
+  } catch {
+    return "texnik xatolik";
+  }
+}
 
 // ------------------------------------------------------------------
 // Auth / session
@@ -165,7 +176,12 @@ async function handleChangePassword(req, res, body) {
     return serveDashboard(req, res, session, "Joriy parol noto'g'ri.");
   }
 
-  await setPassword(next);
+  try {
+    await setPassword(next);
+  } catch (error) {
+    console.error("[SET_PASSWORD_ERROR]", error);
+    return serveDashboard(req, res, session, "Parolni saqlashda xatolik yuz berdi. Likinroq urinib ko'ring.");
+  }
   return serveDashboard(req, res, session, "✅ Parol muvaffaqiyatli o'zgartirildi.");
 }
 
@@ -301,6 +317,7 @@ async function serveDashboard(req, res, session, message = "", notice = "") {
   const rowData = "/api_tokens?select=id,token_prefix,title,created_at,expires_at,usage_count,is_revoked,last_used_at&order=created_at.desc&limit=200";
 
   let tokens = [];
+  let listError = "";
   try {
     tokens = await supabaseRequest(rowData);
     if (!Array.isArray(tokens)) {
@@ -308,12 +325,29 @@ async function serveDashboard(req, res, session, message = "", notice = "") {
     }
   } catch (error) {
     console.error("[ADMIN_LIST_TOKENS_ERROR]", error);
+    listError = String(error.message || error);
+  }
+
+  const warnings = [];
+  if (!SUPABASE_URL) {
+    warnings.push("`SUPABASE_URL` env o'rnatilmagan (Vercel → Settings → Environment Variables).");
+  } else if (!SUPABASE_SERVICE_KEY) {
+    warnings.push("`SUPABASE_SERVICE_ROLE_KEY` env o'rnatilmagan (Vercel → Settings → Environment Variables).");
+  } else if (listError) {
+    if (/SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/.test(listError)) {
+      warnings.push(listError);
+    } else if (/relation.*(api_tokens|admin_settings).*does not exist|42P01/.test(listError)) {
+      warnings.push("`api_tokens` jadvali topilmadi. Supabase SQL Editor'da `supabase/011_api_tokens.sql` migratsiyasini ishga tushiring.");
+    } else {
+      warnings.push("Tokenlar ro'yxatini yuklashda xatolik: " + listError);
+    }
   }
 
   const html = renderDashboard({
     message,
     notice,
     tokens,
+    warnings,
   });
 
   return res
@@ -323,7 +357,10 @@ async function serveDashboard(req, res, session, message = "", notice = "") {
     .send(html);
 }
 
-function renderDashboard({ message, notice, tokens }) {
+function renderDashboard({ message, notice, tokens, warnings = [] }) {
+  const warningHtml = warnings
+    .map((w) => `<div class="warn">⚠️ ${escapeHtml(w)}</div>`)
+    .join("");
   const tokenRows = tokens
     .map((t) => {
       const status = t.is_revoked
@@ -354,9 +391,6 @@ function renderDashboard({ message, notice, tokens }) {
     })
     .join("");
 
-  const messageHtml = message ? `<div style="background:#fcf8e3;border:1px solid #faebcc;color:#8a6d3b;padding:10px;border-radius:4px;margin-bottom:15px">${message}</div>` : "";
-  const noticeHtml = notice ? `<div style="background:#dff0d8;border:1px solid #d6e9c6;color:#3c763d;padding:12px;border-radius:4px;margin-bottom:15px;word-break:break-all">${notice}</div>` : "";
-
   return `<!DOCTYPE html>
 <html lang="uz">
 <head>
@@ -370,50 +404,51 @@ function renderDashboard({ message, notice, tokens }) {
   h1,h2{margin-top:0}
   input[type=text],input[type=password],input[type=number]{width:100%;padding:9px;border:1px solid #ccd;border-radius:4px;box-sizing:border-box;margin-bottom:10px}
   button{background:#337ab7;color:#fff;border:0;padding:9px 14px;border-radius:4px;cursor:pointer}
+  button.ghost{background:#6c757d}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{border:1px solid #e1e4e8;padding:8px;text-align:left;white-space:nowrap}
   th{background:#f6f8fa}
-  .logout{float:right;background:#777}
   code{background:#f0f0f0;padding:2px 4px;border-radius:3px}
-  .grid{display:flex;gap:20px}
-  .grid > div{flex:1}
-  @media(max-width:640px){.grid{flex-direction:column}}
+  .alert{background:#fcf8e3;border:1px solid #faebcc;color:#8a6d3b;padding:10px;border-radius:4px;margin-bottom:15px}
+  .notice{background:#dff0d8;border:1px solid #d6e9c6;color:#3c763d;padding:12px;border-radius:4px;margin-bottom:15px;word-break:break-all}
+  .warn{background:#eaf4fb;border:1px solid #bcd8f0;color:#2c5f8a;padding:12px;border-radius:4px;margin-bottom:15px;font-size:14px}
+  .topbar{display:flex;justify-content:space-between;align-items:center}
+  /* Modal */
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:50}
+  .modal.open{display:flex}
+  .modal-card{background:#fff;border-radius:10px;padding:26px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .modal-card h2{margin-top:0;color:#1f3a5f;font-size:18px}
+  .modal-card .row{display:flex;gap:10px;margin-top:14px}
+  .modal-card .row button{flex:1;padding:11px;border:0;border-radius:6px;cursor:pointer;font-size:15px}
+  .btn-primary{background:#337ab7;color:#fff}
+  .btn-ghost{background:#e4e4e4;color:#333}
+  @media(max-width:640px){body{padding:10px}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
-    <h1>📊 MLBB Bot — Admin Panel</h1>
-    <a href="/api/admin?action=logout" class="logout"><button class="logout">Chiqish</button></a>
+    <div class="topbar">
+      <h1>📊 MLBB Bot — Admin Panel</h1>
+      <a href="/api/admin?action=logout"><button class="ghost">Chiqish</button></a>
+    </div>
   </div>
 
-  ${messageHtml}
-  ${noticeHtml}
+  ${message ? `<div class="alert">${message}</div>` : ""}
+  ${notice ? `<div class="notice">${notice}</div>` : ""}
+  ${warningHtml}
 
-  <div class="grid">
-    <div class="card">
-      <h2>🔑 Yangi token yaratish</h2>
-      <form method="POST" action="/api/admin?action=create_token">
-        <input type="hidden" name="action" value="create_token">
-        <label>Sarlavha (title)</label>
-        <input type="text" name="title" placeholder="Masalan: Hamkor sayti / Alisa" required>
-        <label>Amal qilish muddati (kun)</label>
-        <input type="number" name="days" min="1" max="3650" placeholder="Masalan: 30" required>
-        <button type="submit">Yaratish</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>🔒 Parolni o'zgartirish</h2>
-      <form method="POST" action="/api/admin?action=change_password">
-        <input type="hidden" name="action" value="change_password">
-        <label>Joriy parol</label>
-        <input type="password" name="current_password" required>
-        <label>Yangi parol</label>
-        <input type="password" name="new_password" required>
-        <button type="submit">Saqlash</button>
-      </form>
-    </div>
+  <div class="card">
+    <h2>🔑 Yangi token yaratish</h2>
+    <form method="POST" action="/api/admin?action=create_token">
+      <input type="hidden" name="action" value="create_token">
+      <label>Sarlavha (title)</label>
+      <input type="text" name="title" placeholder="Masalan: Hamkor sayti / Alisa" required>
+      <label>Amal qilish muddati (kun)</label>
+      <input type="number" name="days" min="1" max="3650" placeholder="Masalan: 30" required>
+      <button type="submit">Yaratish</button>
+      <button type="button" class="ghost" style="margin-left:8px" onclick="openModal('pwModal')">🔒 Parolni o'zgartirish</button>
+    </form>
   </div>
 
   <div class="card">
@@ -439,6 +474,28 @@ function renderDashboard({ message, notice, tokens }) {
     </div>
   </div>
 </div>
+
+<div class="modal" id="pwModal" onclick="if(event.target===this)closeModal('pwModal')">
+  <div class="modal-card">
+    <h2>Parolni o'zgartirish</h2>
+    <form method="POST" action="/api/admin?action=change_password">
+      <input type="hidden" name="action" value="change_password">
+      <label>Joriy parol</label>
+      <input type="password" name="current_password" required autocomplete="current-password">
+      <label>Yangi parol (kamida 6 belgi)</label>
+      <input type="password" name="new_password" required autocomplete="new-password">
+      <div class="row">
+        <button type="button" class="btn-ghost" onclick="closeModal('pwModal')">Bekor qilish</button>
+        <button type="submit" class="btn-primary">Saqlash</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openModal(id){document.getElementById(id).classList.add('open')}
+  function closeModal(id){document.getElementById(id).classList.remove('open')}
+</script>
 </body>
 </html>`;
 }
@@ -448,7 +505,7 @@ function renderDashboard({ message, notice, tokens }) {
 // ------------------------------------------------------------------
 function serveLogin(req, res, error = "") {
   const errorHtml = error
-    ? `<div style="background:#f2dede;border:1px solid #ebccd1;color:#a94442;padding:10px;border-radius:4px;margin-bottom:15px">${escapeHtml(error)}</div>`
+    ? `<div class="alert alert-error">${escapeHtml(error)}</div>`
     : "";
 
   const html = `<!DOCTYPE html>
@@ -458,24 +515,54 @@ function serveLogin(req, res, error = "") {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MLBB Admin — Login</title>
 <style>
-  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f4f6f8;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-  .card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:30px;width:100%;max-width:360px}
-  h1{text-align:center;margin-top:0;font-size:20px}
-  input{width:100%;padding:10px;border:1px solid #ccd;border-radius:4px;box-sizing:border-box;margin-bottom:12px}
-  button{width:100%;background:#337ab7;color:#fff;border:0;padding:11px;border-radius:4px;cursor:pointer;font-size:15px}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(135deg,#1f3a5f,#2c5f8a);display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;color:#333}
+  .card{background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:36px;width:100%;max-width:380px;text-align:center}
+  h1{margin-top:0;font-size:22px;color:#1f3a5f}
+  .sub{color:#888;margin-bottom:20px;font-size:14px}
+  .lock{font-size:40px}
+  .btn{background:#337ab7;color:#fff;border:0;padding:12px 22px;border-radius:6px;cursor:pointer;font-size:15px;width:100%}
+  .btn:hover{background:#286090}
+  .alert-error{background:#f2dede;border:1px solid #ebccd1;color:#a94442;padding:10px;border-radius:6px;margin-bottom:16px;font-size:14px;text-align:left}
+  /* Modal */
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:50}
+  .modal.open{display:flex}
+  .modal-card{background:#fff;border-radius:12px;padding:28px;width:100%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .modal-card h2{margin-top:0;color:#1f3a5f;font-size:18px}
+  .modal input[type=text],.modal input[type=password]{width:100%;padding:11px;border:1px solid #ccd;border-radius:6px;box-sizing:border-box;margin-bottom:12px;font-size:15px}
+  .modal .row{display:flex;gap:10px;margin-top:14px}
+  .modal .row button{flex:1;padding:11px;border:0;border-radius:6px;cursor:pointer;font-size:15px}
+  .btn-primary{background:#337ab7;color:#fff}
+  .btn-ghost{background:#e4e4e4;color:#333}
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>🔐 MLBB Admin Panel</h1>
+    <div class="lock">🔒</div>
+    <h1>MLBB Admin Panel</h1>
+    <div class="sub">Davom etish uchun tizimga kiring</div>
     ${errorHtml}
-    <form method="POST" action="/api/admin?action=login">
-      <input type="hidden" name="action" value="login">
-      <input type="text" name="username" placeholder="Foydalanuvchi nomi" required>
-      <input type="password" name="password" placeholder="Parol" required>
-      <button type="submit">Kirish</button>
-    </form>
+    <button class="btn" type="button" onclick="openModal()">🔐 Kirish</button>
   </div>
+
+  <div class="modal" id="loginModal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-card">
+      <h2>Tizimga kirish</h2>
+      <form method="POST" action="/api/admin?action=login">
+        <input type="hidden" name="action" value="login">
+        <input type="text" name="username" placeholder="Foydalanuvchi nomi" required autocapitalize="off" autocomplete="username">
+        <input type="password" name="password" placeholder="Parol" required autocomplete="current-password">
+        <div class="row">
+          <button type="button" class="btn-ghost" onclick="closeModal()">Bekor qilish</button>
+          <button type="submit" class="btn-primary">Kirish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+  function openModal(){document.getElementById('loginModal').classList.add('open')}
+  function closeModal(){document.getElementById('loginModal').classList.remove('open')}
+</script>
 </body>
 </html>`;
 
@@ -507,10 +594,40 @@ function parseBody(body) {
   if (typeof body === "object") {
     return body;
   }
+  const raw = String(body);
+  // JSON
+  if (raw.charAt(0) === "{" || raw.charAt(0) === "[") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      /* fall through */
+    }
+  }
+  // application/x-www-form-urlencoded
+  const out = {};
+  for (const part of raw.split("&")) {
+    if (!part) {
+      continue;
+    }
+    const eq = part.indexOf("=");
+    if (eq === -1) {
+      out[safeDecode(part)] = "";
+      continue;
+    }
+    const key = safeDecode(part.slice(0, eq));
+    const value = safeDecode(part.slice(eq + 1));
+    if (key) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function safeDecode(value) {
   try {
-    return JSON.parse(String(body));
+    return decodeURIComponent(value.replace(/\+/g, " "));
   } catch {
-    return {};
+    return value;
   }
 }
 
@@ -576,8 +693,16 @@ function escapeHtml(value) {
 
 async function supabaseRequest(path, options = {}) {
   const { method = "GET", body, prefer } = options;
+  if (!SUPABASE_URL || /^https?:\/\/.+/.test(SUPABASE_URL) === false) {
+    throw new Error("SUPABASE_URL env o'rnatilmagan");
+  }
+  if (!SUPABASE_SERVICE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY env o'rnatilmagan");
+  }
+
   const headers = {
     apikey: SUPABASE_SERVICE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
     Accept: "application/json",
   };
 
@@ -603,7 +728,7 @@ async function supabaseRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(`Supabase HTTP ${response.status}: ${text}`);
+    throw new Error(`Supabase HTTP ${response.status}` + (text ? `: ${String(text).slice(0, 240)}` : ""));
   }
 
   return json;
