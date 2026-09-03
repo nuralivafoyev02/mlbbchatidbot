@@ -6,6 +6,12 @@
     "api/bengkel.js": {
       "maxDuration": 60
     },
+    "api/lookup.js": {
+      "maxDuration": 15
+    },
+    "api/admin.js": {
+      "maxDuration": 15
+    },
     "api/daily-report.js": {
       "maxDuration": 10
     }
