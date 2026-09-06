@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test",
+    "dev": "node dev/serve.js",
     "dev:cf": "npx wrangler dev",
     "deploy:cf": "npx wrangler deploy"
   },

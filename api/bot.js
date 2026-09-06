@@ -71,7 +71,10 @@ const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987,7396686285");
-const MAIN_GROUP_ID = cleanEnv(process.env.MAIN_GROUP_ID) || "-1003832186200";
+const MAIN_GROUP_ID =
+  process.env.MAIN_GROUP_ID === undefined || process.env.MAIN_GROUP_ID === null
+    ? "-1003832186200"
+    : cleanEnv(process.env.MAIN_GROUP_ID);
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
 const BUTTON_LANGUAGE = "🌐 Til almashtirish";
@@ -96,42 +99,29 @@ const FEATURE_ACTIONS = Object.freeze({
   START: "start",
   SERVER_CHECK: "server_check",
   BIND_INFO: "bind_info",
+  FULL_INFO: "full_info",
   FEEDBACK: "feedback",
 });
 const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   start: "label_start",
   server_check: "label_server_check",
   bind_info: "label_bind_info",
+  full_info: "label_full_info",
   feedback: "label_feedback",
 });
 function getDailyReportActionLabel(action, lang) {
   const key = DAILY_REPORT_ACTION_KEYS[action];
   return key ? t(key, lang || DEFAULT_LANG) : escapeHtml(String(action || ""));
 }
-const PREMIUM_EMOJIS = Object.freeze({
-  "🏪": "5208573502046610594",
-  "✅": "5316561083085895267",
-  "🚨": "5204082134486117389",
-  "👉": "5202091395669588099",
-  "🔍": "5188217332748527444",
-  "🔎": "5188217332748527444",
-  "👤": "5373012449597335010",
-  "📌": "5316650525779835016",
-  "⭕️": "5319090522470495400",
-  "💦": "5316589275251226951",
-  "🔗": "5375129357373165375",
-  "👋": "5319007286004299794",
-  "📱": "5929545717583449337",
-  "🖥": "5926754173524643275",
-  "🌐": "5463386283856373524",
-  "🌟": "5440679633576023362",
-});
-const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze({
-  facebook: {
-    emoji: "📘",
-    id: "5926788567622749870",
-  },
-});
+const EMOJIS = require("./emojis.json");
+
+const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
+const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze(EMOJIS.bindProviders || {});
+const STATIC_EMOJIS = Object.freeze(EMOJIS.static || {});
+
+function staticEmoji(name, fallback = "") {
+  return STATIC_EMOJIS[name] || fallback;
+}
 
 const MLBB_LOOKUP_API_URL =
   process.env.MLBB_LOOKUP_API_URL || "https://api.isan.eu.org/nickname/ml";
@@ -195,6 +185,27 @@ const MLBB_BIND_INFO_TIMEOUT_MS = parseBoundedNumber(
   800,
   120000
 );
+const FULL_INFO_API_URL = cleanEnv(process.env.FULL_INFO_API) || "https://api.jebray.com";
+const FULL_INFO_API_KEY = cleanEnv(process.env.FULL_INFO_API_KEY);
+const FULL_INFO_TIMEOUT_MS = parseBoundedNumber(
+  process.env.FULL_INFO_TIMEOUT_MS,
+  30000,
+  800,
+  120000
+);
+const TELEGRAPH_TIMEOUT_MS = parseBoundedNumber(
+  process.env.TELEGRAPH_TIMEOUT_MS,
+  10000,
+  800,
+  30000
+);
+const TELEGRAPH_ACCESS_TOKEN = cleanEnv(process.env.TELEGRAPH_ACCESS_TOKEN);
+const FULL_INFO_RETRIES = parseBoundedNumber(
+  process.env.FULL_INFO_RETRIES,
+  2,
+  0,
+  3
+);
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 if (!global.__MLBB_BOT_STATS__) {
@@ -222,6 +233,7 @@ if (!global.__MLBB_BOT_STATS__) {
     lastKnownUsersSyncAt: 0,
     supabaseAuthDisabledUntil: 0,
     supabaseLastAuthError: null,
+    telegraphToken: null,
   };
 }
 
@@ -362,14 +374,35 @@ async function processUpdate(update, options = {}) {
     return;
   }
 }
+const MEMBERSHIP_STATUS_OK = new Set(["creator", "administrator", "member"]);
+
 async function checkUserMembership(chatId, userId) {
   try {
     const res = await telegram("getChatMember", { chat_id: chatId, user_id: userId });
-    const status = res.result?.status;
-    return ["creator", "administrator", "member", "restricted"].includes(status);
+    const member = res.result || {};
+
+    // "restricted" statusi kick qilingan userlarda ham qaytadi (is_member: false),
+    // shuning uchun alohida tekshiriladi.
+    if (member.status === "restricted") {
+      return member.is_member === true;
+    }
+
+    return MEMBERSHIP_STATUS_OK.has(member.status);
   } catch (err) {
-    console.error("[CHECK_MEMBERSHIP_ERROR]", err.message);
-    return false;
+    const message = String(err?.message || "");
+
+    // Telegram aniq "user kanalda yo'q" dedi — bu haqiqiy "azo emas" javobi.
+    if (/user not found|participant.*not found/i.test(message)) {
+      return false;
+    }
+
+    // Boshqa barcha xatolar (timeout, 429, bot kanaldan chiqarilgan, kanal topilmadi,
+    // noto'g'ri kanal ID) — bu config/infra muammo, user aybdor emas.
+    // Xato sifatida yozamiz va xavfsizlik nuqtayi nazaridan "azo emas" deb hisoblaymiz,
+    // LEKIN keshlamaymiz — keyingi so'rov yana tekshiradi.
+    console.error("[CHECK_MEMBERSHIP_ERROR]", message);
+    recordError("membership_check_failed", message, { chatId, userId });
+    throw err;
   }
 }
 
@@ -405,9 +438,7 @@ function cacheMembership(userId, member) {
     member: !!member,
     at: Date.now(),
   });
-}
-
-async function enforceMandatoryMembership(chatId, user) {
+}async function enforceMandatoryMembership(chatId, user) {
   if (isAdmin(user.id)) return true;
 
   const cached = getCachedMembership(user.id);
@@ -416,7 +447,15 @@ async function enforceMandatoryMembership(chatId, user) {
   const mandatoryChannel = await getMandatoryChannel();
   if (!mandatoryChannel) return true;
 
-  const isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+  let isMember = false;
+  try {
+    isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+  } catch (error) {
+    // Telegram API muammosi — user aybdor emas, keshlamasdan o'tkazib yuboramiz.
+    // Keyingi xabarda yana tekshiriladi.
+    return true;
+  }
+
   cacheMembership(user.id, isMember);
   if (isMember) return true;
 
@@ -522,6 +561,22 @@ async function handleMessage(message, updateMeta = {}) {
       }
 
       await handleBindInfoRequest(chatId, bindInput, user, {
+        replyMarkup: null,
+        skipWait: skipBindWait,
+        waitMessage: bindWaitMessage,
+      });
+      return;
+    }
+
+    if (isFullInfoCommand(addressedText) || isFullInfoCommand(addressing.input)) {
+      const fullInput = stripFullInfoCommand(addressedText);
+
+      if (!fullInput) {
+        await sendMessage(chatId, getFullInfoPromptText(getUserLang(user.id)), null);
+        return;
+      }
+
+      await handleFullInfoRequest(chatId, fullInput, user, {
         replyMarkup: null,
         skipWait: skipBindWait,
         waitMessage: bindWaitMessage,
@@ -693,6 +748,32 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isCommand(text, "limit_fullinfo")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
+      return;
+    }
+
+    await handleLimitFullInfoCommand(chatId, user, stripCommand(text, "limit_fullinfo"));
+    return;
+  }
+
+  if (isFullInfoCommand(text)) {
+    const input = stripFullInfoCommand(text);
+    rememberUserMode(user.id, "full_info");
+
+    if (!input) {
+      await sendMessage(chatId, getFullInfoPromptText(getUserLang(user.id)), fullInfoForceReply(getUserLang(user.id)));
+      return;
+    }
+
+    await handleFullInfoRequest(chatId, input, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
   if (isBindInfoCommand(text)) {
     const input = stripBindInfoCommand(text);
 
@@ -723,6 +804,12 @@ async function handleMessage(message, updateMeta = {}) {
     const promptPromise = sendMessage(chatId, getBindInfoPromptText(), bindInfoForceReply(getUserLang(user.id)));
     await warnIfBindLimitReached(chatId, user, mainKeyboard(user));
     await promptPromise;
+    return;
+  }
+
+  if (isTranslatedKeyboardButton(text, "btn_full_info")) {
+    rememberUserMode(user.id, "full_info");
+    await sendMessage(chatId, getFullInfoPromptText(getUserLang(user.id)), fullInfoForceReply(getUserLang(user.id)));
     return;
   }
 
@@ -855,6 +942,23 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isFullInfoPromptReply(message)) {
+    rememberUserMode(user.id, "full_info");
+    await handleFullInfoRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
+  if (getUserMode(user.id) === "full_info") {
+    await handleFullInfoRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
   if (getUserMode(user.id) === "server_check") {
     await detectAndReply(chatId, text, user);
     return;
@@ -886,7 +990,19 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
   if (data === "check_membership") {
     const mandatoryChannel = await getMandatoryChannel();
     if (mandatoryChannel) {
-      const isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+      let isMember = false;
+      try {
+        isMember = await checkUserMembership(mandatoryChannel.id, user.id);
+      } catch (error) {
+        // Telegram API muammosi — userga noto'g'ri "azo emas" demaymiz.
+        await telegram("answerCallbackQuery", {
+          callback_query_id: callbackQuery.id,
+          text: "⚠️ Tekshiruvda vaqtincha xatolik. Birozdan keyin yana bosing.",
+          show_alert: true,
+        });
+        return;
+      }
+
       if (isMember) {
         cacheMembership(user.id, true);
         await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
@@ -1312,6 +1428,696 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
   }
+}
+
+const SKIN_RARITY_LABELS = Object.freeze({
+  common: "Common",
+  deluxe: "Deluxe",
+  exceptional: "Exceptional",
+  exquisite: "Exquisite",
+  grand: "Grand",
+  legend: "Legend",
+});
+
+async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
+  const parsed = parseMlbbInput(input);
+  const replyMarkup =
+    Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : resultKeyboard(user);
+  let waitMessage = options.waitMessage || null;
+
+  if (!parsed.ok) {
+    await sendMessage(chatId, getInvalidFullInfoInputText(getUserLang(user.id)), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
+    return;
+  }
+
+  // Paket (limit) tizimi: admin bo'lmagan userlar faqat qolgan paket qoldig'i
+  //cha tekshirishi mumkin. Kunlik reset YO'Q — admin limit qo'shib turadi.
+  // Boshlang'ich paket (5 ta) bazada full_info_quota default'i bilan beriladi.
+  // Supabase sozlanmagan yoki javob bermasa — admin bo'lmaganlar uchun bloklanadi
+  // (fail-closed): pullik paketni bepul berib yubormaslik uchun.
+  let quotaData = null;
+  if (!isAdmin(user.id)) {
+    if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+      recordError("full_info_quota_unavailable", "Supabase sozlanmagan yoki vaqtincha bloklangan", {
+        userId: user.id,
+      });
+      await safeDeleteBindWaitMessage(chatId, waitMessage);
+      await sendMessage(
+        chatId,
+        t("full_info_service_unavailable", getUserLang(user.id), {
+          supportUsername: SUPPORT_USERNAME,
+        }),
+        replyMarkup
+      );
+      return;
+    }
+
+    try {
+      const quotaResult = await supabaseRpc("get_full_info_quota", {
+        p_user_id: toPgBigint(user.id),
+      });
+
+      if (!quotaResult || quotaResult.allowed !== true || !(quotaResult.remaining > 0)) {
+        await safeDeleteBindWaitMessage(chatId, waitMessage);
+        await sendMessage(
+          chatId,
+          getFullInfoLimitReachedText(getUserLang(user.id), {
+            supportUsername: SUPPORT_USERNAME,
+          }),
+          replyMarkup
+        );
+        return;
+      }
+
+      quotaData = quotaResult;
+    } catch (error) {
+      console.error("[FULL_INFO_QUOTA_CHECK_ERROR]", error);
+      recordError("full_info_quota_check_failed", error.message, { userId: user.id });
+      await safeDeleteBindWaitMessage(chatId, waitMessage);
+      await sendMessage(
+        chatId,
+        t("full_info_service_unavailable", getUserLang(user.id), {
+          supportUsername: SUPPORT_USERNAME,
+        }),
+        replyMarkup
+      );
+      return;
+    }
+  }
+
+  void safeSendChatAction(chatId, "typing");
+
+  if (!options.skipWait) {
+    const waitResponse = await safeSendMessage(chatId, getFullInfoWaitText(getUserLang(user.id)), replyMarkup);
+    waitMessage = normalizeBindWaitMessage({
+      chatId,
+      messageId: waitResponse?.result?.message_id,
+    });
+  }
+
+  const fullInfo = await lookupMlbbFullInfo(parsed.accountId, parsed.zoneId);
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.FULL_INFO);
+
+  if (!fullInfo.ok) {
+    // Xatolik bo'lsa limit kamaymaydi — hech narsa iste'mol qilinmadi.
+    recordError("mlbb_full_info_failed", fullInfo.technicalReason || fullInfo.reason, {
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+      status: fullInfo.status,
+    });
+
+    await sendMessage(chatId, getFullInfoFailedText(fullInfo.reason, getUserLang(user.id)), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
+    return;
+  }
+
+  let pageUrl = null;
+  try {
+    const content = buildFullInfoTelegraphContent(fullInfo.data);
+    const page = await createTelegraphPage(getFullInfoPageTitle(fullInfo.data), content);
+    pageUrl = page?.url || null;
+  } catch (error) {
+    recordError("telegraph_page_failed", error.message, {
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+    });
+  }
+
+  if (!pageUrl) {
+    await sendMessage(chatId, getFullInfoFailedText("telegraph_error", getUserLang(user.id)), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
+    return;
+  }
+
+  // Natija tayyor bo'lgandagina 1 birlik paketdan yeiladi. Supabase ishlamasa,
+  // tekshiruv baribir yuboriladi (limit noma'lum).
+  let remainingAfter = null;
+  if (quotaData && !isAdmin(user.id)) {
+    try {
+      const consumeResult = await supabaseRpc("consume_full_info_quota", {
+        p_user_id: toPgBigint(user.id),
+        p_action: "consume",
+        p_amount: 1,
+      });
+
+      if (consumeResult && typeof consumeResult.remaining === "number") {
+        remainingAfter = consumeResult.remaining;
+      }
+    } catch (error) {
+      console.error("[FULL_INFO_QUOTA_CONSUME_ERROR]", error);
+    }
+  }
+
+  const lang = getUserLang(user.id);
+  const resultText = getFullInfoPostText(
+    { accountId: parsed.accountId, zoneId: parsed.zoneId, data: fullInfo.data },
+    pageUrl,
+    lang,
+    { remaining: remainingAfter }
+  );
+  const resultKeyboardMarkup = {
+    inline_keyboard: [
+      [{ text: t("btn_view_result", lang), url: pageUrl }],
+    ],
+  };
+
+  await sendFullInfoResult(chatId, resultText, resultKeyboardMarkup);
+  await safeDeleteBindWaitMessage(chatId, waitMessage);
+
+  // Main group'ga faqat MUVAFFAQIYATLI tekshiruv haqida xabar boradi;
+  // xatolik bo'lsa limit ham kamaymaydi, group'ga ham yozilmaydi.
+  if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
+    const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
+    const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> akkauntining to'liq ma'lumotlarini oldi.`;
+    const inlineKeyboard = {
+      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+    };
+    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+  }
+}
+
+async function handleLimitFullInfoCommand(chatId, user, input) {
+  const args = String(input || "").trim().split(/\s+/).filter(Boolean);
+  const targetUserId = (args[0] || "").replace(/^@/, "");
+  const amount = Number.parseInt(args[1], 10);
+
+  if (!/^\d{1,20}$/.test(targetUserId) || !Number.isInteger(amount) || amount <= 0) {
+    await sendMessage(
+      chatId,
+      [
+        "❌ Format xato.",
+        "",
+        "To'g'ri ko'rinish:",
+        "<code>/limit_fullinfo [tgid] [limit]</code>",
+        "",
+        "Namuna: <code>/limit_fullinfo 123456789 10</code>",
+      ].join("\n"),
+      mainKeyboard(user)
+    );
+    return;
+  }
+
+  if (!isSupabaseConfigured()) {
+    await sendMessage(chatId, "❌ Supabase sozlanmagan — limit berish imkoni yo'q.", mainKeyboard(user));
+    return;
+  }
+
+  try {
+    const result = await supabaseRpc("add_full_info_quota", {
+      p_user_id: toPgBigint(targetUserId),
+      p_amount: amount,
+    });
+
+    if (!result || result.ok !== true) {
+      throw new Error(result?.error || "add_full_info_quota javobi noto'g'ri");
+    }
+
+    const lines = [
+      `✅ <b>Limit qo'shildi.</b>`,
+      "",
+      `👤 User ID: <code>${escapeHtml(targetUserId)}</code>`,
+      `➕ Qo'shildi: <b>+${amount}</b> ta`,
+    ];
+
+    if (typeof result.remaining === "number") {
+      lines.push(`📦 Jami qoldiq: <b>${result.remaining}</b> ta`);
+    }
+
+    await sendMessage(chatId, lines.join("\n"), mainKeyboard(user));
+
+    // Limit olgan userga ham tabrik xabari boradi (bot bilan chat ochgan bo'lsa).
+    const targetChatId = Number(targetUserId);
+    if (Number.isFinite(targetChatId) && targetChatId !== Number(user.id)) {
+      const targetLang = await loadUserLangFromSupabase(targetUserId).catch(() => DEFAULT_LANG);
+      const grantedText = t("full_info_quota_granted_user", targetLang, {
+        count: amount,
+        remaining: typeof result.remaining === "number" ? result.remaining : amount,
+      });
+
+      try {
+        await sendMessage(targetChatId, grantedText, null);
+      } catch (notifyError) {
+        // User botni bloklagan yoki bot bilan chat ochmagan — bu xato emas,
+        // limit baribir berilgan. Xatoni log'ga yozamiz.
+        console.error("[FULL_INFO_QUOTA_NOTIFY_ERROR]", notifyError.message);
+      }
+    }
+  } catch (error) {
+    recordError("full_info_quota_grant_failed", error.message, {
+      targetUserId,
+      amount,
+    });
+
+    await sendMessage(
+      chatId,
+      `❌ Limit berishda xatolik:\n<code>${escapeHtml(error.message)}</code>`,
+      mainKeyboard(user)
+    );
+  }
+}
+
+function getFullInfoLimitReachedText(lang, params = {}) {
+  lang = lang || DEFAULT_LANG;
+  return t("full_info_limit_reached", lang, params);
+}
+
+async function sendFullInfoResult(chatId, text, replyMarkup, options = {}) {
+  // Premium emoji enrichment (tg-emoji) global sendMessage'da ishlaydi —
+  // bu yerda uni o'chirish shart emas.
+  return sendMessage(chatId, text, replyMarkup, options);
+}
+
+async function lookupMlbbFullInfo(accountId, zoneId) {
+  // Provider (api.jebray.com) vaqtincha 404/5xx/timeout qaytarishi mumkin —
+  // o'tkinchi xatolarda qisqa kutish bilan qayta urinamiz.
+  const attempts = FULL_INFO_RETRIES + 1;
+  const delays = [0, 800, 1500];
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const result = await lookupMlbbFullInfoOnce(accountId, zoneId);
+
+    if (result.ok) {
+      return result;
+    }
+
+    if (attempt >= FULL_INFO_RETRIES || !isRetriableFullInfoFailure(result.reason)) {
+      return result;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delays[attempt + 1] || 1000));
+  }
+
+  return { ok: false, provider: "full_info_api", reason: "full_info_provider_unavailable" };
+}
+
+function isRetriableFullInfoFailure(reason = "") {
+  if (/not_found|down|timeout|unavailable|generic/i.test(reason)) {
+    return true;
+  }
+
+  return false;
+}
+
+async function lookupMlbbFullInfoOnce(accountId, zoneId) {
+  if (!FULL_INFO_API_KEY) {
+    return {
+      ok: false,
+      provider: "full_info_api",
+      reason: "full_info_api_not_configured",
+      technicalReason: "FULL_INFO_API_KEY env sozlanmagan",
+    };
+  }
+
+  try {
+    const url = `${FULL_INFO_API_URL.replace(/\/+$/, "")}/tools/check`;
+
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": FULL_INFO_API_KEY,
+      },
+      body: JSON.stringify({
+        player_id: Number(accountId),
+        zone_id: Number(zoneId),
+      }),
+      timeoutMs: FULL_INFO_TIMEOUT_MS,
+    });
+
+    const bodyText = await response.text();
+    const data = safeJsonParse(bodyText);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        provider: "full_info_api",
+        reason: getFriendlyFullInfoReason({ status: response.status, data }),
+        technicalReason: `Full info API HTTP ${response.status}: ${clipText(
+          bodyText || response.statusText,
+          180
+        )}`,
+        status: response.status,
+        data,
+      };
+    }
+
+    if (!data || data.success !== true || !data.data) {
+      return {
+        ok: false,
+        provider: "full_info_api",
+        reason: getFriendlyFullInfoReason({ status: response.status, data }),
+        technicalReason: bodyText
+          ? clipText(bodyText, 180)
+          : "Akkaunt to'liq ma'lumoti topilmadi",
+        status: response.status,
+        data,
+      };
+    }
+
+    return {
+      ok: true,
+      provider: "full_info_api",
+      data: data.data,
+      raw: data,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "full_info_api",
+      reason: getFriendlyFullInfoReason({ error }),
+      technicalReason: error.message || "Full info API ishlamadi",
+    };
+  }
+}
+
+function getFriendlyFullInfoReason({ status, data, error } = {}) {
+  if (error) {
+    if (/abort|timeout/i.test(error.message || "")) {
+      return "full_info_provider_timeout";
+    }
+    return "full_info_provider_unavailable";
+  }
+
+  if (status === 401) return "full_info_provider_auth_required";
+  if (status === 403) return "full_info_provider_quota_exceeded";
+  if (status === 404) return "full_info_provider_not_found";
+  if (status === 429) return "full_info_provider_rate_limited";
+  if (status >= 500) return "full_info_provider_down";
+  return "full_info_provider_generic";
+}
+
+function fullInfoProviderErrorReason(reason = "") {
+  if (/not_configured/i.test(reason)) return "full_info_not_configured";
+  if (/auth_required/i.test(reason)) return "full_info_provider_auth_required";
+  if (/quota_exceeded/i.test(reason)) return "full_info_provider_quota_exceeded";
+  if (/rate_limited/i.test(reason)) return "full_info_provider_rate_limited";
+  if (/timeout/i.test(reason)) return "full_info_provider_timeout";
+  if (/unavailable/i.test(reason)) return "full_info_provider_unavailable";
+  if (/not_found/i.test(reason)) return "full_info_provider_not_found";
+  if (/down/i.test(reason)) return "full_info_provider_down";
+  return "full_info_provider_generic";
+}
+
+function getInvalidFullInfoInputText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("full_info_invalid_input", lang);
+}
+
+function getFullInfoPageTitle(data = {}) {
+  const nickname = escapeHtml(data.nickname || "MLBB Player");
+  const date = getTashkentDateString();
+  return `To'liq ma'lumot | ${nickname} (${date})`;
+}
+
+async function getTelegraphAccessToken() {
+  if (stats.telegraphToken) {
+    return stats.telegraphToken;
+  }
+
+  if (TELEGRAPH_ACCESS_TOKEN) {
+    stats.telegraphToken = TELEGRAPH_ACCESS_TOKEN;
+    return TELEGRAPH_ACCESS_TOKEN;
+  }
+
+  if (isSupabaseConfigured()) {
+    try {
+      const data = await supabaseRequest(`/bot_settings?key=eq.telegraph_token&select=value`);
+      const token = data?.[0]?.value?.token;
+      if (token) {
+        stats.telegraphToken = token;
+        return token;
+      }
+    } catch (error) {
+      console.error("[TELEGRAPH_TOKEN_READ_ERROR]", error);
+    }
+  }
+
+  const account = await createTelegraphAccount();
+  const token = account?.access_token;
+
+  if (!token) {
+    throw new Error("telegraph_account_creation_failed");
+  }
+
+  stats.telegraphToken = token;
+
+  if (isSupabaseConfigured()) {
+    try {
+      await supabaseRequest(`/bot_settings?on_conflict=key`, {
+        method: "POST",
+        prefer: "resolution=merge-duplicates",
+        body: { key: "telegraph_token", value: { token } },
+      });
+    } catch (error) {
+      console.error("[TELEGRAPH_TOKEN_SAVE_ERROR]", error);
+    }
+  }
+
+  return token;
+}
+
+async function createTelegraphAccount() {
+  const params = new URLSearchParams();
+  params.set("short_name", "checkmlbbidbot");
+  params.set("author_name", "MLBB Chat ID Bot");
+  params.set("author_url", "https://t.me/checkmlbbidBot");
+
+  const response = await fetchWithTimeout(`https://api.telegra.ph/createAccount?${params}`, {
+    method: "POST",
+    timeoutMs: TELEGRAPH_TIMEOUT_MS,
+  });
+
+  const bodyText = await response.text();
+  const data = safeJsonParse(bodyText);
+
+  if (!response.ok || !data?.ok || !data?.result?.access_token) {
+    throw new Error(`Telegraph createAccount failed: ${clipText(bodyText, 180)}`);
+  }
+
+  return data.result;
+}
+
+async function createTelegraphPage(title, content, authorName = "MLBB Chat ID Bot") {
+  const token = await getTelegraphAccessToken();
+  const params = new URLSearchParams();
+  params.set("access_token", token);
+  params.set("title", title);
+  params.set("author_name", authorName);
+  params.set("content", JSON.stringify(content));
+  params.set("return_content", "true");
+
+  // content JSON 8KB+ bo'lishi mumkin — nginx 8KB dan uzun so'rov qatorini
+  // (URL) 400 bilan qaytaradi. Shuning uchun parametrlarni URL'ga emas,
+  // POST body'ga (form-urlencoded) joylaymiz — telegra.ph API buni qo'llab-quvvatlaydi.
+  const response = await fetchWithTimeout("https://api.telegra.ph/createPage", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+    timeoutMs: TELEGRAPH_TIMEOUT_MS,
+  });
+
+  const bodyText = await response.text();
+  const data = safeJsonParse(bodyText);
+
+  if (!response.ok || !data?.ok || !data?.result?.url) {
+    throw new Error(`Telegraph createPage failed: ${clipText(bodyText, 180)}`);
+  }
+
+  return data.result;
+}
+
+function buildFullInfoTelegraphContent(data = {}) {
+  const nodes = [];
+
+  const avatarUrl = data.avatar || data.avatar_url || "";
+  if (avatarUrl) {
+    nodes.push(
+      telegraphNode("figure", [telegraphNode("img", undefined, { src: avatarUrl })])
+    );
+  }
+
+  const fields = [
+    {
+      header: `${staticEmoji("fullInfoSectionMain", "🔵")} Asosiy ma'lumotlar`,
+      rows: [
+        ["Nickname", data.nickname],
+        ["Player ID", data.player_id],
+        ["Server ID", data.server_id],
+        ["Level", data.level],
+        ["Rank", data.rank],
+        ["Eng yuqori rank", data.highest_rank],
+        ["Mavsum", data.season],
+        ["Akkaunt yaratilgan", data.creation_date],
+        ["Mamlakat", data.create_role_country],
+        ["Oxirgi kirish", data.last_login],
+        ["Oxirgi kirish mamlakati", data.last_login_country],
+        ["Manzil", Array.isArray(data.location) && data.location.length ? data.location.join(", ") : null],
+        ["Squad", buildReadableSquad(data.squad)],
+        ["Oxirgi qahramonlar", Array.isArray(data.last_use_hero) && data.last_use_hero.length ? data.last_use_hero.join(", ") : null],
+      ],
+    },
+    {
+      header: `${staticEmoji("fullInfoSectionCollection", "🟡")} Kolleksiya`,
+      condition: data.collection,
+      rows: [
+        ["Kolleksiya ballari", data.collection?.collection_point],
+        ["Kolleksiya darajasi", data.collection?.collection_title],
+        ["Qahramonlar soni", data.collection?.heroes],
+        ["Skinlar soni", data.collection?.skins],
+        ["Bo'yalgan skinlar", data.collection?.painted_skins],
+        ["Oxirgi qahramon xaridi", Array.isArray(data.collection?.last_heroes_purchase) && data.collection.last_heroes_purchase.length ? data.collection.last_heroes_purchase.join(", ") : null],
+        ["Oxirgi skin xaridi", data.collection?.latest_skin_purchase],
+      ],
+    },
+    {
+      header: `${staticEmoji("fullInfoSectionBattle", "🔴")} Jangovor statistika`,
+      condition: data.combat,
+      rows: [
+        ["Jami janglar", data.combat?.total_matches],
+        ["Klassik / Ranked janglar", data.combat?.classic_ranked_matches],
+        ["G'alaba foizi", Number.isFinite(data.combat?.win_rate) ? `${data.combat.win_rate}%` : null],
+        ["MVP", data.combat?.mvp],
+        ["MVP (mag'lubiyat)", data.combat?.mvp_loss],
+        ["Savage", data.combat?.savage],
+        ["Maniac", data.combat?.maniac],
+        ["Legendary", data.combat?.legendary],
+        ["Triple Kill", data.combat?.triple_kill],
+        ["Double Kill", data.combat?.double_kill],
+        ["First Blood", data.combat?.first_blood],
+        ["Eng ko'p kill", data.combat?.most_kills],
+        ["Eng ko'p assist", data.combat?.most_assists],
+        ["Eng uzun g'alaba seriyasi", data.combat?.longest_win_streak],
+        ["Eng yuqori DMG / min", data.combat?.highest_dmg_per_min],
+        ["Eng yuqori qabul qilingan DMG / min", data.combat?.highest_dmg_taken_per_min],
+        ["Eng yuqori gold / min", data.combat?.highest_gold_per_min],
+      ],
+    },
+  ];
+
+  for (const section of fields) {
+    if (section.condition === undefined || section.condition) {
+      appendTelegraphSection(nodes, section);
+    }
+  }
+
+  if (data.collection?.skin_rarity) {
+    appendTelegraphSection(nodes, {
+      header: `${staticEmoji("fullInfoSectionCollection", "🟡")} Skin raritylari`,
+      rows: Object.entries(SKIN_RARITY_LABELS).map(([key, label]) => [label, data.collection.skin_rarity[key]]),
+    });
+  }
+
+  const favorite = data.favorite_heroes;
+  if (favorite) {
+    if (Array.isArray(favorite.all_time) && favorite.all_time.length) {
+      nodes.push(telegraphNode("h3", [telegraphText(`${staticEmoji("fullInfoSectionHeroes", "🟢")} Sevimli qahramonlar — barcha davr`)]));
+      for (const hero of favorite.all_time) {
+        nodes.push(buildTelegraphHeroLine(hero));
+      }
+    }
+    if (Array.isArray(favorite.current_season) && favorite.current_season.length) {
+      nodes.push(telegraphNode("h3", [telegraphText(`${staticEmoji("fullInfoSectionHeroes", "🟢")} Sevimli qahramonlar — joriy mavsum`)]));
+      for (const hero of favorite.current_season) {
+        nodes.push(buildTelegraphHeroLine(hero));
+      }
+    }
+  }
+
+  if (Array.isArray(data.recent_battles) && data.recent_battles.length) {
+    nodes.push(telegraphNode("h3", [telegraphText(`${staticEmoji("fullInfoSectionRecent", "🟠")} So'nggi janglar`)]));
+    for (const battle of data.recent_battles) {
+      nodes.push(buildTelegraphBattleLine(battle));
+    }
+  }
+
+  if (data.social) {
+    appendTelegraphSection(nodes, {
+      header: `${staticEmoji("fullInfoSectionSocial", "🟣")} Ijtimoiy ko'rsatkichlar`,
+      rows: [
+        ["Yutuqlar (achievement)", data.social?.achievement],
+        ["Kredit bali", data.social?.credit_score],
+        ["Obunachilar", data.social?.followers],
+        ["Yoqtirishlar", data.social?.likes],
+        ["Mashhurlik", data.social?.popularity],
+        ["Ma'lumot", data.social?.status],
+      ],
+    });
+  }
+
+const footer = [
+    telegraphNode("h3", [telegraphText(`${staticEmoji("fullInfoSource", "🤖")} Ma'lumot manbai`)]),
+    telegraphNode("p", [
+      telegraphText("Ushbu ma'lumotlar MLBB Chat ID Bot orqali yig'ildi. "),
+      telegraphNode("a", [telegraphText(`@${TELEGRAM_BOT_USERNAME || "checkmlbbidBot"}`)], { href: `https://t.me/${TELEGRAM_BOT_USERNAME || "checkmlbbidBot"}` }),
+    ]),
+    telegraphNode("p", [
+      telegraphText("Bot admin: "),
+      telegraphNode("a", [telegraphText(`@${SUPPORT_USERNAME}`)], { href: `https://t.me/${SUPPORT_USERNAME}` }),
+    ]),
+  ];
+  nodes.push(...footer);
+
+  return nodes;
+}
+
+function buildReadableSquad(squad = {}) {
+  const name = String(squad.name || "").trim();
+  if (!name || /^\d+$/.test(name)) {
+    return null;
+  }
+  const tag = String(squad.tag || "").trim();
+
+  return `${name}${tag && !/^\d+$/.test(tag) ? ` (${tag})` : ""}`;
+}
+
+function appendTelegraphSection(nodes, section) {
+  const rows = (section.rows || []).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  if (!rows.length) {
+    return;
+  }
+  if (nodes.some((node) => node.tag === "h3")) {
+    nodes.push(telegraphNode("hr"));
+  }
+  nodes.push(telegraphNode("h3", [telegraphText(section.header)]));
+  for (const [label, value] of rows) {
+    nodes.push(
+      telegraphNode("p", [
+        telegraphNode("strong", [telegraphText(`${label}:`)]),
+        telegraphText(` ${String(value)}`),
+      ])
+    );
+  }
+}
+
+function buildTelegraphHeroLine(hero = {}) {
+  const parts = [`${hero.name || "Qahramon"}`];
+  if (Number.isFinite(hero.matches)) parts.push(`${hero.matches} o'yin`);
+  if (Number.isFinite(hero.win_rate)) parts.push(`${hero.win_rate}% g'alaba`);
+  if (Number.isFinite(hero.hero_power)) parts.push(`${hero.hero_power} kuch`);
+
+  return telegraphNode("p", [
+    telegraphNode("strong", [telegraphText(parts.join(" | "))]),
+  ]);
+}
+
+function buildTelegraphBattleLine(battle = {}) {
+  const resultEmoji = String(battle.result || "").toLowerCase() === "victory" ? "✅" : "❌";
+  const resultLabel = String(battle.result || "Noma'lum");
+  const firstLine = `${resultEmoji} ${battle.hero || "Qahramon"} — ${battle.mode || "Rejim noma'lum"} (${resultLabel})`;
+  const statsLine = `Kill: ${battle.kills ?? "?"} | Death: ${battle.deaths ?? "?"} | Assist: ${battle.assists ?? "?"}`;
+  const detailLine = [
+    battle.date ? `Sana: ${battle.date}` : null,
+    battle.duration ? `Davomiylik: ${battle.duration}` : null,
+  ].filter(Boolean).join(" | ");
+
+  return telegraphNode("p", [
+    telegraphNode("strong", [telegraphText(firstLine)]),
+    telegraphNode("br", []),
+    telegraphText(statsLine),
+    telegraphNode("br", []),
+    telegraphText(detailLine),
+  ]);
 }
 
 async function handleBroadcastConfirm(chatId, user, data, options = {}) {
@@ -2553,16 +3359,9 @@ function parseAdvancedRanges() {
 }
 
 function parseMlbbInput(input) {
-  const text = String(input || "")
-    .replace(/\u00A0/g, " ")
-    .replace(/Account ID:/gi, "")
-    .replace(/User ID:/gi, "")
-    .replace(/Server ID:/gi, "")
-    .replace(/Zone ID:/gi, "")
-    .replace(/Zona:/gi, "")
-    .trim();
+  const text = normalizeMlbbInputText(input);
 
-  const withBrackets = text.match(/(\d{5,12})\s*[\(\[]\s*(\d{2,8})\s*[\)\]]/);
+  const withBrackets = text.match(/(\d{5,12})\s*[\(\[]\s*(\d{1,8})\s*[\)\]]/);
 
   if (withBrackets) {
     return validateParsedId(withBrackets[1], withBrackets[2]);
@@ -2575,7 +3374,7 @@ function parseMlbbInput(input) {
     const accountIndex = numbers.indexOf(accountId);
 
     const zoneId = numbers.find((num, index) => {
-      return index > accountIndex && num.length >= 2 && num.length <= 8;
+      return index > accountIndex && num.length >= 1 && num.length <= 8;
     });
 
     return validateParsedId(accountId, zoneId);
@@ -2585,6 +3384,20 @@ function parseMlbbInput(input) {
     ok: false,
     reason: "Account ID va Server/Zone ID topilmadi",
   };
+}
+
+function normalizeMlbbInputText(input) {
+  return String(input || "")
+    .replace(/\u00A0/g, " ")
+    .replace(/Account ID:/gi, "")
+    .replace(/User ID:/gi, "")
+    .replace(/Server ID:/gi, "")
+    .replace(/Zone ID:/gi, "")
+    .replace(/Zona:/gi, "")
+    .replace(/[\[\](){}\["'«»“”‘’„“]|,|;|\||[*~#№$%^&*+_=]/g, " ")
+    .replace(/[\\\\/:.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function validateParsedId(accountId, zoneId) {
@@ -2602,7 +3415,7 @@ function validateParsedId(accountId, zoneId) {
     };
   }
 
-  if (!/^\d{2,8}$/.test(zoneId)) {
+  if (!/^\d{1,8}$/.test(zoneId)) {
     return {
       ok: false,
       reason: "Server/Zone ID noto‘g‘ri",
@@ -2974,6 +3787,7 @@ function getCommandsText(user = {}) {
     t("cmd_commands", lang),
     t("cmd_check", lang),
     t("cmd_info", lang),
+    t("cmd_full_info", lang),
     t("cmd_feedback", lang),
     t("cmd_language", lang),
   ];
@@ -2986,7 +3800,8 @@ function getCommandsText(user = {}) {
       t("cmd_users", lang),
       t("cmd_errors", lang),
       t("cmd_emoji", lang),
-      t("cmd_message", lang)
+      t("cmd_message", lang),
+      t("cmd_limit_fullinfo", lang)
     );
   }
 
@@ -3005,6 +3820,7 @@ function buildBotCommands(lang) {
     { command: "commands", description: stripHtmlTags(t("cmd_commands", safeLang).replace(/^.*—\s*/, "")) },
     { command: "check", description: stripHtmlTags(t("cmd_check", safeLang).replace(/^.*—\s*/, "")) },
     { command: "info", description: stripHtmlTags(t("cmd_info", safeLang).replace(/^.*—\s*/, "")) },
+    { command: "fullinfo", description: stripHtmlTags(t("cmd_full_info", safeLang).replace(/^.*—\s*/, "")) },
     { command: "feedback", description: stripHtmlTags(t("cmd_feedback", safeLang).replace(/^.*—\s*/, "")) },
     { command: "language", description: stripHtmlTags(t("cmd_language", safeLang).replace(/^.*—\s*/, "")) },
   ];
@@ -3066,6 +3882,82 @@ function getBindInfoFailedText(reason = "", lang) {
 function getBindInfoWaitText(lang) {
   lang = lang || DEFAULT_LANG;
   return t("bind_info_wait", lang);
+}
+
+function getFullInfoPromptText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("full_info_prompt", lang);
+}
+
+function getFullInfoWaitText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("full_info_wait", lang);
+}
+
+function getFullInfoFailedText(reason = "", lang) {
+  lang = lang || DEFAULT_LANG;
+  // Sabablar yagona formatda: full_info_provider_* (underscore bilan).
+  if (/403|quota|subscription expired|muddat/i.test(reason)) return t("full_info_failed_quota", lang);
+  if (/404|not[_ ]?found|topilmadi/i.test(reason)) return t("full_info_failed_not_found", lang);
+  if (/429|rate[_ ]?limit/i.test(reason)) return t("full_info_failed_rate_limited", lang);
+  if (/401|auth|invalid|api[_ ]?key/i.test(reason)) return t("full_info_failed_auth", lang);
+  if (/timeout|vaqt/i.test(reason)) return t("full_info_failed_timeout", lang);
+  return t("full_info_failed_generic", lang);
+}
+
+function getFullInfoPostText(result = {}, pageUrl, lang, { remaining = null } = {}) {
+  lang = lang || DEFAULT_LANG;
+  const d = result.data || {};
+  const lines = [
+    `📋 <b>${t("full_info_post_title", lang)}</b>`,
+    "",
+    `👤 <b>${escapeHtml(d.nickname || result.accountId)}</b>`,
+    `🆔 <code>${escapeHtml(result.accountId)}</code> ${result.zoneId ? `· 🌐 <code>${escapeHtml(result.zoneId)}</code>` : ""}`,
+  ];
+
+  if (d.level) lines.push(`📊 <b>Level:</b> ${escapeHtml(d.level)}`);
+  if (d.rank) lines.push(`🏆 <b>Rank:</b> ${escapeHtml(d.rank)}`);
+  const readableSquad = buildReadableSquad(d.squad);
+  if (readableSquad) lines.push(`🛡 <b>Squad:</b> ${escapeHtml(readableSquad)}`);
+  if (Array.isArray(d.location) && d.location.length) {
+    lines.push(`📍 <b>Manzil:</b> ${escapeHtml(d.location.join(", "))}`);
+  }
+  if (d.collection) {
+    lines.push("");
+    lines.push(`🎨 <b>Kolleksiya:</b> ${escapeHtml(d.collection.heroes || 0)} qahramon · ${escapeHtml(d.collection.skins || 0)} skin`);
+  }
+  if (d.combat && Number.isFinite(d.combat.win_rate)) {
+    lines.push(`⚔️ <b>Win rate:</b> ${escapeHtml(d.combat.win_rate)}% · <b>Jami:</b> ${escapeHtml(d.combat.total_matches || 0)} o'yin`);
+  }
+
+  if (pageUrl) {
+    lines.push("");
+    lines.push(`👇 ${t("full_info_post_link_hint", lang)}`);
+  }
+
+  // Paket qoldig'i — faqat admin bo'lmagan va limiti aniq bo'lgan userlarga
+  // ko'rinadi (adminlar va Supabase'siz holatda chiqmaydi).
+  if (typeof remaining === "number") {
+    lines.push("");
+    lines.push(t("full_info_quota_remaining", lang, { remaining }));
+  }
+
+  return lines.filter((line) => line !== undefined && line !== null).join("\n");
+}
+
+function telegraphNode(tag, children, attrs) {
+  const node = { tag };
+  if (children !== undefined && children !== null) {
+    node.children = typeof children === "string" ? [String(children)] : children;
+  }
+  if (attrs && Object.keys(attrs).length) {
+    node.attrs = attrs;
+  }
+  return node;
+}
+
+function telegraphText(text) {
+  return String(text ?? "");
 }
 
 function getBindInfoResultText(result = {}, limitData = null, lang) {
@@ -3595,7 +4487,7 @@ function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
   const keyboard = [
     [{ text: t("btn_check", lang) }, { text: t("btn_bind_info", lang) }],
-    [{ text: t("btn_language", lang) }],
+    [{ text: t("btn_full_info", lang) }, { text: t("btn_language", lang) }],
   ];
 
   if (isAdmin(user.id)) {
@@ -3690,6 +4582,14 @@ function bindInfoForceReply(lang) {
   };
 }
 
+function fullInfoForceReply(lang) {
+  return {
+    force_reply: true,
+    selective: true,
+    input_field_placeholder: t("placeholder_full_info", lang || DEFAULT_LANG),
+  };
+}
+
 function paginationKeyboard(prefix, { page = 0, pageSize = USERS_PAGE_SIZE, total = 0, lang } = {}) {
   const safePage = Math.max(0, Number(page) || 0);
   const safePageSize = Math.max(1, Number(pageSize) || USERS_PAGE_SIZE);
@@ -3746,8 +4646,15 @@ async function sendMessage(chatId, text, replyMarkup, options = {}) {
   const payload = {
     chat_id: chatId,
     text: safeText || " ",
-    disable_web_page_preview: true,
+    disable_web_page_preview: !options.enableLinkPreview,
   };
+
+  if (options.enableLinkPreview && options.linkPreviewUrl) {
+    payload.link_preview_options = {
+      url: options.linkPreviewUrl,
+      show_above_text: true,
+    };
+  }
 
   if (
     Array.isArray(options.entities) &&
@@ -3831,8 +4738,12 @@ function enrichPremiumEmojis(text) {
   );
 
   const enrichedText = Object.entries(PREMIUM_EMOJIS).reduce(
-    (value, [emoji, emojiId]) =>
-      value.split(emoji).join(telegramEmoji(emoji, emojiId)),
+    (value, [emoji, emojiId]) => {
+      if (!emojiId) {
+        return value;
+      }
+      return value.split(emoji).join(telegramEmoji(emoji, emojiId));
+    },
     protectedText
   );
 
@@ -3964,6 +4875,21 @@ function isBindInfoCommand(text) {
 function stripBindInfoCommand(text) {
   return String(text || "")
     .replace(/^\/(?:info|bind|ulanish|ulamalar|ulanmalar)(?:@\w+)?/i, "")
+    .trim();
+}
+
+function isFullInfoCommand(text) {
+  return (
+    isCommand(text, "full_info") ||
+    isCommand(text, "fullinfo") ||
+    isCommand(text, "toliq") ||
+    isCommand(text, "malumot")
+  );
+}
+
+function stripFullInfoCommand(text) {
+  return String(text || "")
+    .replace(/^\/(?:full_info|fullinfo|toliq|malumot)(?:@\w+)?/i, "")
     .trim();
 }
 
@@ -4227,6 +5153,12 @@ function isBindInfoPromptReply(message = {}) {
   const replyText = String(message.reply_to_message?.text || "");
 
   return /Ulanmalar/i.test(replyText) && /Account ID/i.test(replyText);
+}
+
+function isFullInfoPromptReply(message = {}) {
+  const replyText = String(message.reply_to_message?.text || "");
+
+  return /To'liq ma'lumot/i.test(replyText) && /Account ID/i.test(replyText);
 }
 
 function getFeedbackMessageText(message = {}) {
@@ -5740,6 +6672,8 @@ module.exports.__private = {
   buildBengkelBindInfoRequest,
   buildBindInfoRequest,
   broadcastMessage,
+  buildFullInfoTelegraphContent,
+  buildReadableSquad,
   buildRuntimeDailyReport,
   buildSupabaseTrackPayload,
   detectServerType,
@@ -5763,6 +6697,20 @@ module.exports.__private = {
   getStatsTextAsync,
   getUsersListText,
   isSupabaseConfigured,
+  getFullInfoPostText,
+  getFullInfoPageTitle,
+  getFullInfoPromptText,
+  getFullInfoWaitText,
+  getFullInfoFailedText,
+  getFullInfoLimitReachedText,
+  getInvalidFullInfoInputText,
+  isFullInfoCommand,
+  isFullInfoPromptReply,
+  lookupMlbbFullInfo,
+  handleLimitFullInfoCommand,
+  checkUserMembership,
+  createTelegraphPage,
+  getTelegraphAccessToken,
   mainKeyboard,
   normalizeSecretEnv,
   parseContentRangeTotal,
@@ -5777,6 +6725,7 @@ module.exports.__private = {
   parseIdList,
   parseAdvancedRanges,
   parseMlbbInput,
+  normalizeMlbbInputText,
   parseRequestBody,
   resolveSupabaseConfig,
   sanitizeTelegramText,

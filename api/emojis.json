@@ -1,0 +1,52 @@
+{
+  "_comment": "Emoji markazlashtirilgan konfiguratsiya. 'premium' — unicode emoji -> Telegram custom (premium) emoji ID. ID bo'sh ('') bo'lsa oddiy statik emoji ishlatiladi (ID ni keyin to'ldirish kifoya — global enrichment avtomatik yoqadi). 'static' — kodda nomi bilan chaqiriladigan statik emojilar (telegra.ph sahifasi uchun premium qo'llab-quvvatlanmaydi). Premium emoji ID sini Telegram-dan olish: client da yuborilgan premium emojiga o'ng tugma -> 'Copy emoji ID'.",
+  "premium": {
+    "🏪": "5208573502046610594",
+    "✅": "5316561083085895267",
+    "🚨": "5204082134486117389",
+    "👉": "5202091395669588099",
+    "🔍": "5188217332748527444",
+    "🔎": "5188217332748527444",
+    "👤": "5373012449597335010",
+    "📌": "5316650525779835016",
+    "⭕️": "5319090522470495400",
+    "💦": "5316589275251226951",
+    "🔗": "5375129357373165375",
+    "👋": "5319007286004299794",
+    "📱": "5929545717583449337",
+    "🖥": "5926754173524643275",
+    "🌐": "5463386283856373524",
+    "🌟": "5440679633576023362",
+    "📋": "5895764412525973661",
+    "🙏": "5316977222467206948",
+    "🆔": "6122725692925808124",
+    "📊": "6115976439582953129",
+    "🏆": "5409008750893734809",
+    "🛡": "",
+    "📍": "5318986077455795572",
+    "🎨": "",
+    "⚔️": "",
+    "👇": "5470177992950946662",
+    "❌": "5852812849780362931",
+    "📦": "6237785478783830052",
+    "😂": "5325894592480942916",
+    "🎉": "5193018401810822951"
+  },
+  "bindProviders": {
+    "facebook": {
+      "emoji": "📘",
+      "id": "5926788567622749870"
+    }
+  },
+  "static": {
+    "fullInfoSectionMain": "🔵",
+    "fullInfoSectionCollection": "🟡",
+    "fullInfoSectionBattle": "🔴",
+    "fullInfoSectionHeroes": "🟢",
+    "fullInfoSectionRecent": "🟠",
+    "fullInfoSectionSocial": "🟣",
+    "fullInfoSource": "🤖",
+    "fullInfoBattleWin": "✅",
+    "fullInfoBattleLoss": "❌"
+  }
+}

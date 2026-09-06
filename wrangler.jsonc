@@ -40,7 +40,7 @@
   "vars": {
     "MAIN_GROUP_ID": "-1003832186200",
     "SUPPORT_USERNAME": "Ksava_org",
-    "ADMIN_IDS": "5081175125,8500085987,7396686285",
+    "ADMIN_IDS": "5081175125,7396686285",
     "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
     "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
     "ADVANCED_SERVER_RANGES": "5101-5800",
@@ -52,6 +52,10 @@
     "MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE": "/info {account_id} {zone_id}",
     "MLBB_BIND_INFO_TIMEOUT_MS": "120000",
     "TELEGRAM_TIMEOUT_MS": "5000",
-    "MLBB_BRIDGE_URL": "https://mlbbchatidbot.vercel.app/api/bengkel"
+    "MLBB_BRIDGE_URL": "https://mlbbchatidbot.vercel.app/api/bengkel",
+    "FULL_INFO_API": "https://api.jebray.com",
+    "FULL_INFO_TIMEOUT_MS": "30000",
+    "FULL_INFO_RETRIES": "2",
+    "TELEGRAPH_TIMEOUT_MS": "10000"
   }
 }

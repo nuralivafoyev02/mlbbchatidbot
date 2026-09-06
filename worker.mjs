@@ -322,7 +322,7 @@ async function sendBindInfoWaitMessage(update, env) {
       body: JSON.stringify({
         chat_id: chatId,
         text: [
-          "⏳ <b>Ulanmalar tekshirilmoqda...</b>",
+          "🙏 <b>Ulanmalar tekshirilmoqda...</b>",
           "",
           "Iltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
         ].join("\n"),
