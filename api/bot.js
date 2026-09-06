@@ -76,7 +76,6 @@ const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
 const BUTTON_LANGUAGE = "🌐 Til almashtirish";
 const BUTTON_CHECK = "🔎 Server aniqlash";
-const BUTTON_TG_PROFILE = "👤 TG profil topish";
 const BUTTON_BIND_INFO = "🔗 Ulanmalar";
 const BUTTON_STATS = "📊 Statistika";
 const BUTTON_USERS = "👥 Foydalanuvchilar";
@@ -97,14 +96,12 @@ const FEATURE_ACTIONS = Object.freeze({
   START: "start",
   SERVER_CHECK: "server_check",
   BIND_INFO: "bind_info",
-  TG_PROFILE: "tg_profile",
   FEEDBACK: "feedback",
 });
 const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   start: "label_start",
   server_check: "label_server_check",
   bind_info: "label_bind_info",
-  tg_profile: "label_tg_profile",
   feedback: "label_feedback",
 });
 function getDailyReportActionLabel(action, lang) {
@@ -213,7 +210,6 @@ if (!global.__MLBB_BOT_STATS__) {
     membershipCache: new Map(),
     userModes: new Map(),
     userProfiles: new Map(),
-    phoneProfiles: new Map(),
     errors: [],
     errorCounts: {},
     featureCounts: {},
@@ -250,9 +246,6 @@ if (!(stats.userModes instanceof Map)) {
 }
 if (!(stats.userProfiles instanceof Map)) {
   stats.userProfiles = new Map(Object.entries(stats.userProfiles || {}));
-}
-if (!(stats.phoneProfiles instanceof Map)) {
-  stats.phoneProfiles = new Map(Object.entries(stats.phoneProfiles || {}));
 }
 stats.errors ||= [];
 stats.errorCounts ||= {};
@@ -518,13 +511,6 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    if (isTelegramProfileCommand(addressedText)) {
-      await handleTelegramProfileCommand(chatId, user, addressedText, {
-        replyMarkup: null,
-      });
-      return;
-    }
-
     if (isBindInfoCommand(addressedText) || isBindInfoCommand(addressing.input)) {
       const bindInput = stripBindInfoCommand(addressedText);
 
@@ -551,11 +537,6 @@ async function handleMessage(message, updateMeta = {}) {
     await detectAndReply(chatId, addressing.input, user, {
       replyMarkup: null,
     });
-    return;
-  }
-
-  if (message.contact) {
-    await handleTelegramProfileContact(chatId, user, message);
     return;
   }
 
@@ -699,11 +680,6 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isTelegramProfileCommand(text)) {
-    await handleTelegramProfileCommand(chatId, user, text);
-    return;
-  }
-
   if (isCommand(text, "check")) {
     const input = stripCommand(text, "check");
     rememberUserMode(user.id, "server_check");
@@ -739,12 +715,6 @@ async function handleMessage(message, updateMeta = {}) {
   if (isTranslatedKeyboardButton(text, "btn_check") || isTranslatedKeyboardButton(text, "btn_check_again")) {
     rememberUserMode(user.id, "server_check");
     await sendMessage(chatId, getCheckPromptText(), mainKeyboard(user));
-    return;
-  }
-
-  if (isTranslatedKeyboardButton(text, "btn_tg_profile")) {
-    rememberUserMode(user.id, "tg_profile");
-    await sendMessage(chatId, getTelegramProfilePromptText(getUserLang(user.id)), telegramProfileKeyboard(user));
     return;
   }
 
@@ -885,27 +855,15 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (getUserMode(user.id) === "tg_profile") {
-    await handleTelegramProfileCommand(chatId, user, text);
-    return;
-  }
-
   if (getUserMode(user.id) === "server_check") {
     await detectAndReply(chatId, text, user);
     return;
   }
 
-
-
   const parsed = parseMlbbInput(text);
 
   if (parsed.ok) {
     await detectAndReply(chatId, text, user);
-    return;
-  }
-
-  if (isBareTelegramIdInput(text)) {
-    await handleTelegramProfileCommand(chatId, user, text);
     return;
   }
 
@@ -1257,202 +1215,6 @@ async function handleMessageCommand(chatId, user, message) {
     getBroadcastConfirmText(broadcastPayload, recipientCount, getUserLang(user.id)),
     broadcastConfirmKeyboard(broadcastId, confirmToken, getUserLang(user.id))
   );
-}
-
-async function handleTelegramProfileCommand(chatId, user, text, options = {}) {
-  const phoneNumber = extractTelegramPhoneNumber(text);
-  const tgId = extractTelegramId(text);
-  const username = extractTelegramUsername(text);
-  const replyMarkup = Object.hasOwn(options, "replyMarkup")
-    ? options.replyMarkup
-    : mainKeyboard(user);
-
-  if (phoneNumber) {
-    await handleTelegramPhoneProfileLookup(chatId, user, phoneNumber, {
-      replyMarkup,
-    });
-    return;
-  }
-
-  if (username) {
-    await handleTelegramProfileByUsername(chatId, username, replyMarkup, { user });
-    return;
-  }
-
-  if (!tgId) {
-    await sendMessage(chatId, getTelegramProfilePromptText(), replyMarkup);
-    return;
-  }
-
-  if (!isValidTelegramId(tgId)) {
-    await sendMessage(chatId, getInvalidTelegramIdText(), replyMarkup);
-    return;
-  }
-
-  await handleTelegramProfileById(chatId, tgId, replyMarkup, { user });
-}
-
-async function handleTelegramProfileContact(chatId, user, message = {}, options = {}) {
-  const replyMarkup = Object.hasOwn(options, "replyMarkup")
-    ? options.replyMarkup
-    : mainKeyboard(user);
-  const contact = normalizeTelegramContact(message.contact);
-
-  if (!contact.phoneNumber) {
-    await sendMessage(chatId, getTelegramContactWithoutPhoneText(), replyMarkup);
-    return;
-  }
-
-  if (!contact.userId) {
-    await sendMessage(
-      chatId,
-      getTelegramProfileText(createTelegramPhoneLinkProfile(contact.phoneNumber, contact)),
-      replyMarkup
-    );
-    return;
-  }
-
-  rememberPhoneProfile(contact.phoneNumber, createTelegramProfileFromContact(contact));
-  void queueSupabasePhoneProfileTrack(contact);
-  await handleTelegramProfileById(chatId, contact.userId, replyMarkup, {
-    user,
-    phoneNumber: contact.phoneNumber,
-    fallbackProfile: createTelegramProfileFromContact(contact),
-  });
-}
-
-async function handleTelegramPhoneProfileLookup(chatId, user, phoneNumber, options = {}) {
-  const replyMarkup = Object.hasOwn(options, "replyMarkup")
-    ? options.replyMarkup
-    : mainKeyboard(user);
-
-  void safeSendChatAction(chatId, "typing");
-
-  const phoneProfile = await lookupTelegramProfileByPhone(phoneNumber);
-
-  if (!phoneProfile.ok) {
-    await sendMessage(
-      chatId,
-      getTelegramProfileText(createTelegramPhoneLinkProfile(phoneNumber)),
-      replyMarkup
-    );
-    return;
-  }
-
-  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
-
-  await sendMessage(
-    chatId,
-    getTelegramProfileText({
-      ...phoneProfile.data,
-      phone_number: phoneNumber,
-    }),
-    replyMarkup
-  );
-}
-
-async function handleTelegramProfileById(
-  chatId,
-  tgId,
-  replyMarkup,
-  { user = {}, phoneNumber = "", fallbackProfile = null } = {}
-) {
-  void safeSendChatAction(chatId, "typing");
-
-  const profile = await lookupTelegramProfile(tgId);
-
-  if (!profile.ok) {
-    if (fallbackProfile?.id) {
-      trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
-      await sendMessage(
-        chatId,
-        getTelegramProfileText({
-          ...fallbackProfile,
-          phone_number: phoneNumber,
-        }),
-        replyMarkup
-      );
-      return;
-    }
-
-    await sendMessage(
-      chatId,
-      getTelegramProfileFailedText(tgId, profile.reason),
-      replyMarkup
-    );
-    return;
-  }
-
-  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
-
-  if (phoneNumber) {
-    rememberPhoneProfile(phoneNumber, profile.data);
-    void queueSupabasePhoneProfileTrack({
-      phoneNumber,
-      userId: profile.data?.id,
-      first_name: profile.data?.first_name,
-      last_name: profile.data?.last_name,
-      username: profile.data?.username,
-    });
-  }
-
-  await sendMessage(
-    chatId,
-    getTelegramProfileText({
-      ...profile.data,
-      phone_number: phoneNumber,
-    }),
-    replyMarkup
-  );
-}
-
-async function handleTelegramProfileByUsername(
-  chatId,
-  username,
-  replyMarkup,
-  { user = {} } = {}
-) {
-  void safeSendChatAction(chatId, "typing");
-
-  // Avval Bot API orqali urinib ko'ramiz
-  const botProfile = await lookupTelegramProfile(`@${username}`);
-
-  if (botProfile.ok) {
-    trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
-    await sendMessage(
-      chatId,
-      getTelegramProfileText(botProfile.data),
-      replyMarkup
-    );
-    return;
-  }
-
-  // Bot API ishlamasa, bridge (GramJS) orqali username resolution
-  if (MLBB_BRIDGE_URL) {
-    const bridgeProfile = await lookupTelegramProfileByUsernameBridge(username);
-
-    if (bridgeProfile.ok) {
-      trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.TG_PROFILE);
-      await sendMessage(
-        chatId,
-        getTelegramProfileText(bridgeProfile.data),
-        replyMarkup
-      );
-      return;
-    }
-  }
-
-  // Hech qanday usul ishlamadi
-  await sendMessage(
-    chatId,
-    getTelegramProfileByUsernameFailedText(username, getUserLang(user.id)),
-    replyMarkup
-  );
-}
-
-function getTelegramProfileByUsernameFailedText(username, lang) {
-  lang = lang || DEFAULT_LANG;
-  return t("tg_profile_username_failed", lang, { username: escapeHtml(username) });
 }
 
 async function warnIfBindLimitReached(chatId, user, replyMarkup) {
@@ -2642,155 +2404,6 @@ function chooseBindValue(currentValue, nextValue) {
   return currentValue;
 }
 
-async function lookupTelegramProfile(tgId) {
-  try {
-    const data = await telegram("getChat", {
-      chat_id: tgId,
-    });
-
-    return {
-      ok: true,
-      data: data.result,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      reason: normalizeTelegramError(error.message),
-    };
-  }
-}
-
-async function lookupTelegramProfileByPhone(phoneNumber) {
-  const normalizedPhone = normalizePhoneNumber(phoneNumber);
-
-  if (!normalizedPhone) {
-    return {
-      ok: false,
-      reason: "phone_invalid",
-    };
-  }
-
-  const runtimeProfile = getPhoneProfile(normalizedPhone);
-
-  if (runtimeProfile?.id) {
-    const profile = await lookupTelegramProfile(runtimeProfile.id);
-
-    if (profile.ok) {
-      rememberPhoneProfile(normalizedPhone, profile.data);
-      void queueSupabasePhoneProfileTrack({
-        phoneNumber: normalizedPhone,
-        userId: profile.data?.id,
-        first_name: profile.data?.first_name,
-        last_name: profile.data?.last_name,
-        username: profile.data?.username,
-      });
-      return profile;
-    }
-
-    return {
-      ok: true,
-      data: runtimeProfile,
-    };
-  }
-
-  const supabaseProfile = await lookupSupabaseUserByPhone(normalizedPhone);
-
-  if (supabaseProfile?.id) {
-    const profile = await lookupTelegramProfile(supabaseProfile.id);
-
-    if (profile.ok) {
-      rememberPhoneProfile(normalizedPhone, profile.data);
-      void queueSupabasePhoneProfileTrack({
-        phoneNumber: normalizedPhone,
-        userId: profile.data?.id,
-        first_name: profile.data?.first_name,
-        last_name: profile.data?.last_name,
-        username: profile.data?.username,
-      });
-      return profile;
-    }
-
-    return {
-      ok: true,
-      data: supabaseProfile,
-    };
-  }
-
-  return {
-    ok: false,
-    reason: "phone_not_found",
-  };
-}
-
-async function lookupTelegramProfileByUsernameBridge(username) {
-  if (!MLBB_BRIDGE_URL) {
-    return {
-      ok: false,
-      reason: "bridge_not_configured",
-    };
-  }
-
-  try {
-    const url = new URL(MLBB_BRIDGE_URL);
-    url.pathname = url.pathname.replace(/\/bengkel\/?$/, "/resolve-username");
-    if (url.pathname.endsWith("/")) {
-      url.pathname = url.pathname.slice(0, -1);
-    }
-    if (!url.pathname.endsWith("/resolve-username")) {
-      url.pathname += "/resolve-username";
-    }
-
-    const response = await fetchWithTimeout(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(MLBB_BIND_INFO_API_KEY ? { "x-bridge-secret": MLBB_BIND_INFO_API_KEY } : {}),
-      },
-      body: JSON.stringify({ username }),
-      timeoutMs: 15000,
-    });
-
-    const contentType = response.headers.get("content-type") || "";
-    const bodyText = await response.text();
-    const data = contentType.includes("application/json")
-      ? safeJsonParse(bodyText)
-      : null;
-
-    if (!response.ok || !data?.ok) {
-      return {
-        ok: false,
-        reason: data?.error || `bridge_http_${response.status}`,
-      };
-    }
-
-    const profile = data.result;
-
-    if (!profile?.id) {
-      return {
-        ok: false,
-        reason: "bridge_no_profile",
-      };
-    }
-
-    return {
-      ok: true,
-      data: {
-        id: profile.id,
-        type: profile.type || "private",
-        first_name: profile.first_name || "",
-        last_name: profile.last_name || "",
-        username: profile.username || "",
-      },
-    };
-  } catch (error) {
-    console.error("[BRIDGE_USERNAME_LOOKUP_ERROR]", error.message);
-    return {
-      ok: false,
-      reason: error.message || "bridge_error",
-    };
-  }
-}
-
 function normalizeLookupResponse(data) {
   if (!data) {
     return {
@@ -2972,120 +2585,6 @@ function parseMlbbInput(input) {
     ok: false,
     reason: "Account ID va Server/Zone ID topilmadi",
   };
-}
-
-function extractTelegramId(text) {
-  const commandless = String(text || "")
-    .replace(/^\/(?:tg|user|profile)(@\w+)?/i, "")
-    .replace(/\u00A0/g, " ")
-    .trim();
-  const match = commandless.match(/-?\d{5,20}/);
-
-  return match ? match[0] : "";
-}
-
-function extractTelegramUsername(text) {
-  const commandless = String(text || "")
-    .replace(/^\/(?:tg|user|profile)(@\w+)?/i, "")
-    .replace(/\u00A0/g, " ")
-    .trim();
-
-  // @username format
-  const atMatch = commandless.match(/^@(\w{5,32})$/);
-  if (atMatch) {
-    return atMatch[1];
-  }
-
-  // username without @
-  const plainMatch = commandless.match(/^(\w{5,32})$/);
-  if (plainMatch && !/^\d+$/.test(plainMatch[1]) && !isReservedKeyword(plainMatch[1])) {
-    return plainMatch[1];
-  }
-
-  return "";
-}
-
-function isReservedKeyword(word) {
-  const reserved = ["start", "help", "commands", "check", "bind", "info", "tg", "user", "profile", "stat", "stats", "feedback", "fikr", "cancel", "bekor", "message", "limit", "errors", "xatoliklar", "users", "foydalanuvchilar", "emoji"];
-  return reserved.includes(word.toLowerCase());
-}
-
-function extractTelegramPhoneNumber(text) {
-  const commandless = stripTelegramProfileCommand(text);
-
-  return normalizePhoneNumber(commandless);
-}
-
-function stripTelegramProfileCommand(text) {
-  return String(text || "")
-    .replace(/^\/(?:tg|user|profile)(@\w+)?/i, "")
-    .replace(/\u00A0/g, " ")
-    .trim();
-}
-
-function normalizePhoneNumber(value) {
-  const rawText = String(value || "").replace(/\u00A0/g, " ").trim();
-
-  if (!rawText) {
-    return "";
-  }
-
-  const text = rawText.replace(/^(?:phone|telefon|tel)\s*[:=]\s*/i, "");
-  const hasExplicitPhoneSignal =
-    /^\+/.test(text) ||
-    /^00\d/.test(text) ||
-    /^(?:phone|telefon|tel)\s*[:=]/i.test(rawText) ||
-    /^tel:/i.test(text) ||
-    /[\s().-]/.test(text);
-  let digits = text.replace(/^tel:/i, "").replace(/[^\d]/g, "");
-
-  if (digits.startsWith("00")) {
-    digits = digits.slice(2);
-  }
-
-  if (!/^\d{7,15}$/.test(digits)) {
-    return "";
-  }
-
-  if (!hasExplicitPhoneSignal && !digits.startsWith("998")) {
-    return "";
-  }
-
-  return digits;
-}
-
-function formatPhoneNumber(value) {
-  const phoneNumber = normalizePhoneNumber(value);
-
-  return phoneNumber ? `+${phoneNumber}` : "";
-}
-
-function maskPhoneNumber(value) {
-  const phoneNumber = normalizePhoneNumber(value);
-
-  if (!phoneNumber) {
-    return "";
-  }
-
-  if (phoneNumber.length <= 6) {
-    return `+${"*".repeat(phoneNumber.length)}`;
-  }
-
-  const left = phoneNumber.slice(0, Math.min(5, phoneNumber.length - 2));
-  const right = phoneNumber.slice(-2);
-  const hiddenLength = Math.max(2, phoneNumber.length - left.length - right.length);
-
-  return `+${left}${"*".repeat(hiddenLength)}${right}`;
-}
-
-function getTelegramPhoneProfileLink(value) {
-  const phoneNumber = normalizePhoneNumber(value);
-
-  return phoneNumber ? `tg://resolve?phone=${phoneNumber}` : "";
-}
-
-function isValidTelegramId(tgId) {
-  return /^-?\d{5,20}$/.test(String(tgId || ""));
 }
 
 function validateParsedId(accountId, zoneId) {
@@ -3455,8 +2954,6 @@ function getHelpText(user = {}) {
     "",
     t("help_section_server", lang),
     "",
-    t("help_section_tg_profile", lang),
-    "",
     t("help_section_keyboard", lang),
     "",
     t("help_section_limitations", lang),
@@ -3477,10 +2974,6 @@ function getCommandsText(user = {}) {
     t("cmd_commands", lang),
     t("cmd_check", lang),
     t("cmd_info", lang),
-    t("cmd_tg_id", lang),
-    t("cmd_tg_phone", lang),
-    t("cmd_user", lang),
-    t("cmd_profile", lang),
     t("cmd_feedback", lang),
     t("cmd_language", lang),
   ];
@@ -3512,9 +3005,6 @@ function buildBotCommands(lang) {
     { command: "commands", description: stripHtmlTags(t("cmd_commands", safeLang).replace(/^.*—\s*/, "")) },
     { command: "check", description: stripHtmlTags(t("cmd_check", safeLang).replace(/^.*—\s*/, "")) },
     { command: "info", description: stripHtmlTags(t("cmd_info", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "tg", description: stripHtmlTags(t("cmd_tg_id", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "user", description: stripHtmlTags(t("cmd_user", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "profile", description: stripHtmlTags(t("cmd_profile", safeLang).replace(/^.*—\s*/, "")) },
     { command: "feedback", description: stripHtmlTags(t("cmd_feedback", safeLang).replace(/^.*—\s*/, "")) },
     { command: "language", description: stripHtmlTags(t("cmd_language", safeLang).replace(/^.*—\s*/, "")) },
   ];
@@ -3538,90 +3028,6 @@ function maybeRegisterBotCommands() {
     return;
   }
   void registerBotCommands().catch(() => {});
-}
-
-function getTelegramProfilePromptText(lang) {
-  lang = lang || DEFAULT_LANG;
-  return t("tg_profile_prompt", lang);
-}
-
-function getInvalidTelegramIdText(lang) {
-  lang = lang || DEFAULT_LANG;
-  return t("invalid_tg_id", lang);
-}
-
-function getTelegramContactWithoutPhoneText(lang) {
-  lang = lang || DEFAULT_LANG;
-  return t("tg_contact_no_phone", lang);
-}
-
-function getTelegramPhoneProfileUnavailableText(phoneNumber) {
-  return [
-    "Bu kontaktda Telegram user_id ko‘rinmadi.",
-    `Telefon: <code>${escapeHtml(formatPhoneNumber(phoneNumber))}</code>`,
-    "",
-    "Telegram botlar user_id bo‘lmagan kontaktni profilga aylantira olmaydi.",
-  ].join("\n");
-}
-
-function getTelegramPhoneProfileNotFoundText(phoneNumber) {
-  return [
-    "Bu telefon bo‘yicha saqlangan Telegram profil topilmadi.",
-    `Telefon: <code>${escapeHtml(formatPhoneNumber(phoneNumber))}</code>`,
-    "",
-    "Raqamdan topish uchun avval shu kontaktni botga yuboring. Kontakt ichida Telegram user_id bo‘lsa, keyingi safar raqam orqali ham ishlaydi.",
-  ].join("\n");
-}
-
-function createTelegramPhoneLinkProfile(phoneNumber, contact = {}) {
-  return {
-    id: "",
-    type: "private",
-    first_name: contact.first_name || "",
-    last_name: contact.last_name || "",
-    phone_number: phoneNumber,
-  };
-}
-
-function getTelegramProfileText(profile) {
-  const id = String(profile.id || "");
-  const name = [profile.first_name, profile.last_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  const username = profile.username ? `@${profile.username}` : "Yo‘q";
-  const title = profile.title ? escapeHtml(profile.title) : null;
-  const bio = profile.bio || profile.description;
-  const phoneLink = profile.phone_number
-    ? getTelegramPhoneProfileLink(profile.phone_number)
-    : "";
-
-  return [
-    "👤 <b>Telegram profil</b>",
-    "",
-    id ? `🆔 <b>ID:</b> <code>${escapeHtml(id)}</code>` : "",
-    name ? `👤 <b>Ism:</b> ${escapeHtml(name)}` : "",
-    title ? `🏷 <b>Nomi:</b> ${title}` : "",
-    profile.phone_number
-      ? `📱 <b>Telefon:</b> <code>${escapeHtml(maskPhoneNumber(profile.phone_number))}</code>`
-      : "",
-    `🔗 <b>Username:</b> ${escapeHtml(username)}`,
-    profile.type ? `📌 <b>Turi:</b> ${escapeHtml(profile.type)}` : "",
-    profile.username
-      ? `🌐 <b>Link:</b> https://t.me/${escapeHtml(profile.username)}`
-      : id
-        ? `🌐 <b>Link:</b> <a href="tg://user?id=${escapeHtml(id)}">profilni ochish</a>`
-        : phoneLink
-          ? `🌐 <b>Link:</b> <a href="${escapeHtml(phoneLink)}">profilni ochish</a>`
-          : "",
-    bio ? `📝 <b>Bio:</b> ${escapeHtml(clipText(String(bio), 500))}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function getTelegramProfileFailedText(tgId) {
-  return "Foydalanuvchi topilmadi.";
 }
 
 function getBindInfoPromptText() {
@@ -4189,7 +3595,7 @@ function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
   const keyboard = [
     [{ text: t("btn_check", lang) }, { text: t("btn_bind_info", lang) }],
-    [{ text: t("btn_tg_profile", lang) }, { text: t("btn_language", lang) }],
+    [{ text: t("btn_language", lang) }],
   ];
 
   if (isAdmin(user.id)) {
@@ -4200,20 +3606,6 @@ function mainKeyboard(user = {}) {
       [{ text: t("btn_mandatory_setup", lang) }]
     );
   }
-
-  return {
-    keyboard,
-    resize_keyboard: true,
-    is_persistent: true,
-  };
-}
-
-function telegramProfileKeyboard(user = {}) {
-  const lang = getUserLang(user.id);
-  const keyboard = [
-    [{ text: t("btn_contact_send", lang), request_contact: true }],
-    ...mainKeyboard(user).keyboard,
-  ];
 
   return {
     keyboard,
@@ -4559,14 +3951,6 @@ function isCommand(text, command) {
   return new RegExp(`^\\/${command}(?:@\\w+)?(?:\\s|$)`, "i").test(text);
 }
 
-function isTelegramProfileCommand(text) {
-  return (
-    isCommand(text, "tg") ||
-    isCommand(text, "user") ||
-    isCommand(text, "profile")
-  );
-}
-
 function isBindInfoCommand(text) {
   return (
     isCommand(text, "info") ||
@@ -4587,10 +3971,6 @@ function stripCommand(text, command) {
   return String(text || "")
     .replace(new RegExp(`^\\/${command}(?:@\\w+)?`, "i"), "")
     .trim();
-}
-
-function isBareTelegramIdInput(text) {
-  return /^-?\d{5,20}$/.test(String(text || "").trim());
 }
 
 function isGroupChat(chat = {}) {
@@ -4646,9 +4026,6 @@ function getGroupCommandAddressing(text) {
     ![
       "check",
       "start",
-      "tg",
-      "user",
-      "profile",
       "info",
       "bind",
       "ulanish",
@@ -4665,9 +4042,6 @@ function getGroupCommandAddressing(text) {
   if (
     [
       "check",
-      "tg",
-      "user",
-      "profile",
       "info",
       "bind",
       "ulanish",
@@ -5518,71 +4892,6 @@ function rememberKnownPrivateChat(chatId) {
   });
 }
 
-function normalizeTelegramContact(contact = {}) {
-  const phoneNumber = normalizePhoneNumber(contact.phone_number);
-  const userId = toTelegramChatId(contact.user_id);
-
-  return {
-    phoneNumber,
-    userId,
-    first_name: cleanTextValue(contact.first_name, 128),
-    last_name: cleanTextValue(contact.last_name, 128),
-  };
-}
-
-function createTelegramProfileFromContact(contact = {}) {
-  return {
-    id: contact.userId || "",
-    type: contact.userId ? "private" : "",
-    first_name: contact.first_name || "",
-    last_name: contact.last_name || "",
-    phone_number: contact.phoneNumber || "",
-  };
-}
-
-function rememberPhoneProfile(phoneNumber, profile = {}) {
-  const normalizedPhone = normalizePhoneNumber(phoneNumber);
-  const userId = toTelegramChatId(profile.id || profile.user_id || profile.userId);
-
-  if (!normalizedPhone || !userId) {
-    return;
-  }
-
-  const previous = stats.phoneProfiles.get(normalizedPhone) || {};
-  const now = new Date().toISOString();
-
-  stats.phoneProfiles.set(normalizedPhone, {
-    ...previous,
-    phone_number: normalizedPhone,
-    id: userId,
-    user_id: userId,
-    type: profile.type || previous.type || "private",
-    username: cleanTextValue(profile.username, 64) ?? previous.username ?? null,
-    first_name: cleanTextValue(profile.first_name, 128) ?? previous.first_name ?? null,
-    last_name: cleanTextValue(profile.last_name, 128) ?? previous.last_name ?? null,
-    last_seen_at: now,
-  });
-}
-
-function getPhoneProfile(phoneNumber) {
-  const normalizedPhone = normalizePhoneNumber(phoneNumber);
-
-  if (!normalizedPhone) {
-    return null;
-  }
-
-  const profile = stats.phoneProfiles.get(normalizedPhone);
-
-  if (!profile?.id) {
-    return null;
-  }
-
-  return {
-    ...profile,
-    phone_number: normalizedPhone,
-  };
-}
-
 async function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
   if (getSupabaseConfigError() || isSupabaseAuthTemporarilyDisabled()) {
     return;
@@ -5603,47 +4912,6 @@ async function queueSupabaseUserTrack(user = {}, chat = {}, updateMeta = {}) {
     recordError("supabase_track_failed", error.message, {
       userId: payload.p_user_id,
       updateType: payload.p_update_type,
-    });
-  }
-}
-
-async function queueSupabasePhoneProfileTrack(contact = {}) {
-  if (getSupabaseConfigError() || isSupabaseAuthTemporarilyDisabled()) {
-    return;
-  }
-
-  const userId = toPgBigint(contact.userId);
-  const phoneNumber = normalizePhoneNumber(contact.phoneNumber);
-
-  if (!userId || !phoneNumber || userId.startsWith("-")) {
-    return;
-  }
-
-  try {
-    await supabaseRpc(
-      "track_bot_user",
-      {
-        p_user_id: userId,
-        p_chat_id: userId,
-        p_chat_type: "private",
-        p_username: cleanTextValue(contact.username, 64),
-        p_first_name: cleanTextValue(contact.first_name, 128),
-        p_last_name: cleanTextValue(contact.last_name, 128),
-        p_language_code: null,
-        p_is_bot: null,
-        p_update_id: null,
-        p_update_type: null,
-        p_message_text: null,
-        p_phone_number: phoneNumber,
-      },
-      {
-        prefer: "return=minimal",
-      }
-    );
-  } catch (error) {
-    console.error("[SUPABASE_PHONE_TRACK_ERROR]", error);
-    recordError("supabase_phone_track_failed", error.message, {
-      userId,
     });
   }
 }
@@ -5882,53 +5150,6 @@ async function isKnownUserInSupabase(userId) {
     console.error("[SUPABASE_USER_CHECK_ERROR]", error.message);
     return false;
   }
-}
-
-async function lookupSupabaseUserByPhone(phoneNumber) {
-  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
-    return null;
-  }
-
-  const normalizedPhone = normalizePhoneNumber(phoneNumber);
-
-  if (!normalizedPhone) {
-    return null;
-  }
-
-  try {
-    const rows = await supabaseRpc("find_bot_user_by_phone", {
-      p_phone_number: normalizedPhone,
-    });
-    const row = Array.isArray(rows) ? rows[0] : null;
-
-    if (!row?.user_id) {
-      return null;
-    }
-
-    return createTelegramProfileFromSupabaseUser(row);
-  } catch (error) {
-    console.error("[SUPABASE_PHONE_LOOKUP_ERROR]", error);
-    recordError("supabase_phone_lookup_failed", error.message);
-    return null;
-  }
-}
-
-function createTelegramProfileFromSupabaseUser(row = {}) {
-  const id = toTelegramChatId(row.user_id);
-
-  if (!id) {
-    return null;
-  }
-
-  return {
-    id,
-    user_id: id,
-    type: row.chat_type || "private",
-    username: row.username || "",
-    first_name: row.first_name || "",
-    last_name: row.last_name || "",
-    phone_number: row.phone_number || "",
-  };
 }
 
 function getRuntimeUsersPage(page = 0) {
@@ -6527,11 +5748,7 @@ module.exports.__private = {
   recordRuntimeAction,
   sendDailyUsageReport,
   trackFeatureUse,
-  extractTelegramId,
-  extractTelegramUsername,
-  extractTelegramPhoneNumber,
   enrichPremiumEmojis,
-  formatPhoneNumber,
   getBroadcastChatIds,
   getBroadcastRecipientId,
   getCommandsText,
@@ -6544,7 +5761,6 @@ module.exports.__private = {
   getResultText,
   getStatsText,
   getStatsTextAsync,
-  getTelegramProfileText,
   getUsersListText,
   isSupabaseConfigured,
   mainKeyboard,
@@ -6553,13 +5769,8 @@ module.exports.__private = {
   isValidWebhookSecret,
   isAdmin,
   isKeyboardButton,
-  isValidTelegramId,
   lookupMlbbBindInfo,
-  lookupTelegramProfileByPhone,
-  maskPhoneNumber,
   normalizeBengkelBindInfoResponse,
-  normalizePhoneNumber,
-  getTelegramProfileByUsernameFailedText,
   normalizeLookupResponse,
   normalizeBindInfoResponse,
   parseBengkelBindInfoText,
