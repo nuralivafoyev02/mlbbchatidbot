@@ -3288,12 +3288,31 @@ test("full info /full_info flow sends wait message then button-only result", asy
       inline_keyboard: [[{ text: "To'liq malumot", url: pageUrl }]],
     });
     assert.match(resultPayload.payload.text, /Lily/);
-    assert.match(resultPayload.payload.text, /4 ta/, "remaining quota (5-1=4) must be shown");
     assert.match(
       resultPayload.payload.text,
       /<tg-emoji emoji-id="5895764412525973661">📋<\/tg-emoji>/,
       "result message must contain premium emoji enrichment"
     );
+
+    // Quota should NOT be in the result text anymore
+    assert.ok(!/4 ta/.test(resultPayload.payload.text), "quota should not be in result text");
+
+    // Quota must be sent as a separate message
+    const quotaPayload = telegramCalls.find(
+      (call) =>
+        call.method === "sendMessage" &&
+        /Qolgan to'liq ma'lumot paketi/.test(call.payload.text)
+    );
+    assert.ok(quotaPayload, "remaining quota must be sent as a separate message");
+    assert.match(quotaPayload.payload.text, /4/, "remaining quota (5-1=4) must be shown");
+
+    // Keyboard must be sent to keep it visible
+    const keyboardPayload = telegramCalls.find(
+      (call) =>
+        call.method === "sendMessage" &&
+        call.payload.reply_markup?.keyboard
+    );
+    assert.ok(keyboardPayload, "main keyboard must be sent after result");
   } finally {
     global.fetch = originalFetch;
 
@@ -3923,11 +3942,11 @@ test("/limit_fullinfo grants quota additively for admins, hidden for non-admins"
     );
     assert.ok(grantedUserMessage, "target user should receive the congratulation message");
     assert.match(grantedUserMessage.payload.text, /<b>10 ta<\/b>/, "granted count must be shown");
-    assert.match(grantedUserMessage.payload.text, /<b>13 ta<\/b>/, "total remaining must be shown");
+    assert.match(grantedUserMessage.payload.text, /<b>13<\/b> ta/, "total remaining must be shown");
     assert.match(grantedUserMessage.payload.text, /raxmat/, "thanks reminder must be included");
     assert.match(
       grantedUserMessage.payload.text,
-      /<tg-emoji emoji-id="5316977222467206948">🙏<\/tg-emoji>/,
+      /<tg-emoji emoji-id="5325894592480942916">😂<\/tg-emoji>/,
       "congratulation message must have premium emoji enrichment"
     );
 

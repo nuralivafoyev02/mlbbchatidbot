@@ -1574,7 +1574,7 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
     { accountId: parsed.accountId, zoneId: parsed.zoneId, data: fullInfo.data },
     pageUrl,
     lang,
-    { remaining: remainingAfter }
+    { remaining: null }
   );
   const resultKeyboardMarkup = {
     inline_keyboard: [
@@ -1584,6 +1584,14 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
 
   await sendFullInfoResult(chatId, resultText, resultKeyboardMarkup);
   await safeDeleteBindWaitMessage(chatId, waitMessage);
+
+  // Klaviatura ochiq qolsin — natijadan keyin mainKeyboard yuboramiz
+  await sendMessage(chatId, " ", mainKeyboard(user));
+
+  // Paket qoldig'ini alohida xabar qilib yuboramiz
+  if (typeof remainingAfter === "number") {
+    await sendMessage(chatId, t("full_info_quota_remaining", lang, { remaining: remainingAfter }), null);
+  }
 
   // Main group'ga faqat MUVAFFAQIYATLI tekshiruv haqida xabar boradi;
   // xatolik bo'lsa limit ham kamaymaydi, group'ga ham yozilmaydi.

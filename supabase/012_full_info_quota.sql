@@ -1,5 +1,5 @@
 -- Full-info paket tizimi: kunlik reset YO'Q. Har bir user boshlang'ich paket
--- sifatida 5 ta tekshirish oladi (ustun default'i). Admin qo'shimcha paket
+-- sifatida 3 ta tekshirish oladi (ustun default'i). Admin qo'shimcha paket
 -- beradi — qoldiq ustiga qo'shiladi. Har muvaffaqiyatli tekshirish 1 birlik
 -- kamaytiradi; xatolik bo'lsa kamaymaydi.
 --
@@ -10,7 +10,7 @@
 begin;
 
 alter table public.bot_users
-add column if not exists full_info_quota integer not null default 5;
+add column if not exists full_info_quota integer not null default 3;
 
 create index if not exists bot_users_full_info_quota_idx
   on public.bot_users (user_id)
