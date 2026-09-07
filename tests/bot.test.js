@@ -3297,7 +3297,7 @@ test("full info /full_info flow sends wait message then button-only result", asy
     // Quota should NOT be in the result text anymore
     assert.ok(!/4 ta/.test(resultPayload.payload.text), "quota should not be in result text");
 
-    // Quota must be sent as a separate message
+    // Quota must be sent as a separate message with keyboard
     const quotaPayload = telegramCalls.find(
       (call) =>
         call.method === "sendMessage" &&
@@ -3305,14 +3305,7 @@ test("full info /full_info flow sends wait message then button-only result", asy
     );
     assert.ok(quotaPayload, "remaining quota must be sent as a separate message");
     assert.match(quotaPayload.payload.text, /4/, "remaining quota (5-1=4) must be shown");
-
-    // Keyboard must be sent to keep it visible
-    const keyboardPayload = telegramCalls.find(
-      (call) =>
-        call.method === "sendMessage" &&
-        call.payload.reply_markup?.keyboard
-    );
-    assert.ok(keyboardPayload, "main keyboard must be sent after result");
+    assert.ok(quotaPayload.payload.reply_markup?.keyboard, "quota message must include main keyboard");
   } finally {
     global.fetch = originalFetch;
 

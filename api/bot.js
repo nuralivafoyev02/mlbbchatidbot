@@ -1585,12 +1585,9 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
   await sendFullInfoResult(chatId, resultText, resultKeyboardMarkup);
   await safeDeleteBindWaitMessage(chatId, waitMessage);
 
-  // Klaviatura ochiq qolsin — natijadan keyin mainKeyboard yuboramiz
-  await sendMessage(chatId, " ", mainKeyboard(user));
-
-  // Paket qoldig'ini alohida xabar qilib yuboramiz
+  // Paket qoldig'ini alohida xabar qilib yuboramiz — keyboard bilan
   if (typeof remainingAfter === "number") {
-    await sendMessage(chatId, t("full_info_quota_remaining", lang, { remaining: remainingAfter }), null);
+    await safeSendMessage(chatId, t("full_info_quota_remaining", lang, { remaining: remainingAfter }), mainKeyboard(user));
   }
 
   // Main group'ga faqat MUVAFFAQIYATLI tekshiruv haqida xabar boradi;
