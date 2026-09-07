@@ -90,6 +90,8 @@ const BUTTON_HELP = "ℹ️ Yordam";
 const BUTTON_MENU = "🏠 Menyu";
 const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 const BUTTON_MANDATORY_SETUP = "⚙️ Majburiylikni sozlash";
+const BUTTON_ADMIN_PANEL = "🎛️ Admin Panel";
+const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/miniapp`;
 const USERS_PAGE_SIZE = 10;
 const BROADCAST_USERS_PAGE_SIZE = 1000;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -4579,7 +4581,7 @@ function mainKeyboard(user = {}) {
       2,
       0,
       [{ text: t("btn_stats", lang) }, { text: t("btn_users", lang) }],
-      [{ text: t("btn_mandatory_setup", lang) }]
+      [{ text: t("btn_mandatory_setup", lang) }, { text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
     );
   }
 

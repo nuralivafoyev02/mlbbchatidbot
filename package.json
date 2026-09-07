@@ -7,6 +7,7 @@
     "test": "node --test",
     "dev": "node dev/serve.js",
     "dev:cf": "npx wrangler dev",
+    "dev:miniapp": "node dev/serve-miniapp.js",
     "deploy:cf": "npx wrangler deploy"
   },
   "engines": {

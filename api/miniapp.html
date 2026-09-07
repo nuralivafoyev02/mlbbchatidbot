@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>MLBB Admin Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    :root {
+      --bg: #0a0e1a;
+      --bg2: #111827;
+      --card: rgba(255, 255, 255, 0.05);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --accent: #6366f1;
+      --accent2: #8b5cf6;
+      --accent3: #a78bfa;
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+      --pink: #ec4899;
+      --glass: rgba(255, 255, 255, 0.03);
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    html,
+    body {
+      height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent
+    }
+
+    body {
+      display: flex;
+      flex-direction: column
+    }
+
+    /* Animated background */
+    .bg-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none
+    }
+
+    .bg-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.15;
+      animation: blobFloat 20s ease-in-out infinite alternate
+    }
+
+    .bg-blob:nth-child(1) {
+      width: 400px;
+      height: 400px;
+      background: var(--accent);
+      top: -100px;
+      left: -100px;
+      animation-delay: 0s
+    }
+
+    .bg-blob:nth-child(2) {
+      width: 350px;
+      height: 350px;
+      background: var(--pink);
+      bottom: -80px;
+      right: -80px;
+      animation-delay: -7s
+    }
+
+    .bg-blob:nth-child(3) {
+      width: 300px;
+      height: 300px;
+      background: var(--blue);
+      top: 40%;
+      left: 50%;
+      animation-delay: -14s
+    }
+
+    @keyframes blobFloat {
+      0% {
+        transform: translate(0, 0) scale(1)
+      }
+
+      33% {
+        transform: translate(30px, -40px) scale(1.05)
+      }
+
+      66% {
+        transform: translate(-20px, 30px) scale(0.95)
+      }
+
+      100% {
+        transform: translate(10px, -10px) scale(1.02)
+      }
+    }
+
+    /* Login */
+    .login-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      padding: 20px;
+      transition: opacity .4s, transform .4s
+    }
+
+    .login-screen.hidden {
+      opacity: 0;
+      transform: scale(1.05);
+      pointer-events: none
+    }
+
+    .login-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 40px 32px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow)
+    }
+
+    .login-logo {
+      font-size: 48px;
+      margin-bottom: 12px
+    }
+
+    .login-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, var(--accent), var(--pink));
+      background-clip: text;
+      -webkit-text-fill-color: transparent
+    }
+
+    .login-sub {
+      font-size: 13px;
+      color: var(--text2);
+      margin-bottom: 28px
+    }
+
+    .login-field {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s;
+      margin-bottom: 12px
+    }
+
+    .login-field:focus {
+      border-color: var(--accent)
+    }
+
+    .login-field::placeholder {
+      color: var(--text2)
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      margin-top: 4px
+    }
+
+    .login-btn:active {
+      transform: scale(0.97)
+    }
+
+    .login-btn:hover {
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4)
+    }
+
+    .login-error {
+      color: var(--red);
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 18px
+    }
+
+    /* App shell */
+    .app {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      opacity: 0;
+      transition: opacity .4s
+    }
+
+    .app.visible {
+      opacity: 1
+    }
+
+    .header {
+      padding: 16px 20px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700
+    }
+
+    .header .logout-btn {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text2);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 16px 16px;
+      -webkit-overflow-scrolling: touch
+    }
+
+    .nav {
+      display: flex;
+      border-top: 1px solid var(--card-border);
+      background: rgba(10, 14, 26, 0.95);
+      backdrop-filter: blur(20px);
+      padding-bottom: env(safe-area-inset-bottom, 0)
+    }
+
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 0 8px;
+      cursor: pointer;
+      color: var(--text2);
+      font-size: 10px;
+      font-weight: 500;
+      transition: color .2s
+    }
+
+    .nav-item.active {
+      color: var(--accent)
+    }
+
+    .nav-item .icon {
+      font-size: 20px;
+      line-height: 1
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+      backdrop-filter: blur(10px)
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 4px;
+      font-weight: 500
+    }
+
+    .stat-card.green .stat-value {
+      background: linear-gradient(135deg, var(--green), #34d399);
+      background-clip: text
+    }
+
+    .stat-card.pink .stat-value {
+      background: linear-gradient(135deg, var(--pink), #f472b6);
+      background-clip: text
+    }
+
+    .stat-card.yellow .stat-value {
+      background: linear-gradient(135deg, var(--yellow), #fbbf24);
+      background-clip: text
+    }
+
+    /* Status indicators */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04)
+    }
+
+    .status-row:last-child {
+      border-bottom: none
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0
+    }
+
+    .status-dot.ok {
+      background: var(--green);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.5)
+    }
+
+    .status-dot.err {
+      background: var(--red);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.5)
+    }
+
+    .status-dot.loading {
+      background: var(--yellow);
+      animation: pulse 1s infinite
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0.4
+      }
+    }
+
+    .status-info {
+      flex: 1;
+      min-width: 0
+    }
+
+    .status-name {
+      font-size: 13px;
+      font-weight: 500
+    }
+
+    .status-detail {
+      font-size: 11px;
+      color: var(--text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    /* Users */
+    .search-bar {
+      position: relative;
+      margin-bottom: 12px
+    }
+
+    .search-bar input {
+      width: 100%;
+      padding: 12px 16px 12px 40px;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s
+    }
+
+    .search-bar input:focus {
+      border-color: var(--accent)
+    }
+
+    .search-bar .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text2);
+      font-size: 16px
+    }
+
+    .user-item {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: transform .15s, border-color .15s
+    }
+
+    .user-item:active {
+      transform: scale(0.98);
+      border-color: var(--accent)
+    }
+
+    .user-name {
+      font-size: 14px;
+      font-weight: 600
+    }
+
+    .user-meta {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 2px
+    }
+
+    .user-limits {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px
+    }
+
+    .user-badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 500
+    }
+
+    .user-badge.bind {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent3)
+    }
+
+    .user-badge.fi {
+      background: rgba(236, 72, 153, 0.15);
+      color: var(--pink)
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px 0
+    }
+
+    .page-btn {
+      padding: 8px 16px;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s
+    }
+
+    .page-btn:disabled {
+      opacity: 0.3;
+      cursor: default
+    }
+
+    .page-btn:not(:disabled):hover {
+      background: rgba(99, 102, 241, 0.15)
+    }
+
+    .page-info {
+      font-size: 13px;
+      color: var(--text2)
+    }
+
+    /* User detail modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto
+    }
+
+    .modal {
+      background: var(--bg2);
+      border-radius: 20px 20px 0 0;
+      width: 100%;
+      max-width: 480px;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0));
+      transform: translateY(100%);
+      transition: transform .3s
+    }
+
+    .modal-overlay.open .modal {
+      transform: translateY(0)
+    }
+
+    .modal-handle {
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.15);
+      margin: 0 auto 16px
+    }
+
+    .modal h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px
+    }
+
+    .modal-field {
+      margin-bottom: 14px
+    }
+
+    .modal-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px
+    }
+
+    .modal-field input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      outline: none
+    }
+
+    .modal-field input:focus {
+      border-color: var(--accent)
+    }
+
+    .modal-field .hint {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 4px
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px
+    }
+
+    .modal-actions button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform .1s
+    }
+
+    .modal-actions button:active {
+      transform: scale(0.97)
+    }
+
+    .btn-cancel {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text)
+    }
+
+    .btn-save {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff
+    }
+
+    /* Settings */
+    .settings-group {
+      margin-bottom: 16px
+    }
+
+    .settings-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 8px
+    }
+
+    .settings-input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      outline: none
+    }
+
+    .settings-input:focus {
+      border-color: var(--accent)
+    }
+
+    .admin-tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent3);
+      font-size: 12px;
+      font-weight: 500;
+      margin: 3px
+    }
+
+    .admin-add-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px
+    }
+
+    .admin-add-row input {
+      flex: 1
+    }
+
+    .admin-add-row button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      z-index: 300;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      backdrop-filter: blur(10px);
+      transition: transform .3s, opacity .3s;
+      opacity: 0;
+      pointer-events: none
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1
+    }
+
+    .toast.success {
+      background: rgba(16, 185, 129, 0.9);
+      color: #fff
+    }
+
+    .toast.error {
+      background: rgba(239, 68, 68, 0.9);
+      color: #fff
+    }
+
+    /* Section */
+    .section {
+      display: none
+    }
+
+    .section.active {
+      display: block
+    }
+
+    /* Refresh btn */
+    .refresh-btn {
+      background: none;
+      border: 1px solid var(--card-border);
+      color: var(--text2);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 12px
+    }
+
+    .refresh-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent)
+    }
+
+    /* Loading spinner */
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text2)
+    }
+
+    .empty .empty-icon {
+      font-size: 40px;
+      margin-bottom: 8px
+    }
+
+    .empty .empty-text {
+      font-size: 14px
+    }
+
+    /* Section title */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-top: 4px
+    }
+
+    .section-header h2 {
+      font-size: 16px;
+      font-weight: 700
+    }
+
+    /* Action breakdown */
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px
+    }
+
+    .action-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 12px 10px;
+      text-align: center
+    }
+
+    .action-card .action-icon {
+      font-size: 22px;
+      margin-bottom: 6px;
+      line-height: 1
+    }
+
+    .action-card .action-count {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.1
+    }
+
+    .action-card .action-name {
+      font-size: 10px;
+      color: var(--text2);
+      margin-top: 3px;
+      font-weight: 500
+    }
+
+    .action-card.blue .action-icon {
+      color: var(--blue)
+    }
+
+    .action-card.blue .action-count {
+      color: var(--blue)
+    }
+
+    .action-card.green .action-icon {
+      color: var(--green)
+    }
+
+    .action-card.green .action-count {
+      color: var(--green)
+    }
+
+    .action-card.pink .action-icon {
+      color: var(--pink)
+    }
+
+    .action-card.pink .action-count {
+      color: var(--pink)
+    }
+
+    .action-card.yellow .action-icon {
+      color: var(--yellow)
+    }
+
+    .action-card.yellow .action-count {
+      color: var(--yellow)
+    }
+
+    .action-card.accent .action-icon {
+      color: var(--accent)
+    }
+
+    .action-card.accent .action-count {
+      color: var(--accent)
+    }
+
+    .nav-item i {
+      font-size: 20px;
+      line-height: 1
+    }
+
+    /* Scroll to top */
+    .scroll-top {
+      position: fixed;
+      bottom: 80px;
+      right: 16px;
+      z-index: 50;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+      opacity: 0;
+      transform: scale(0.5);
+      transition: opacity .3s, transform .3s;
+      pointer-events: none
+    }
+
+    .scroll-top.visible {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto
+    }
+
+    .scroll-top:active {
+      transform: scale(0.9)
+    }
+
+    /* Limit badges in modal */
+    .limit-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500
+    }
+
+    .limit-badge.bind {
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent3)
+    }
+
+    .limit-badge.fi {
+      background: rgba(236, 72, 153, 0.12);
+      color: var(--pink)
+    }
+
+    .limit-badge i {
+      font-size: 14px
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="bg-wrap">
+    <div class="bg-blob"></div>
+    <div class="bg-blob"></div>
+    <div class="bg-blob"></div>
+  </div>
+
+  <!-- Login Screen -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <div class="login-logo"><i class="bi bi-controller"></i></div>
+      <div class="login-title">MLBB Admin Panel</div>
+      <div class="login-sub">Tizimga kirish uchun login va parolni kiriting</div>
+      <form id="loginForm" onsubmit="return doLogin(event)">
+        <input class="login-field" type="text" id="loginUser" placeholder="Login" autocomplete="username">
+        <input class="login-field" type="password" id="loginPass" placeholder="Parol" autocomplete="current-password">
+        <button class="login-btn" type="submit" id="loginBtn">Kirish</button>
+      </form>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div class="app" id="app">
+    <div class="header">
+      <h1><i class="bi bi-controller"></i> MLBB Admin</h1>
+      <button class="logout-btn" onclick="doLogout()">Chiqish</button>
+    </div>
+
+    <div class="content" id="content">
+      <!-- Dashboard Section -->
+      <div class="section active" id="secDashboard">
+        <div class="section-header">
+          <h2><i class="bi bi-speedometer2"></i> Asosiy</h2>
+          <button class="refresh-btn" onclick="loadStats()"><i class="bi bi-arrow-clockwise"></i> Yangilash</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Bugun jami tekshirishlar</div>
+          <div class="action-grid" id="actionBreakdown">
+            <div class="action-card blue">
+              <div class="action-icon"><i class="bi bi-search"></i></div>
+              <div class="action-count" id="actCheck">-</div>
+              <div class="action-name">Server aniqlash</div>
+            </div>
+            <div class="action-card green">
+              <div class="action-icon"><i class="bi bi-link-45deg"></i></div>
+              <div class="action-count" id="actBind">-</div>
+              <div class="action-name">Ulanmalar</div>
+            </div>
+            <div class="action-card pink">
+              <div class="action-icon"><i class="bi bi-file-earmark-text"></i></div>
+              <div class="action-count" id="actFullInfo">-</div>
+              <div class="action-name">To'liq malumot</div>
+            </div>
+            <div class="action-card yellow">
+              <div class="action-icon"><i class="bi bi-person-video3"></i></div>
+              <div class="action-count" id="actTgProfile">-</div>
+              <div class="action-name">TG profil</div>
+            </div>
+            <div class="action-card accent">
+              <div class="action-icon"><i class="bi bi-person-plus"></i></div>
+              <div class="action-count" id="actStart">-</div>
+              <div class="action-name">Start</div>
+            </div>
+            <div class="action-card blue">
+              <div class="action-icon"><i class="bi bi-chat-dots"></i></div>
+              <div class="action-count" id="actFeedback">-</div>
+              <div class="action-name">Fikr yuborish</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Statistika</div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="statDaily">-</div>
+              <div class="stat-label">Bugun faol userlar</div>
+            </div>
+            <div class="stat-card green">
+              <div class="stat-value" id="statMonthly">-</div>
+              <div class="stat-label">Oylik aktiv</div>
+            </div>
+            <div class="stat-card pink">
+              <div class="stat-value" id="statTotalUsers">-</div>
+              <div class="stat-label">Jami userlar</div>
+            </div>
+            <div class="stat-card yellow">
+              <div class="stat-value" id="statTotalActions">-</div>
+              <div class="stat-label">Jami ishlatishlar</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">API holati</div>
+          <div id="apiStatusList">
+            <div class="status-row">
+              <div class="status-dot loading"></div>
+              <div class="status-info">
+                <div class="status-name">Tekshirilmoqda...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Section -->
+      <div class="section" id="secUsers">
+        <div class="section-header">
+          <h2><i class="bi bi-people"></i> Foydalanuvchilar</h2>
+        </div>
+        <div class="search-bar">
+          <span class="search-icon"><i class="bi bi-search"></i></span>
+          <input type="text" id="userSearch" placeholder="Qidirish: username, nom, TG ID..." oninput="debounceSearch()">
+        </div>
+        <div id="userList">
+          <div class="empty">
+            <div class="spinner"></div>
+            <div class="empty-text">Yuklanmoqda...</div>
+          </div>
+        </div>
+        <div id="scrollSentinel" style="height:1px"></div>
+        <div class="empty" id="scrollLoader" style="display:none;padding:16px">
+          <div class="spinner"></div>
+        </div>
+      </div>
+
+      <!-- Settings Section -->
+      <div class="section" id="secSettings">
+        <div class="section-header">
+          <h2><i class="bi bi-gear"></i> Bot sozlamalari</h2>
+        </div>
+        <div class="card">
+          <div class="card-title">Default limitlar</div>
+          <div class="settings-group">
+            <div class="settings-label">Ulanmalarni tekshirish limiti (kunlik)</div>
+            <input class="settings-input" type="number" id="setBindLimit" min="0" value="10">
+            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">Har bir user uchun kunlik default
+              limit</div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-label">To'liq ma'lumot limiti (paket)</div>
+            <input class="settings-input" type="number" id="setFullInfoLimit" min="0" value="3">
+            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">Har bir user uchun boshlang'ich
+              paket</div>
+          </div>
+          <button class="login-btn" style="margin-top:8px" onclick="saveSettings()"><i class="bi bi-floppy"></i>
+            Saqlash</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Adminlar ro'yxati</div>
+          <div id="adminList" style="margin-bottom:8px"></div>
+          <div class="admin-add-row">
+            <input class="settings-input" type="text" id="newAdminId" placeholder="TG ID qo'shish">
+            <button onclick="addAdmin()">+ Qo'shish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="nav">
+      <div class="nav-item active" onclick="switchTab('Dashboard')"><i class="bi bi-speedometer2"></i>Asosiy</div>
+      <div class="nav-item" onclick="switchTab('Users')"><i class="bi bi-people"></i>Userlar</div>
+      <div class="nav-item" onclick="switchTab('Settings')"><i class="bi bi-gear"></i>Sozlamalar</div>
+    </div>
+  </div>
+
+  <!-- User Detail Modal -->
+  <div class="modal-overlay" id="userModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="modalUserName">Foydalanuvchi</h2>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">Ma'lumotlar</div>
+        <div id="modalUserInfo" style="font-size:13px;color:var(--text2)"></div>
+        <div id="modalLimitBadges" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+      <div class="modal-field">
+        <label>Ulanmalar limiti (kunlik)</label>
+        <input type="number" id="modalBindLimit" min="0" placeholder="Default: 10">
+        <div class="hint" id="modalBindHint">Hozirgi: - | Qiymat kiritilsa kunlik limit o'zgaradi</div>
+      </div>
+      <div class="modal-field">
+        <label>To'liq malumot qo'shish</label>
+        <input type="number" id="modalFullInfoQuota" min="1" placeholder="Qo'shish miqdori">
+        <div class="hint" id="modalFullInfoHint">Hozirgi qoldiq: - | Kiritilgan qiymat ustiga qo'shiladi</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Bekor qilish</button>
+        <button class="btn-save" id="modalSaveBtn" onclick="saveUser()"><i class="bi bi-floppy"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll to top -->
+  <button class="scroll-top" id="scrollTop" onclick="scrollToTop()"><i class="bi bi-arrow-up"></i></button>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      /* -----------------------------------------------------------------------
+         State
+      ----------------------------------------------------------------------- */
+      var currentTab = "Dashboard";
+      var currentUserPage = 0;
+      var totalUserPages = 0;
+      var currentUserId = null;
+      var searchTimeout = null;
+      var adminIds = [];
+      var allUsers = [];
+      var isLoadingMore = false;
+      var hasMoreUsers = true;
+      var currentSearchQuery = "";
+
+      /* -----------------------------------------------------------------------
+         API helper
+      ----------------------------------------------------------------------- */
+      function api(action, body) {
+        body = body || {};
+        return fetch("/api/miniapp?action=" + action, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          credentials: "same-origin"
+        }).then(function (r) { return r.json(); });
+      }
+
+      /* -----------------------------------------------------------------------
+         Auth
+      ----------------------------------------------------------------------- */
+      function doLogin(e) {
+        if (e) e.preventDefault();
+        var user = document.getElementById("loginUser").value.trim();
+        var pass = document.getElementById("loginPass").value;
+        var btn = document.getElementById("loginBtn");
+        var err = document.getElementById("loginError");
+
+        btn.textContent = "\u23F3 Kirilmoqda...";
+        btn.disabled = true;
+        err.textContent = "";
+
+        return api("login", { username: user, password: pass }).then(function (result) {
+          if (result.ok) {
+            document.getElementById("loginScreen").classList.add("hidden");
+            document.getElementById("app").classList.add("visible");
+            initApp();
+          } else {
+            err.textContent = "Login yoki parol noto'g'ri";
+            btn.textContent = "Kirish";
+            btn.disabled = false;
+          }
+        });
+      }
+      window.doLogin = doLogin;
+
+      function doLogout() {
+        api("logout").then(function () {
+          document.getElementById("app").classList.remove("visible");
+          document.getElementById("loginScreen").classList.remove("hidden");
+          document.getElementById("loginError").textContent = "";
+          document.getElementById("loginBtn").textContent = "Kirish";
+          document.getElementById("loginBtn").disabled = false;
+        });
+      }
+      window.doLogout = doLogout;
+
+      document.getElementById("loginPass").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") doLogin(e);
+      });
+
+      /* -----------------------------------------------------------------------
+         Init
+      ----------------------------------------------------------------------- */
+      function initApp() {
+        loadStats();
+        loadUsers(true);
+        loadSettings();
+        setupInfiniteScroll();
+        setupScrollToTop();
+      }
+
+      /* -----------------------------------------------------------------------
+         Tabs
+      ----------------------------------------------------------------------- */
+      function switchTab(name) {
+        currentTab = name;
+        document.querySelectorAll(".section").forEach(function (s) { s.classList.remove("active"); });
+        document.getElementById("sec" + name).classList.add("active");
+        var tabs = ["Dashboard", "Users", "Settings"];
+        document.querySelectorAll(".nav-item").forEach(function (item, i) {
+          item.classList.toggle("active", tabs[i] === name);
+        });
+        if (name === "Users" && allUsers.length === 0) loadUsers();
+        if (name === "Settings") loadSettings();
+      }
+      window.switchTab = switchTab;
+
+      /* -----------------------------------------------------------------------
+         Dashboard
+      ----------------------------------------------------------------------- */
+      function loadStats() {
+        api("get_stats").then(function (result) {
+          if (!result.ok) return;
+          var d = result.data;
+          var b = d.todayBreakdown || {};
+          animateNumber("actCheck", b.server_check || 0);
+          animateNumber("actBind", b.bind_info || 0);
+          animateNumber("actFullInfo", b.full_info || 0);
+          animateNumber("actTgProfile", b.tg_profile || 0);
+          animateNumber("actStart", b.start || 0);
+          animateNumber("actFeedback", b.feedback || 0);
+          animateNumber("statDaily", d.dailyUsers || 0);
+          animateNumber("statMonthly", d.monthlyUsers || 0);
+          animateNumber("statTotalUsers", d.totalUsers || 0);
+          animateNumber("statTotalActions", d.totalActions || 0);
+          loadApiStatus();
+        });
+      }
+      window.loadStats = loadStats;
+
+      function animateNumber(id, target) {
+        var el = document.getElementById(id);
+        var start = parseInt(el.textContent) || 0;
+        var diff = target - start;
+        if (diff === 0 && start === target) { el.textContent = formatNum(target); return; }
+        var steps = 20;
+        var step = 0;
+        var interval = setInterval(function () {
+          step++;
+          var progress = step / steps;
+          var eased = 1 - Math.pow(1 - progress, 3);
+          el.textContent = formatNum(Math.round(start + diff * eased));
+          if (step >= steps) clearInterval(interval);
+        }, 25);
+      }
+
+      function formatNum(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+        if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+        return String(n);
+      }
+
+      function loadApiStatus() {
+        var list = document.getElementById("apiStatusList");
+        list.innerHTML = '<div class="status-row"><div class="status-dot loading"></div><div class="status-info"><div class="status-name">Tekshirilmoqda...</div></div></div>';
+
+        api("check_api_status").then(function (result) {
+          if (!result.ok) {
+            list.innerHTML = '<div class="status-row"><div class="status-dot err"></div><div class="status-info"><div class="status-name">Xatolik</div></div></div>';
+            return;
+          }
+          var d = result.data;
+          var html = "";
+          html += makeStatusRow(d.supabase, "Supabase", d.supabaseError || (d.supabase ? "Ulandi" : "Ulanmagan"));
+          html += makeStatusRow(d.telegram, "Telegram Bot", d.telegramError || (d.botUsername ? "@" + d.botUsername : (d.telegram ? "Ulandi" : "Ulanmagan")));
+          html += makeStatusRow(d.fullInfoApi, "Full Info API", d.fullInfoApiError || d.fullInfoApiUrl || "Tekshirilmoqda");
+          html += makeStatusRow(d.bindInfoApi, "Bind Info API", d.bindInfoApiError || d.bindInfoApiUrl || "Sozlanmagan");
+          list.innerHTML = html;
+        });
+      }
+
+      function makeStatusRow(ok, name, detail) {
+        return '<div class="status-row"><div class="status-dot ' + (ok ? "ok" : "err") + '"></div><div class="status-info"><div class="status-name">' + esc(name) + '</div><div class="status-detail">' + esc(detail || "") + '</div></div></div>';
+      }
+
+      /* -----------------------------------------------------------------------
+         Users
+      ----------------------------------------------------------------------- */
+      function loadUsers(reset) {
+        if (reset) {
+          allUsers = [];
+          currentUserPage = 0;
+          hasMoreUsers = true;
+          document.getElementById("userList").innerHTML = '<div class="empty"><div class="spinner"></div><div class="empty-text" style="margin-top:8px">Yuklanmoqda...</div></div>';
+        }
+        if (isLoadingMore || !hasMoreUsers) return;
+        isLoadingMore = true;
+        document.getElementById("scrollLoader").style.display = "block";
+
+        var p;
+        if (currentSearchQuery) {
+          p = api("search_users", { query: currentSearchQuery, page: currentUserPage });
+        } else {
+          p = api("get_users", { page: currentUserPage });
+        }
+
+        p.then(function (result) {
+          isLoadingMore = false;
+          document.getElementById("scrollLoader").style.display = "none";
+
+          if (!result.ok || !result.data.users || !result.data.users.length) {
+            hasMoreUsers = false;
+            if (allUsers.length === 0) {
+              document.getElementById("userList").innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-person-x"></i></div><div class="empty-text">Foydalanuvchilar topilmadi</div></div>';
+            }
+            return;
+          }
+
+          var newUsers = result.data.users;
+          totalUserPages = Math.ceil((result.data.total || 0) / 20);
+
+          if (currentUserPage === 0) {
+            allUsers = newUsers;
+            renderUserList();
+          } else {
+            allUsers = allUsers.concat(newUsers);
+            appendUserList(newUsers);
+          }
+
+          currentUserPage++;
+          hasMoreUsers = currentUserPage < totalUserPages;
+        });
+      }
+      window.loadUsers = loadUsers;
+
+      function renderUserList() {
+        var list = document.getElementById("userList");
+        list.innerHTML = buildUsersHtml(allUsers);
+        attachUserClickHandlers();
+      }
+
+      function appendUserList(users) {
+        var list = document.getElementById("userList");
+        var tmp = document.createElement("div");
+        tmp.innerHTML = buildUsersHtml(users);
+        while (tmp.firstChild) list.appendChild(tmp.firstChild);
+        attachUserClickHandlers();
+      }
+
+      function buildUsersHtml(users) {
+        var html = "";
+        users.forEach(function (u) {
+          var name = u.first_name || u.username || String(u.user_id);
+          var metaParts = [];
+          if (u.username) metaParts.push("@" + u.username);
+          if (u.last_seen_at) metaParts.push(timeAgo(u.last_seen_at));
+          var meta = metaParts.join(" \u00b7 ");
+          var bind = (u.custom_bind_limit !== null && u.custom_bind_limit !== undefined) ? u.custom_bind_limit : "10";
+          var fi = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : "-";
+          html += '<div class="user-item" data-uid="' + esc(u.user_id) + '">';
+          html += '<div class="user-name">' + esc(name) + "</div>";
+          html += '<div class="user-meta">' + esc(meta) + "</div>";
+          html += '<div class="user-limits">';
+          html += '<span class="user-badge bind"><i class="bi bi-link-45deg"></i> ' + bind + "</span>";
+          html += '<span class="user-badge fi"><i class="bi bi-file-earmark-text"></i> ' + fi + "</span>";
+          html += "</div></div>";
+        });
+        return html;
+      }
+
+      function attachUserClickHandlers() {
+        document.querySelectorAll(".user-item").forEach(function (el) {
+          if (el._hasClick) return;
+          el._hasClick = true;
+          el.addEventListener("click", function () {
+            openUser(el.getAttribute("data-uid"));
+          });
+        });
+      }
+
+      // Infinite scroll
+      function setupInfiniteScroll() {
+        var sentinel = document.getElementById("scrollSentinel");
+        if (!sentinel) return;
+        var observer = new IntersectionObserver(function (entries) {
+          if (entries[0].isIntersecting && hasMoreUsers && !isLoadingMore && currentTab === "Users") {
+            loadUsers();
+          }
+        }, { rootMargin: "200px" });
+        observer.observe(sentinel);
+      }
+
+      // Scroll to top
+      function setupScrollToTop() {
+        var content = document.getElementById("content");
+        var btn = document.getElementById("scrollTop");
+        if (!content || !btn) return;
+        content.addEventListener("scroll", function () {
+          if (content.scrollTop > 400) {
+            btn.classList.add("visible");
+          } else {
+            btn.classList.remove("visible");
+          }
+        });
+      }
+      function scrollToTop() {
+        document.getElementById("content").scrollTo({ top: 0, behavior: "smooth" });
+      }
+      window.scrollToTop = scrollToTop;
+
+      function debounceSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(function () {
+          currentSearchQuery = document.getElementById("userSearch").value.trim();
+          loadUsers(true);
+        }, 350);
+      }
+      window.debounceSearch = debounceSearch;
+
+      /* -----------------------------------------------------------------------
+         User Modal
+      ----------------------------------------------------------------------- */
+      function openUser(userId) {
+        currentUserId = userId;
+        var modal = document.getElementById("userModal");
+        modal.classList.add("open");
+
+        document.getElementById("modalUserName").textContent = "Yuklanmoqda...";
+        document.getElementById("modalUserInfo").innerHTML = "";
+        document.getElementById("modalLimitBadges").innerHTML = "";
+        document.getElementById("modalBindLimit").value = "";
+        document.getElementById("modalFullInfoQuota").value = "";
+        document.getElementById("modalBindHint").textContent = "Hozirgi: - | Qiymat kiritilsa kunlik limit o'zgaradi";
+        document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: - | Kiritilgan qiymat ustiga qo'shiladi";
+
+        api("get_user", { user_id: userId }).then(function (result) {
+          if (!result.ok) {
+            document.getElementById("modalUserName").textContent = "Xatolik";
+            return;
+          }
+
+          var u = result.data;
+          var name = u.first_name || u.username || String(u.user_id);
+          document.getElementById("modalUserName").textContent = name;
+
+          // Info text
+          var info = "";
+          info += "<div><i class='bi bi-telegram'></i> TG ID: <b>" + esc(String(u.user_id)) + "</b></div>";
+          if (u.username) info += "<div><i class='bi bi-at'></i> @" + esc(u.username) + "</div>";
+          if (u.first_name) info += "<div><i class='bi bi-person-badge'></i> " + esc(u.first_name) + (u.last_name ? " " + esc(u.last_name) : "") + "</div>";
+          info += "<div><i class='bi bi-bar-chart'></i> Jami ishlatishlar: <b>" + (u.updates_count || 0) + "</b></div>";
+          if (u.last_seen_at) info += "<div><i class='bi bi-clock'></i> Oxirgi faollik: " + esc(timeAgo(u.last_seen_at)) + "</div>";
+          if (u.first_seen_at) info += "<div><i class='bi bi-calendar-plus'></i> Birinchi kirish: " + esc(formatDate(u.first_seen_at)) + "</div>";
+          document.getElementById("modalUserInfo").innerHTML = info;
+
+          // Limit badges
+          var bindCurrent = (u.custom_bind_limit !== null && u.custom_bind_limit !== undefined) ? u.custom_bind_limit : 10;
+          var fiCurrent = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : 0;
+          var badgesHtml = '';
+          badgesHtml += '<span class="limit-badge bind"><i class="bi bi-link-45deg"></i> Kunlik limit: ' + bindCurrent + '</span>';
+          badgesHtml += '<span class="limit-badge fi"><i class="bi bi-file-earmark-text"></i> To\u02BBliq malumot qoldig\u02BBi: ' + fiCurrent + '</span>';
+          document.getElementById("modalLimitBadges").innerHTML = badgesHtml;
+
+          // Hints
+          document.getElementById("modalBindHint").textContent = "Hozirgi kunlik limit: " + bindCurrent + " | Qiymat kiritilsa yangilanadi";
+          document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: " + fiCurrent + " | Kiritilgan qiymat ustiga qo'shiladi";
+
+          // Inputs: leave empty for fresh input
+          document.getElementById("modalBindLimit").value = "";
+          document.getElementById("modalBindLimit").placeholder = "Yangi limit: " + bindCurrent;
+          document.getElementById("modalFullInfoQuota").value = "";
+          document.getElementById("modalFullInfoQuota").placeholder = "Qo'shish miqdori";
+        });
+      }
+      window.openUser = openUser;
+
+      function closeModal() {
+        document.getElementById("userModal").classList.remove("open");
+        currentUserId = null;
+      }
+      window.closeModal = closeModal;
+
+      function saveUser() {
+        if (!currentUserId) return;
+        var btn = document.getElementById("modalSaveBtn");
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saqlanmoqda...';
+        btn.disabled = true;
+
+        var body = { user_id: currentUserId };
+        var bindVal = document.getElementById("modalBindLimit").value;
+        var fiVal = document.getElementById("modalFullInfoQuota").value;
+
+        if (bindVal !== "") body.custom_bind_limit = parseInt(bindVal, 10);
+        if (fiVal !== "") body.full_info_amount = parseInt(fiVal, 10);
+
+        api("update_user", body).then(function (result) {
+          btn.innerHTML = '<i class="bi bi-floppy"></i> Saqlash';
+          btn.disabled = false;
+
+          if (result.ok) {
+            showToast("Saqlandi — userga xabar yuborildi", "success");
+            closeModal();
+            loadUsers(true);
+          } else {
+            showToast("Xatolik: " + (result.error || "server_error"), "error");
+          }
+        });
+      }
+      window.saveUser = saveUser;
+
+      document.getElementById("userModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) closeModal();
+      });
+
+      /* -----------------------------------------------------------------------
+         Settings
+      ----------------------------------------------------------------------- */
+      function loadSettings() {
+        api("get_settings").then(function (result) {
+          if (result.ok && result.data) {
+            document.getElementById("setBindLimit").value = result.data.defaultBindLimit || 10;
+            document.getElementById("setFullInfoLimit").value = result.data.defaultFullinfoQuota || 3;
+          }
+        });
+
+        api("get_admins").then(function (result) {
+          if (result.ok && result.data) {
+            adminIds = result.data.adminIds || [];
+            renderAdmins();
+          }
+        });
+      }
+      window.loadSettings = loadSettings;
+
+      function saveSettings() {
+        var bindLimit = parseInt(document.getElementById("setBindLimit").value, 10);
+        var fiLimit = parseInt(document.getElementById("setFullInfoLimit").value, 10);
+
+        api("update_settings", {
+          defaultBindLimit: isNaN(bindLimit) ? 10 : bindLimit,
+          defaultFullinfoQuota: isNaN(fiLimit) ? 3 : fiLimit,
+        }).then(function (result) {
+          if (result.ok) {
+            showToast("\u2705 Sozlamalar saqlandi", "success");
+          } else {
+            showToast("\u274c Xatolik", "error");
+          }
+        });
+      }
+      window.saveSettings = saveSettings;
+
+      function renderAdmins() {
+        var container = document.getElementById("adminList");
+        if (!adminIds.length) {
+          container.innerHTML = '<div style="color:var(--text2);font-size:13px">Adminlar yo\'q</div>';
+          return;
+        }
+        container.innerHTML = adminIds.map(function (id) {
+          return '<span class="admin-tag">' + esc(String(id)) + ' <span class="admin-remove" data-aid="' + esc(String(id)) + '" style="cursor:pointer;opacity:0.6"><i class="bi bi-x"></i></span></span>';
+        }).join("");
+        container.querySelectorAll(".admin-remove").forEach(function (el) {
+          el.addEventListener("click", function () {
+            removeAdmin(el.getAttribute("data-aid"));
+          });
+        });
+      }
+
+      function addAdmin() {
+        var input = document.getElementById("newAdminId");
+        var id = input.value.trim();
+        if (!id || !/^\d+$/.test(id)) {
+          showToast("\u274c Noto'g'ri ID", "error");
+          return;
+        }
+        if (adminIds.indexOf(id) !== -1) {
+          showToast("\u274c Bu ID allaqachon mavjud", "error");
+          return;
+        }
+        adminIds.push(id);
+        input.value = "";
+        api("update_admins", { adminIds: adminIds }).then(function (result) {
+          if (result.ok) {
+            renderAdmins();
+            showToast("\u2705 Admin qo'shildi", "success");
+          } else {
+            adminIds.pop();
+            showToast("\u274c Xatolik", "error");
+          }
+        });
+      }
+      window.addAdmin = addAdmin;
+
+      function removeAdmin(id) {
+        adminIds = adminIds.filter(function (a) { return a !== id; });
+        api("update_admins", { adminIds: adminIds }).then(function (result) {
+          if (result.ok) {
+            renderAdmins();
+            showToast("\u2705 Admin o'chirildi", "success");
+          } else {
+            adminIds.push(id);
+            showToast("\u274c Xatolik", "error");
+          }
+        });
+      }
+      window.removeAdmin = removeAdmin;
+
+      /* -----------------------------------------------------------------------
+         Helpers
+      ----------------------------------------------------------------------- */
+      function esc(s) {
+        return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      function timeAgo(iso) {
+        var ms = Date.now() - new Date(iso).getTime();
+        if (ms < 60000) return "hozir";
+        if (ms < 3600000) return Math.floor(ms / 60000) + " daq oldin";
+        if (ms < 86400000) return Math.floor(ms / 3600000) + " soat oldin";
+        return Math.floor(ms / 86400000) + " kun oldin";
+      }
+
+      function formatDate(iso) {
+        if (!iso) return "-";
+        var d = new Date(iso);
+        return d.toLocaleDateString("uz-UZ", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric" });
+      }
+
+      function showToast(msg, type) {
+        var t = document.getElementById("toast");
+        t.textContent = msg;
+        t.className = "toast " + type + " show";
+        setTimeout(function () { t.classList.remove("show"); }, 2500);
+      }
+
+    })();
+  </script>
+</body>
+
+</html>
