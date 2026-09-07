@@ -559,7 +559,7 @@ async function handleCheckApiStatus(req, res) {
 // ---------------------------------------------------------------------------
 function serveApp(req, res) {
   try {
-    const htmlPath = path.join(__dirname, "miniapp.html");
+    const htmlPath = path.join(__dirname, "index.html");
     const html = fs.readFileSync(htmlPath, "utf8");
     return res
       .status(200)
@@ -571,7 +571,7 @@ function serveApp(req, res) {
     return res
       .status(500)
       .setHeader("Content-Type", "text/html; charset=utf-8")
-      .send("<h1>Mini App HTML topilmadi</h1><p>api/miniapp.html fayli mavjud emas.</p>");
+      .send("<h1>Mini App HTML topilmadi</h1><p>api/index.html fayli mavjud emas.</p>");
   }
 }
 
