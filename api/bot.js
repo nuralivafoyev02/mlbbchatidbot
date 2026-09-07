@@ -536,6 +536,85 @@ async function handleMessage(message, updateMeta = {}) {
     }
   }
 
+  // {username/tgid} user haqida malumot — faqat main guruhda
+  const userInfoMatch = text.match(/(?:@(\w+)|\b(\d+)\b)\s+user\s+haqida\s+malumot/i);
+  if (userInfoMatch && String(chatId) === MAIN_GROUP_ID) {
+    const targetUsername = userInfoMatch[1];
+    const targetId = userInfoMatch[2];
+
+    let queryPath = "";
+    if (targetUsername) {
+      queryPath = `/bot_users?username=ilike.${encodeURIComponent(targetUsername)}&select=user_id,updates_count,last_seen_at,username,first_name,custom_bind_limit&limit=1`;
+    } else if (targetId) {
+      queryPath = `/bot_users?user_id=eq.${encodeURIComponent(targetId)}&select=user_id,updates_count,last_seen_at,username,first_name,custom_bind_limit&limit=1`;
+    }
+
+    if (queryPath) {
+      void safeSendChatAction(chatId, "typing");
+      try {
+        const data = await supabaseRequest(queryPath);
+        const userStat = Array.isArray(data) ? data[0] : null;
+
+        if (!userStat) {
+          await sendMessage(chatId, "\u274c Foydalanuvchi topilmadi yoxud u hali botdan foydalanmagan.", null);
+          return;
+        }
+
+        const targetUserId = userStat.user_id;
+        const displayName = userStat.first_name || targetUsername || String(targetUserId);
+        const updatesCount = userStat.updates_count || 0;
+
+        // Ulanmalar (bind info) qoldig'i
+        let bindRemaining = "N/A";
+        let bindTotal = 10;
+        try {
+          const bindLimit = await supabaseRpc("check_bind_limit_only", {
+            p_user_id: toPgBigint(targetUserId),
+            p_limit: 10,
+          });
+          if (bindLimit && typeof bindLimit.remaining === "number") {
+            bindRemaining = bindLimit.remaining;
+            bindTotal = bindLimit.total_limit || 10;
+          }
+        } catch (err) {
+          console.error("[USER_INFO_BIND_LIMIT_ERROR]", err.message);
+        }
+
+        // To'liq malumot (full info) qoldig'i
+        let fullInfoRemaining = "N/A";
+        let fullInfoTotal = 3;
+        try {
+          const fullInfoQuota = await supabaseRpc("get_full_info_quota", {
+            p_user_id: toPgBigint(targetUserId),
+          });
+          if (fullInfoQuota && typeof fullInfoQuota.remaining === "number") {
+            fullInfoRemaining = fullInfoQuota.remaining;
+            fullInfoTotal = fullInfoQuota.remaining; // default 3 da boshlangan
+          }
+        } catch (err) {
+          console.error("[USER_INFO_FULL_INFO_ERROR]", err.message);
+        }
+
+        const lines = [
+          `\ud83d\udccc <b>${escapeHtml(displayName)}</b> haqida ma'lumot`,
+          "",
+          `\ud83d\udc64 <b>Telegram ID:</b> <code>${targetUserId}</code>`,
+          targetUsername ? `\ud83d\udc64 <b>Username:</b> @${escapeHtml(targetUsername)}` : null,
+          "",
+          `\ud83d\udcca <b>Jami tekshirishlar:</b> ${updatesCount}`,
+          `\ud83d\udd17 <b>Ulanmalar tekshirish qoldig'i:</b> ${bindRemaining}/${bindTotal}`,
+          `\ud83d\udccb <b>To'liq malumot qoldig'i:</b> ${fullInfoRemaining}/${fullInfoTotal}`,
+        ].filter(Boolean);
+
+        await sendMessage(chatId, lines.join("\n"), null);
+      } catch (err) {
+        console.error("[USER_INFO_ERROR]", err);
+        await sendMessage(chatId, "\u26a0\ufe0f Malumotni olishda xatolik yuz berdi.", null);
+      }
+      return;
+    }
+  }
+
   // Feedback javobi — guruhda ham ishlashi kerak (admin reply qilganda)
   if (isFeedbackAdminReply(message)) {
     await handleFeedbackAdminReply(chatId, user, message);

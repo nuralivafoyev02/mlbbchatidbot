@@ -3301,7 +3301,7 @@ test("full info /full_info flow sends wait message then button-only result", asy
     const quotaPayload = telegramCalls.find(
       (call) =>
         call.method === "sendMessage" &&
-        /Qolgan to'liq ma'lumot paketi/.test(call.payload.text)
+        /Paketingizda qolgan/.test(call.payload.text)
     );
     assert.ok(quotaPayload, "remaining quota must be sent as a separate message");
     assert.match(quotaPayload.payload.text, /4/, "remaining quota (5-1=4) must be shown");
@@ -3476,7 +3476,7 @@ test("full info post text shows remaining quota when provided", () => {
     { remaining: 12 }
   );
 
-  assert.match(text, /Qolgan to'liq ma'lumot paketi/);
+  assert.match(text, /Paketingizda qolgan/);
   assert.match(text, /12 ta/);
 
   const textWithoutQuota = getFullInfoPostText(
@@ -3773,7 +3773,7 @@ test("full info quota: consumes one unit after success, nothing on failure", asy
     const resultMessage = telegramCalls.find(
       (call) =>
         call.method === "sendMessage" &&
-        /Qolgan to'liq ma'lumot paketi/.test(call.payload.text)
+        /Paketingizda qolgan/.test(call.payload.text)
     );
     assert.ok(resultMessage, "remaining quota must be shown");
     assert.match(resultMessage.payload.text, /4 ta/);
