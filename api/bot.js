@@ -1879,7 +1879,27 @@ async function handleInlineQuery(inlineQuery, options = {}) {
       }
     }
   } catch (error) {
+    // MUHIM: Bu yerda xatolikni faqat logga yozib qo'yib, Telegramga hech
+    // qanday javob bermasdan chiqib ketish "aylanib turadigan" charxni
+    // keltirib chiqargan asosiy sabab edi — Telegram klienti javobni
+    // cheksiz kutib qoladi. Shu sabab har doim (hatto kutilmagan xatoda
+    // ham) queryId uchun fallback javob qaytaramiz.
+    recordError("inline_query_unhandled", error?.message || String(error), {
+      userId,
+      text,
+    });
     console.error("[INLINE_QUERY_ERROR]", error);
+
+    try {
+      await answerInlineQuery(queryId, [
+        buildInlineMessageResult(
+          t("failed_lookup_title", lang),
+          getFailedLookupText(null, { reason: "unexpected_error" }, lang)
+        ),
+      ]);
+    } catch (fallbackError) {
+      console.error("[INLINE_QUERY_FALLBACK_FAILED]", fallbackError);
+    }
   }
 }
 
