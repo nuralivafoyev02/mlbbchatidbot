@@ -1480,6 +1480,7 @@ test("inline mode answers an invalid query with a usage hint", async () => {
     assert.equal(answerCall.payload.results[0].id, "hint");
     assert.match(answerCall.payload.results[0].title, /ID/);
     assert.match(answerCall.payload.results[0].description, /1006613098/);
+    assert.ok(answerCall.payload.results[0].input_message_content, "expected input_message_content for inline hint");
   } finally {
     global.fetch = originalFetch;
   }

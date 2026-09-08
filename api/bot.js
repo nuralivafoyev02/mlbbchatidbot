@@ -1756,11 +1756,17 @@ function buildInlineMessageResult(title, text) {
 }
 
 function buildInlineHintResult(lang) {
+  const title = t("inline_hint_title", lang);
+  const description = t("inline_hint_description", lang);
   return {
     type: "article",
     id: "hint",
-    title: t("inline_hint_title", lang),
-    description: t("inline_hint_description", lang),
+    title: title,
+    description: description,
+    input_message_content: {
+      message_text: title + "\n\n" + description,
+      parse_mode: "HTML",
+    },
   };
 }
 
