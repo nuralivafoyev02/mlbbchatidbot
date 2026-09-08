@@ -109,6 +109,12 @@ module.exports = async function handler(req, res) {
           return handleGetActiveUsers(req, res, body);
         case "check_api_status":
           return handleCheckApiStatus(req, res);
+        case "get_mandatory":
+          return handleGetMandatory(req, res);
+        case "set_mandatory":
+          return handleSetMandatory(req, res, body);
+        case "update_mandatory":
+          return handleUpdateMandatory(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -644,6 +650,200 @@ async function handleCheckApiStatus(req, res) {
   }
 
   return json(res, 200, { ok: true, data: status });
+}
+
+// ---------------------------------------------------------------------------
+// Mandatory Group Settings
+// ---------------------------------------------------------------------------
+
+async function getMandatoryChannelFromSupabase() {
+  try {
+    const data = await supabaseRequest(`/bot_settings?key=eq.mandatory_channel&select=value`);
+    if (Array.isArray(data) && data.length > 0 && data[0]?.value) {
+      return data[0].value;
+    }
+  } catch (e) {
+    console.error("[GET_MANDATORY]", e.message);
+  }
+  return null;
+}
+
+async function setMandatoryChannelInSupabase(value) {
+  if (value) {
+    await supabaseRequest(`/bot_settings?on_conflict=key`, {
+      method: "POST",
+      prefer: "resolution=merge-duplicates",
+      body: { key: "mandatory_channel", value },
+    });
+  } else {
+    await supabaseRequest(`/bot_settings?key=eq.mandatory_channel`, {
+      method: "DELETE" });
+  }
+}
+
+async function checkBotAdminInChat(chatId) {
+  if (!TELEGRAM_BOT_TOKEN) return false;
+  try {
+    const botInfo = await fetchWithTimeout(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe`, { timeoutMs: 5000 });
+    const botData = await botInfo.json();
+    if (!botData.ok || !botData.result) return false;
+    const botId = botData.result.id;
+
+    const resp = await fetchWithTimeout(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChatMember`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, user_id: botId }),
+        timeoutMs: 8000,
+      }
+    );
+    const data = await resp.json();
+    if (!data.ok || !data.result) return false;
+    const status = data.result.status;
+    return status === "administrator" || status === "creator";
+  } catch (e) {
+    console.error("[CHECK_BOT_ADMIN]", e.message);
+    return false;
+  }
+}
+
+async function handleGetMandatory(req, res) {
+  if (!(await requireAuth(req, res))) return;
+
+  const channel = await getMandatoryChannelFromSupabase();
+  const enabled = !!channel;
+  let group = null;
+
+  if (channel) {
+    let isAdmin = true;
+    let chatType = channel.chatType || null;
+    if (channel.id) {
+      isAdmin = await checkBotAdminInChat(channel.id);
+      // Agar chatType saqlanmagan bo'lsa, Telegram dan olamiz
+      if (!chatType && TELEGRAM_BOT_TOKEN) {
+        try {
+          const resp = await fetchWithTimeout(
+            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChat`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chat_id: channel.id }),
+              timeoutMs: 5000,
+            }
+          );
+          const data = await resp.json();
+          if (data.ok && data.result) {
+            chatType = data.result.type || null;
+            // chatType ni keyingi safar uchun saqlab qo'yamiz
+            if (chatType) {
+              channel.chatType = chatType;
+              await setMandatoryChannelInSupabase(channel).catch(() => {});
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+    group = {
+      id: channel.id,
+      title: channel.title || "Noma'lum",
+      username: channel.username || null,
+      invite_link: channel.invite_link || null,
+      chatType: chatType || "group",
+      isAdmin,
+    };
+  }
+
+  return json(res, 200, { ok: true, data: { enabled, group } });
+}
+
+async function handleSetMandatory(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  const chatIdRaw = String(body.chat_id || "").trim();
+  if (!chatIdRaw) {
+    return json(res, 400, { ok: false, error: "chat_id kiritilmagan" });
+  }
+  if (!TELEGRAM_BOT_TOKEN) {
+    return json(res, 500, { ok: false, error: "TELEGRAM_BOT_TOKEN sozlanmagan" });
+  }
+
+  try {
+    const resp = await fetchWithTimeout(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChat`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatIdRaw }),
+        timeoutMs: 8000,
+      }
+    );
+    const data = await resp.json();
+    if (!data.ok || !data.result) {
+      const errDesc = data.description || "";
+      if (/not found|chat not found/i.test(errDesc)) {
+        return json(res, 404, { ok: false, error: "not found" });
+      }
+      if (/forbidden|not a member|bot is not a member/i.test(errDesc)) {
+        return json(res, 403, { ok: false, error: "Bot bu guruh/kanalda emas. Avval botni qo'shing." });
+      }
+      return json(res, 404, { ok: false, error: "Guruh topilmadi yoki bot u yerda emas" });
+    }
+    const chat = data.result;
+    const inviteLink = chat.invite_link || (chat.username ? `https://t.me/${chat.username}` : null);
+    const chatType = chat.type || "group";
+
+    const isAdmin = await checkBotAdminInChat(chat.id);
+
+    const channelData = {
+      id: chat.id,
+      title: chat.title,
+      invite_link: inviteLink,
+      username: chat.username || null,
+    };
+
+    await setMandatoryChannelInSupabase(channelData);
+
+    return json(res, 200, {
+      ok: true,
+      data: {
+        enabled: true,
+        group: {
+          id: chat.id,
+          title: chat.title,
+          username: chat.username || null,
+          invite_link: inviteLink,
+          chatType,
+          isAdmin,
+        },
+      },
+    });
+  } catch (e) {
+    console.error("[SET_MANDATORY]", e.message);
+    return json(res, 500, { ok: false, error: e.message || "Guruh o'rnatishda xatolik" });
+  }
+}
+
+async function handleUpdateMandatory(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  const enabled = body.enabled === true || body.enabled === "true";
+
+  if (!enabled) {
+    try {
+      await setMandatoryChannelInSupabase(null);
+      return json(res, 200, { ok: true, data: { enabled: false, group: null } });
+    } catch (e) {
+      console.error("[UPDATE_MANDATORY]", e.message);
+      return json(res, 500, { ok: false, error: "O'chirishda xatolik" });
+    }
+  }
+
+  // Enabled = true — mavjud guruhni saqlab qo'yamiz
+  const channel = await getMandatoryChannelFromSupabase();
+  return json(res, 200, { ok: true, data: { enabled: true, group: channel || null } });
 }
 
 // ---------------------------------------------------------------------------

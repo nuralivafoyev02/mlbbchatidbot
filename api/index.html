@@ -691,6 +691,43 @@
       border-color: var(--accent)
     }
 
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #4a4a5a;
+      border-radius: 24px;
+      transition: .3s;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: .3s;
+    }
+    .switch input:checked + .slider {
+      background: var(--accent);
+    }
+    .switch input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
     .admin-tag {
       display: inline-block;
       padding: 4px 10px;
@@ -754,6 +791,11 @@
     .toast.error {
       background: rgba(239, 68, 68, 0.9);
       color: #fff
+    }
+
+    .toast.warning {
+      background: rgba(245, 158, 11, 0.9);
+      color: #000
     }
 
     /* Section */
@@ -1247,6 +1289,44 @@
             Saqlash</button>
         </div>
         <div class="card">
+          <div class="card-title">Majburiy guruh / kanal</div>
+          <div class="settings-group">
+            <div class="settings-label">Havola yoki ID kiriting</div>
+            <input class="settings-input" type="text" id="mandatoryGroupIdInput" placeholder="https://t.me/@group, @group yoki -100..." style="width:100%;margin-bottom:8px" oninput="parseMandatoryInput()">
+            <button class="login-btn" id="mandatorySetBtn" style="width:100%;padding:8px;font-size:13px;margin:0" onclick="setMandatoryGroup()">O'rnatish</button>
+            <div id="mandatoryParsedInfo" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.08);border-radius:8px;border:1px solid rgba(99,102,241,0.15)">
+              <div id="mandatoryParsedType" style="font-size:11px;color:var(--text2);margin-bottom:4px"></div>
+              <div id="mandatoryParsedName" style="font-size:13px;color:var(--accent);font-weight:600"></div>
+            </div>
+            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">t.me havolasi, @username yoki chat ID kiriting. Bot guruh/kanalda admin bo'lishi shart!</div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-label">Holat</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <label class="switch">
+                <input type="checkbox" id="mandatoryEnabled" onchange="saveMandatorySettings()">
+                <span class="slider"></span>
+              </label>
+              <span id="mandatoryStatus" style="font-size:12px;color:var(--text2)">O'chirilgan</span>
+            </div>
+          </div>
+          <div id="mandatoryGroupInfo" style="display:none">
+            <div class="settings-group">
+              <div class="settings-label">Tanlangan guruh / kanal</div>
+              <div id="mandatoryGroupName" style="font-size:13px;color:var(--accent);font-weight:600"></div>
+              <div id="mandatoryGroupId" style="font-size:11px;color:var(--text2)"></div>
+              <div id="mandatoryChatType" style="font-size:11px;margin-top:4px"></div>
+              <div id="mandatoryAdminBadge" style="display:none;margin-top:6px">
+                <span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">⚠️ Bot admin emas</span>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <button class="login-btn" style="flex:1;padding:7px;font-size:12px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.25)" onclick="removeMandatoryGroup()"><i class="bi bi-x-circle"></i> Uzish</button>
+                <button class="login-btn" style="flex:1;padding:7px;font-size:12px;background:rgba(99,102,241,0.1);color:var(--accent);border:1px solid rgba(99,102,241,0.2)" onclick="openGroupLink()"><i class="bi bi-box-arrow-up-right"></i> Kanalni ochish</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
           <div class="card-title">Adminlar ro'yxati</div>
           <div id="adminList" style="margin-bottom:8px"></div>
           <div class="admin-add-row">
@@ -1380,6 +1460,7 @@
         loadActiveUsers("today");
         loadUsers(true);
         loadSettings();
+        loadMandatorySettings();
         setupInfiniteScroll();
         setupScrollToTop();
       }
@@ -1396,7 +1477,7 @@
           item.classList.toggle("active", tabs[i] === name);
         });
         if (name === "Users" && allUsers.length === 0) loadUsers();
-        if (name === "Settings") loadSettings();
+        if (name === "Settings") { loadSettings(); loadMandatorySettings(); }
       }
       window.switchTab = switchTab;
 
@@ -1786,6 +1867,190 @@
         });
       }
       window.saveSettings = saveSettings;
+
+      // --- Majburiy guruh sozlamalari ---
+      var mandatoryData = { enabled: false, group: null };
+
+      function loadMandatorySettings() {
+        api("get_mandatory").then(function (result) {
+          if (result.ok && result.data) {
+            mandatoryData = result.data;
+            renderMandatoryUI();
+          }
+        });
+      }
+
+      function parseMandatoryInput() {
+        var input = document.getElementById("mandatoryGroupIdInput");
+        var val = input.value.trim();
+        var info = document.getElementById("mandatoryParsedInfo");
+        var typeEl = document.getElementById("mandatoryParsedType");
+        var nameEl = document.getElementById("mandatoryParsedName");
+
+        if (!val) {
+          info.style.display = "none";
+          return;
+        }
+
+        // t.me link ni parse qilish
+        var tmeMatch = val.match(/(?:https?:\/\/)?t\.me\/([\w]+)(?:\/\d+)?/i);
+        if (tmeMatch) {
+          info.style.display = "block";
+          typeEl.textContent = "Havola aniqlandi";
+          nameEl.textContent = "@" + tmeMatch[1];
+          return;
+        }
+
+        // @username
+        if (val.startsWith("@")) {
+          info.style.display = "block";
+          typeEl.textContent = "Username aniqlandi";
+          nameEl.textContent = val;
+          return;
+        }
+
+        // Chat ID (raqam yoki -100...)
+        if (/^-?\d{5,}$/.test(val)) {
+          info.style.display = "block";
+          typeEl.textContent = "Chat ID aniqlandi";
+          nameEl.textContent = val;
+          return;
+        }
+
+        info.style.display = "none";
+      }
+      window.parseMandatoryInput = parseMandatoryInput;
+
+      function renderMandatoryUI() {
+        var toggle = document.getElementById("mandatoryEnabled");
+        var status = document.getElementById("mandatoryStatus");
+        var info = document.getElementById("mandatoryGroupInfo");
+        var name = document.getElementById("mandatoryGroupName");
+        var idEl = document.getElementById("mandatoryGroupId");
+        var badge = document.getElementById("mandatoryAdminBadge");
+        var chatType = document.getElementById("mandatoryChatType");
+        var parsedInfo = document.getElementById("mandatoryParsedInfo");
+
+        toggle.checked = !!mandatoryData.enabled;
+        status.textContent = mandatoryData.enabled ? "Yoqilgan" : "O'chirilgan";
+        status.style.color = mandatoryData.enabled ? "var(--green)" : "var(--text2)";
+
+        if (mandatoryData.group) {
+          info.style.display = "block";
+          name.textContent = mandatoryData.group.title || "Noma'lum guruh";
+          idEl.textContent = "ID: " + mandatoryData.group.id;
+          var chatTypeText = mandatoryData.group.chatType === "channel" ? "📢 Kanal" : mandatoryData.group.chatType === "supergroup" ? "👥 Super Guruh" : "💬 Guruh";
+          chatType.textContent = chatTypeText;
+          chatType.style.color = "var(--text2)";
+          if (mandatoryData.group.isAdmin === false) {
+            badge.style.display = "block";
+          } else {
+            badge.style.display = "none";
+          }
+        } else {
+          info.style.display = "none";
+        }
+
+        // Agar guruh tanlangan bo'lsa, input ni tozalash
+        if (mandatoryData.group) {
+          parsedInfo.style.display = "none";
+        }
+      }
+
+      function saveMandatorySettings() {
+        var enabled = document.getElementById("mandatoryEnabled").checked;
+        api("update_mandatory", { enabled: enabled }).then(function (result) {
+          if (result.ok) {
+            mandatoryData.enabled = enabled;
+            renderMandatoryUI();
+            showToast(enabled ? "\u2705 Majburiy guruh yoqildi" : "\u2705 Majburiy guruh o'chirildi", "success");
+          } else {
+            showToast("\u274c Xatolik: " + (result.error || ""), "error");
+            document.getElementById("mandatoryEnabled").checked = !enabled;
+          }
+        });
+      }
+      window.saveMandatorySettings = saveMandatorySettings;
+
+      function setMandatoryGroup() {
+        var input = document.getElementById("mandatoryGroupIdInput");
+        var btn = document.getElementById("mandatorySetBtn");
+        var raw = input.value.trim();
+        if (!raw) {
+          showToast("\u26a0\ufe0f Havola yoki ID kiriting", "error");
+          return;
+        }
+
+        // Havolani parse qilish
+        var chatId = raw;
+        var tmeMatch = raw.match(/(?:https?:\/\/)?t\.me\/([\w]+)(?:\/\d+)?/i);
+        if (tmeMatch) {
+          chatId = "@" + tmeMatch[1];
+        }
+
+        // Yuklanmoqda tugmasini ko'rsatish
+        btn.textContent = "⏳";
+        btn.disabled = true;
+
+        api("set_mandatory", { chat_id: chatId }).then(function (result) {
+          btn.textContent = "O'rnatish";
+          btn.disabled = false;
+
+          if (result.ok && result.data) {
+            mandatoryData.group = result.data.group;
+            mandatoryData.enabled = true;
+            document.getElementById("mandatoryEnabled").checked = true;
+            renderMandatoryUI();
+            input.value = "";
+            var groupType = result.data.group.chatType === "channel" ? "kanal" : "guruh";
+            var adminText = result.data.group.isAdmin ? "" : "\n\n\u26a0\ufe0f Bot hali admin emas! Admin qiling.";
+            showToast("\u2705 " + groupType.charAt(0).toUpperCase() + groupType.slice(1) + " o'rnatildi" + adminText, result.data.group.isAdmin ? "success" : "warning");
+          } else {
+            var errMsg = result.error || "Guruh topilmadi";
+            if (errMsg.includes("not found") || errMsg.includes("topilmadi")) {
+              showToast("\u274c Guruh/kanal topilmadi. Bot uni topa olmayapti — avval botni guruhga qo'shing.", "error");
+            } else if (errMsg.includes("admin")) {
+              showToast("\u26a0\ufe0f Bot guruhda admin emas. Avval botni admin qiling.", "warning");
+            } else {
+              showToast("\u274c Xatolik: " + errMsg, "error");
+            }
+          }
+        }).catch(function() {
+          btn.textContent = "O'rnatish";
+          btn.disabled = false;
+          showToast("\u274c Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.setMandatoryGroup = setMandatoryGroup;
+
+      function removeMandatoryGroup() {
+        if (!confirm("Majburiy guruh/kanalni o'chirmoqchimisiz?\n\nBundan keyin foydalanuvchilar botdan majburiy guruhga qo'shilmasdan foydalanishi mumkin bo'ladi.")) {
+          return;
+        }
+        api("update_mandatory", { enabled: false }).then(function (result) {
+          if (result.ok) {
+            mandatoryData.enabled = false;
+            mandatoryData.group = null;
+            document.getElementById("mandatoryEnabled").checked = false;
+            renderMandatoryUI();
+            showToast("\u2705 Majburiy guruh o'chirildi", "success");
+          } else {
+            showToast("\u274c Xatolik: " + (result.error || ""), "error");
+          }
+        });
+      }
+      window.removeMandatoryGroup = removeMandatoryGroup;
+
+      function openGroupLink() {
+        if (mandatoryData.group && mandatoryData.group.invite_link) {
+          window.open(mandatoryData.group.invite_link, "_blank");
+        } else if (mandatoryData.group && mandatoryData.group.username) {
+          window.open("https://t.me/" + mandatoryData.group.username, "_blank");
+        } else {
+          showToast("\u26a0\ufe0f Havola mavjud emas", "error");
+        }
+      }
+      window.openGroupLink = openGroupLink;
 
       function renderAdmins() {
         var container = document.getElementById("adminList");

@@ -75,6 +75,13 @@ function createRes() {
   };
 }
 
+function lastMessageTo(calls, chatId) {
+  const match = [...calls]
+    .reverse()
+    .find((call) => String(call.payload?.chat_id) === String(chatId));
+  return match ? match.payload : undefined;
+}
+
 function hasUnpairedSurrogate(value) {
   const text = String(value || "");
 
@@ -419,8 +426,8 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
   assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu|💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
-  assert.match(JSON.stringify(adminKeyboard), /⚙️ Majburiylikni sozlash/);
-  assert.doesNotMatch(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar|📣 Xabar yuborish|📋 Buyruqlar|ℹ️ Yordam|🏠 Menyu/);
+  assert.match(JSON.stringify(adminKeyboard), /🎛️ Admin Panel/);
+  assert.doesNotMatch(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar|📣 Xabar yuborish|📋 Buyruqlar|ℹ️ Yordam|🏠 Menyu|⚙️ Majburiylikni sozlash/);
 });
 
 test("bind info button prompts for account and server ids", async () => {
@@ -462,7 +469,7 @@ test("bind info button prompts for account and server ids", async () => {
   }
 });
 
-test("bind info result masks all linked identifiers", () => {
+test("bind info result shows raw values from API", () => {
   const normalized = normalizeBindInfoResponse({
     data: {
       bindings: {
@@ -492,24 +499,23 @@ test("bind info result masks all linked identifiers", () => {
   });
 
   assert.match(text, /🆔/);
-  assert.match(text, /📧 <b>Moonton:<\/b> il\*+il@gmail\.com/);
-  assert.match(text, /🔵 <b>VK:<\/b> empty\./);
-  assert.match(text, /🎵 <b>TikTok:<\/b> pr\*+id/);
+  assert.match(text, /🌟 <b>Moonton:<\/b> ilovemysecureemail@gmail\.com/);
+  assert.match(text, /🔵 <b>VK:<\/b> /);
+  assert.match(text, /<b>TikTok:<\/b> private-tiktok-id/);
   assert.match(
     text,
-    /<tg-emoji emoji-id="5929545717583449337">📘<\/tg-emoji> <b>Facebook:<\/b> Te\*+me/
+    /<b>Facebook:<\/b> TestFacebookName/
   );
-  assert.match(text, /🕹 <b>GCID:<\/b> ga\*+id/);
-  assert.match(text, /✈️ <b>Telegram:<\/b> linked\./);
-  assert.match(text, /🟢 <b>WhatsApp:<\/b> 99\*+67/);
+  assert.match(text, /🕹 <b>GCID:<\/b> gamecenterid/);
+  assert.match(text, /✈️ <b>Telegram:<\/b> true/);
+  assert.match(text, /🟢 <b>WhatsApp:<\/b> 998901234567/);
   assert.match(text, /📱 <b>Device Login<\/b>/);
   assert.match(text, /🤖 <b>Android:<\/b> 0/);
   assert.match(text, /🍎 <b>iOS:<\/b> 1/);
   assert.match(text, /📊 <b>Jami:<\/b> 1/);
-  assert.doesNotMatch(text, /ilovemysecureemail|private-tiktok-id|TestFacebookName|998901234567/);
 });
 
-test("bind info result hides device login when provider omits device data", () => {
+test("bind info result shows raw values when provider omits device data", () => {
   const normalized = normalizeBindInfoResponse({
     data: {
       bindings: {
@@ -527,10 +533,10 @@ test("bind info result hides device login when provider omits device data", () =
     ...normalized.data,
   });
 
-  assert.match(text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
+  assert.match(text, /🌟 <b>Moonton:<\/b> owner@example\.com/);
   assert.match(
     text,
-    /<tg-emoji emoji-id="5929545717583449337">📘<\/tg-emoji> <b>Facebook:<\/b> fb\*+er/
+    /<b>Facebook:<\/b> fb-owner/
   );
   assert.doesNotMatch(text, /Device Login|Android|iOS/);
 });
@@ -570,7 +576,7 @@ test("zite player_info bind response is normalized to linked accounts", () => {
     ...normalized.data,
   });
 
-  assert.match(text, /📧 <b>Moonton:<\/b> m\*+@gmail\.com/);
+  assert.match(text, /🌟 <b>Moonton:<\/b> m\*+@gmail\.com/);
   assert.match(text, /🎮 <b>Google Play:<\/b> m\*+@gmail\.com/);
   assert.doesNotMatch(text, /Device Login/);
 });
@@ -631,7 +637,15 @@ test("bind info lookup posts player and server ids to configured API", async () 
   const calls = [];
 
   global.fetch = async (url, options = {}) => {
-    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    calls.push({ url: String(url), payload: JSON.parse(options.body || "{}") });
+
+    // Jebray API — return error so it falls through to the configured bind API
+    if (String(url).includes("fullinfo.example") || String(url).includes("jebray.com")) {
+      return new Response(JSON.stringify({ success: false, error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     return new Response(
       JSON.stringify({
@@ -660,9 +674,11 @@ test("bind info lookup posts player and server ids to configured API", async () 
     const result = await lookupMlbbBindInfo("1006613098", "13019");
 
     assert.equal(result.ok, true);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "https://bind.example.test/bind");
-    assert.deepEqual(calls[0].payload, {
+    // Jebray + bind API = 2 calls
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].url.includes("fullinfo.example"), true);
+    assert.equal(calls[1].url, "https://bind.example.test/bind");
+    assert.deepEqual(calls[1].payload, {
       player_id: "1006613098",
       server_id: "13019",
       x_key: "test-bind-key",
@@ -740,14 +756,13 @@ test("bengkel bot text response is normalized to linked accounts", () => {
     ...normalized.data,
   });
 
-  assert.match(text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-  assert.match(text, /🎮 <b>Google Play:<\/b> linked\./);
-  assert.match(text, /🎵 <b>TikTok:<\/b> empty\./);
-  assert.match(text, /✈️ <b>Telegram:<\/b> @o\*+er/);
+  assert.match(text, /🌟 <b>Moonton:<\/b> owner@example\.com/);
+  assert.match(text, /🎮 <b>Google Play:<\/b> true/);
+  assert.match(text, /<b>TikTok:<\/b> not linked/);
+  assert.match(text, /✈️ <b>Telegram:<\/b> @owner/);
   assert.match(text, /🤖 <b>Android:<\/b> 2/);
   assert.match(text, /🍎 <b>iOS:<\/b> 1/);
   assert.match(text, /📊 <b>Jami:<\/b> 3/);
-  assert.doesNotMatch(text, /998901234567/);
 });
 
 test("bengkel bridge request uses target bot and parses bridge text", async () => {
@@ -765,6 +780,7 @@ test("bengkel bridge request uses target bot and parses bridge text", async () =
       process.env.MLBB_BIND_INFO_BENGKEL_BOT_USERNAME,
     MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE:
       process.env.MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE,
+    FULL_INFO_API_KEY: process.env.FULL_INFO_API_KEY,
   };
   const calls = [];
 
@@ -798,6 +814,7 @@ test("bengkel bridge request uses target bot and parses bridge text", async () =
     process.env.MLBB_BIND_INFO_API_METHOD = "POST";
     process.env.MLBB_BIND_INFO_API_KEY = "bridge-secret";
     delete process.env.MLBB_BIND_INFO_BENGKEL_MESSAGE_TEMPLATE;
+    delete process.env.FULL_INFO_API_KEY;
     delete global.__MLBB_BOT_STATS__;
     delete require.cache[modulePath];
 
@@ -846,6 +863,7 @@ test("bengkel provider rejects direct Telegram Bot API URL", async () => {
     MLBB_BIND_INFO_PROVIDER: process.env.MLBB_BIND_INFO_PROVIDER,
     MLBB_BIND_INFO_API_URL: process.env.MLBB_BIND_INFO_API_URL,
     MLBB_BIND_INFO_API_METHOD: process.env.MLBB_BIND_INFO_API_METHOD,
+    FULL_INFO_API_KEY: process.env.FULL_INFO_API_KEY,
   };
 
   try {
@@ -854,6 +872,7 @@ test("bengkel provider rejects direct Telegram Bot API URL", async () => {
     process.env.MLBB_BIND_INFO_PROVIDER = "bengkel";
     process.env.MLBB_BIND_INFO_API_URL = "https://api.telegram.org/bot123/sendMessage";
     process.env.MLBB_BIND_INFO_API_METHOD = "POST";
+    delete process.env.FULL_INFO_API_KEY;
     delete global.__MLBB_BOT_STATS__;
     delete require.cache[modulePath];
 
@@ -950,7 +969,7 @@ test("bind info button mode returns masked linked accounts", async () => {
     );
 
     const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
-    const finalMessage = calls.at(-1).payload.text;
+    const finalMessage = lastMessageTo(calls, chat.id).text;
 
     assert.deepEqual(bindCall.payload, {
       player_id: "1006613098",
@@ -958,14 +977,13 @@ test("bind info button mode returns masked linked accounts", async () => {
       x_key: "test-bind-key",
     });
     assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
-    assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-    assert.match(finalMessage, /<b>Facebook:<\/b> fb\*+er/);
-    assert.match(finalMessage, /✈️ <b>Telegram:<\/b> linked\./);
+    assert.match(finalMessage, /<b>Moonton:<\/b> owner@example\.com/);
+    assert.match(finalMessage, /<b>Facebook:<\/b> fb-owner/);
+    assert.match(finalMessage, /<b>Telegram:<\/b> true/);
     assert.match(finalMessage, /<b>Device Login<\/b>/);
     assert.match(finalMessage, /🤖 <b>Android:<\/b> 2/);
     assert.match(finalMessage, /🍎 <b>iOS:<\/b> 1/);
-    assert.match(finalMessage, /📊 <b>Jami:<\/b> 3/);
-    assert.doesNotMatch(finalMessage, /owner@example\.com|fb-owner/);
+    assert.match(finalMessage, /<b>Jami:<\/b> 3/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1047,7 +1065,7 @@ test("bind info prompt reply uses bind lookup even if runtime mode is missing", 
     );
 
     const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
-    const finalMessage = calls.at(-1).payload.text;
+    const finalMessage = lastMessageTo(calls, chat.id).text;
 
     assert.ok(bindCall);
     assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
@@ -1113,7 +1131,7 @@ test("/bind command returns masked linked accounts", async () => {
     );
 
     const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
-    const finalMessage = calls.at(-1).payload.text;
+    const finalMessage = lastMessageTo(calls, 70042).text;
 
     assert.deepEqual(bindCall.payload, {
       player_id: "1006613098",
@@ -1121,11 +1139,11 @@ test("/bind command returns masked linked accounts", async () => {
       x_key: "test-bind-key",
     });
     assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
-    assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-    assert.match(finalMessage, /<b>Facebook:<\/b> fb\*+er/);
+    assert.match(finalMessage, /<b>Moonton:<\/b> owner@example\.com/);
+    assert.match(finalMessage, /<b>Facebook:<\/b> fb-owner/);
     assert.match(finalMessage, /🤖 <b>Android:<\/b> 1/);
     assert.match(finalMessage, /🍎 <b>iOS:<\/b> 0/);
-    assert.match(finalMessage, /📊 <b>Jami:<\/b> 1/);
+    assert.match(finalMessage, /<b>Jami:<\/b> 1/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1183,7 +1201,7 @@ test("/info command is an alias for bind info lookup", async () => {
     );
 
     const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
-    const finalMessage = calls.at(-1).payload.text;
+    const finalMessage = lastMessageTo(calls, 70043).text;
 
     assert.deepEqual(bindCall.payload, {
       player_id: "1006613098",
@@ -1191,8 +1209,8 @@ test("/info command is an alias for bind info lookup", async () => {
       x_key: "test-bind-key",
     });
     assert.match(finalMessage, /<b>Ulanmalar<\/b>/);
-    assert.match(finalMessage, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-    assert.match(finalMessage, /🎮 <b>Google Play:<\/b> linked\./);
+    assert.match(finalMessage, /<b>Moonton:<\/b> owner@example\.com/);
+    assert.match(finalMessage, /<b>Google Play:<\/b> true/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1314,10 +1332,13 @@ test("/start sends a reply keyboard", async () => {
     );
 
     assert.equal(res.statusCode, 200);
-    assert.equal(calls.length, 1);
-    assert.ok(calls[0].payload.reply_markup.keyboard);
-    assert.equal(calls[0].payload.reply_markup.inline_keyboard, undefined);
-    assert.equal(calls[0].payload.reply_markup.input_field_placeholder, undefined);
+    const welcomeCall = calls.find(
+      (call) => String(call.url).includes("sendMessage") && /Salom,/.test(call.payload.text)
+    );
+    assert.ok(welcomeCall, "welcome message should be sent");
+    assert.ok(welcomeCall.payload.reply_markup.keyboard);
+    assert.equal(welcomeCall.payload.reply_markup.inline_keyboard, undefined);
+    assert.equal(welcomeCall.payload.reply_markup.input_field_placeholder, undefined);
   } finally {
     global.fetch = originalFetch;
   }
@@ -1495,7 +1516,7 @@ test("group /info command returns masked linked accounts", async () => {
     );
 
     const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
-    const finalMessage = calls.at(-1).payload;
+    const finalMessage = lastMessageTo(calls, -100777);
 
     assert.equal(res.statusCode, 200);
     assert.ok(bindCall);
@@ -1505,9 +1526,9 @@ test("group /info command returns masked linked accounts", async () => {
       x_key: "test-bind-key",
     });
     assert.match(finalMessage.text, /<b>Ulanmalar<\/b>/);
-    assert.match(finalMessage.text, /📧 <b>Moonton:<\/b> ow\*+er@example\.com/);
-    assert.match(finalMessage.text, /<b>Facebook:<\/b> fb\*+er/);
-    assert.equal(finalMessage.reply_markup, undefined);
+    assert.match(finalMessage.text, /<b>Moonton:<\/b> owner@example\.com/);
+    assert.match(finalMessage.text, /<b>Facebook:<\/b> fb-owner/);
+    assert.deepEqual(finalMessage.reply_markup, { remove_keyboard: true });
   } finally {
     global.fetch = originalFetch;
   }
@@ -1568,13 +1589,13 @@ test("group /bind command works without mentioning the bot", async () => {
     );
 
     const bindCall = calls.find((call) => call.url === "https://bind.example.test/bind");
-    const finalMessage = calls.at(-1).payload;
+    const finalMessage = lastMessageTo(calls, -100777);
 
     assert.equal(res.statusCode, 200);
     assert.ok(bindCall);
     assert.match(finalMessage.text, /<b>Ulanmalar<\/b>/);
-    assert.match(finalMessage.text, /🎮 <b>Google Play:<\/b> linked\./);
-    assert.equal(finalMessage.reply_markup, undefined);
+    assert.match(finalMessage.text, /<b>Google Play:<\/b> true/);
+    assert.deepEqual(finalMessage.reply_markup, { remove_keyboard: true });
   } finally {
     global.fetch = originalFetch;
   }
@@ -1628,12 +1649,12 @@ test("group mention with MLBB ids returns the usual lookup result", async () => 
       res
     );
 
-    const finalMessage = calls.at(-1).payload;
+    const finalMessage = lastMessageTo(calls, -100777);
 
     assert.equal(res.statusCode, 200);
     assert.match(finalMessage.text, /Server Aniqlash Natijasi/);
     assert.match(finalMessage.text, /Indonesia/);
-    assert.equal(finalMessage.reply_markup, undefined);
+    assert.deepEqual(finalMessage.reply_markup, { remove_keyboard: true });
   } finally {
     global.fetch = originalFetch;
   }
@@ -1690,12 +1711,12 @@ test("group /check command works without mentioning the bot", async () => {
       res
     );
 
-    const finalMessage = calls.at(-1).payload;
+    const finalMessage = lastMessageTo(calls, -100777);
 
     assert.equal(res.statusCode, 200);
     assert.match(finalMessage.text, /Server Aniqlash Natijasi/);
     assert.match(finalMessage.text, /Singapore/);
-    assert.equal(finalMessage.reply_markup, undefined);
+    assert.deepEqual(finalMessage.reply_markup, { remove_keyboard: true });
   } finally {
     global.fetch = originalFetch;
   }

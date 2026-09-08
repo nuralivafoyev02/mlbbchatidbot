@@ -375,6 +375,12 @@ async function processUpdate(update, options = {}) {
     );
     return;
   }
+
+  // Bot guruh/kanalga qo'shilganda yoki chiqarilganda
+  if (update.my_chat_member) {
+    await handleMyChatMemberUpdate(update.my_chat_member, update.update_id);
+    return;
+  }
 }
 const MEMBERSHIP_STATUS_OK = new Set(["creator", "administrator", "member"]);
 
@@ -1060,6 +1066,99 @@ async function handleMessage(message, updateMeta = {}) {
   await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
 }
 
+async function handleMyChatMemberUpdate(chatMember, updateId) {
+  const chat = chatMember.chat || {};
+  const newMember = chatMember.new_chat_member || {};
+  const oldMember = chatMember.old_chat_member || {};
+
+  const botId = newMember.user?.id || oldMember.user?.id;
+  if (!botId) return;
+
+  const chatId = chat.id;
+  const chatTitle = chat.title || "Noma'lum guruh";
+
+  const wasAdmin = oldMember.status === "administrator" || oldMember.status === "creator";
+  const isAdmin = newMember.status === "administrator" || newMember.status === "creator";
+  const wasMember = oldMember.status !== "left" && oldMember.status !== "kicked";
+  const isMember = newMember.status !== "left" && newMember.status !== "kicked";
+
+  // Bot qo'shilgan
+  if (!wasMember && isMember) {
+    console.log(`[BOT_ADDED] Bot ${chatTitle} (${chatId}) guruhiga qo'shildi. Admin: ${isAdmin}`);
+
+    // Majburiy guruh sifatida o'rnatilgan bo'lsa, adminlikni tekshiramiz
+    const mandatory = await getMandatoryChannel();
+    if (mandatory && String(mandatory.id) === String(chatId)) {
+      if (!isAdmin) {
+        // Admin emasligini xabar qilamiz
+        const adminIds = await getAdminIds();
+        for (const adminId of adminIds) {
+          try {
+            await sendMessage(
+              adminId,
+              `⚠️ <b>${escapeHtml(chatTitle)}</b> guruhida bot admin emas!\n\nMajburiy guruh sifatida ishlashi uchun botni guruhda admin qiling.\n\nGuruh ID: <code>${chatId}</code>`
+            );
+          } catch (e) {
+            // Xabarni yuborib bo'lmadi
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // Bot chiqarilgan
+  if (wasMember && !isMember) {
+    console.log(`[BOT_REMOVED] Bot ${chatTitle} (${chatId}) guruhidan chiqarildi.`);
+
+    // Majburiy guruh bo'lsa, o'chiramiz
+    const mandatory = await getMandatoryChannel();
+    if (mandatory && String(mandatory.id) === String(chatId)) {
+      try {
+        await setMandatoryChannel(null);
+        console.log(`[MANDATORY_CLEARED] Majburiy guruh o'chirildi: bot chiqarildi`);
+      } catch (e) {
+        console.error("[MANDATORY_CLEAR_ERROR]", e.message);
+      }
+    }
+    return;
+  }
+
+  // Adminlik holati o'zgargan
+  if (wasAdmin !== isAdmin) {
+    console.log(`[BOT_ADMIN_CHANGED] Bot ${chatTitle} (${chatId}) adminlik: ${wasAdmin} → ${isAdmin}`);
+
+    const mandatory = await getMandatoryChannel();
+    if (mandatory && String(mandatory.id) === String(chatId)) {
+      const adminIds = await getAdminIds();
+      for (const adminId of adminIds) {
+        try {
+          await sendMessage(
+            adminId,
+            isAdmin
+              ? `✅ <b>${escapeHtml(chatTitle)}</b> guruhida bot endi admin!`
+              : `⚠️ <b>${escapeHtml(chatTitle)}</b> guruhida bot adminlikdan chiqarildi!\nMajburiy guruh sifatida ishlashi uchun botni admin qiling.`
+          );
+        } catch (e) {
+          // Xabarni yuborib bo'lmadi
+        }
+      }
+    }
+  }
+}
+
+async function getAdminIds() {
+  try {
+    const data = await supabaseRequest(`/admin_settings?key=eq.admin_ids&select=value&limit=1`);
+    if (Array.isArray(data) && data.length > 0 && data[0]?.value?.ids) {
+      return data[0].value.ids;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return ADMIN_IDS || [];
+}
+
 async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {}) {
   if (!callbackQuery?.id) {
     return;
@@ -1134,7 +1233,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
          await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "❌ Guruhning public username yoki invite linki yo'q. Avval link yarating.", show_alert: true });
          return;
       }
-      await setMandatoryChannel({ id: chat.id, title: chat.title, invite_link: inviteLink, username: chat.username });
+      await setMandatoryChannel({ id: chat.id, title: chat.title, invite_link: inviteLink, username: chat.username, chatType: chat.type });
       await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
       await sendMessage(chatId, `✅ <b>${chat.title}</b> majburiy guruh etib belgilandi!`, mainKeyboard(user));
     } catch (err) {
@@ -1564,7 +1663,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
 
   void safeSendChatAction(chatId, "typing");
 
-  if ((isZiteBindInfoProvider() || isBengkelBindInfoProvider()) && !options.skipWait) {
+  if (!options.skipWait) {
     const waitResponse = await safeSendMessage(chatId, getBindInfoWaitText(getUserLang(user.id)), replyMarkup);
     waitMessage = normalizeBindWaitMessage({
       chatId,
@@ -2539,16 +2638,29 @@ async function lookupMlbbAccount(accountId, zoneId) {
 }
 
 async function lookupMlbbBindInfo(accountId, zoneId) {
-  if (isBengkelBindInfoProvider()) {
-    return lookupBengkelMlbbBindInfo(accountId, zoneId);
+  // 1) Jebray (api.jebray.com) — birinchi urinish
+  const jebrayResult = await lookupJebrayMlbbBindInfo(accountId, zoneId);
+  if (jebrayResult.ok) {
+    return jebrayResult;
   }
 
+  // 2) Bengkel fallback — Jebray natija bermasa
+  if (isBengkelBindInfoProvider()) {
+    const bengkelResult = await lookupBengkelMlbbBindInfo(accountId, zoneId);
+    if (bengkelResult.ok) {
+      return bengkelResult;
+    }
+    // Jebray faqat sozlanmaganligi sababli ishlamagan bo'lsa, bengkel xatosini
+    // ko'rsatamiz (aniqroq xabar). Aks holda birinchi (Jebray) xatosini qaytaramiz.
+    if (jebrayResult.reason === "bind_info_api_not_configured") {
+      return bengkelResult;
+    }
+    return jebrayResult;
+  }
+
+  // 3) Default API (MLBB_BIND_INFO_API_URL) — Bengkel sozlanmagan bo'lsa
   if (!MLBB_BIND_INFO_API_URL) {
-    return {
-      ok: false,
-      reason: "bind_info_api_not_configured",
-      technicalReason: "MLBB_BIND_INFO_API_URL env sozlanmagan",
-    };
+    return jebrayResult;
   }
 
   try {
@@ -2691,6 +2803,98 @@ async function lookupBengkelMlbbBindInfo(accountId, zoneId) {
       provider: "bengkel_bot",
       reason: getFriendlyBindInfoReason({ error }),
       technicalReason: error.message || "Bengkel bridge ishlamadi",
+    };
+  }
+}
+
+async function lookupJebrayMlbbBindInfo(accountId, zoneId) {
+  if (!FULL_INFO_API_KEY) {
+    return {
+      ok: false,
+      provider: "jebray_bind",
+      reason: "bind_info_api_not_configured",
+      technicalReason: "FULL_INFO_API_KEY env sozlanmagan (Jebray bind uchun)",
+    };
+  }
+
+  try {
+    const url = `${FULL_INFO_API_URL.replace(/\/+$/, "")}/tools/cek-bind`;
+
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": FULL_INFO_API_KEY,
+      },
+      body: JSON.stringify({
+        player_id: Number(accountId),
+        zone_id: Number(zoneId),
+      }),
+      timeoutMs: FULL_INFO_TIMEOUT_MS,
+    });
+
+    const bodyText = await response.text();
+    const data = safeJsonParse(bodyText);
+
+    if (!response.ok) {
+      const reason = getFriendlyBindInfoReason({
+        status: response.status,
+        data,
+      });
+
+      return {
+        ok: false,
+        provider: "jebray_bind",
+        reason,
+        technicalReason: `Jebray bind API HTTP ${response.status}: ${clipText(
+          bodyText || response.statusText,
+          180
+        )}`,
+        status: response.status,
+        data,
+      };
+    }
+
+    if (!data || data.success !== true || !data.data) {
+      return {
+        ok: false,
+        provider: "jebray_bind",
+        reason: getFriendlyBindInfoReason({
+          status: response.status,
+          data,
+          fallback: "Jebray bind API muvaffaqiyatsiz",
+        }),
+        technicalReason: bodyText
+          ? clipText(bodyText, 180)
+          : "Jebray bind API bo\'sh javob qaytardi",
+        status: response.status,
+        data,
+      };
+    }
+
+    const normalized = normalizeBindInfoResponse(data);
+
+    if (!normalized.ok) {
+      return {
+        ok: false,
+        provider: "jebray_bind",
+        reason: normalized.reason,
+        technicalReason: normalized.reason,
+        data,
+      };
+    }
+
+    return {
+      ok: true,
+      provider: "jebray_bind",
+      data: normalized.data,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "jebray_bind",
+      reason: getFriendlyBindInfoReason({ error }),
+      technicalReason: error.message || "Jebray bind API ishlamadi",
     };
   }
 }
@@ -4700,7 +4904,7 @@ function mainKeyboard(user = {}) {
       2,
       0,
       [{ text: t("btn_stats", lang) }, { text: t("btn_users", lang) }],
-      [{ text: t("btn_mandatory_setup", lang) }, { text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
+      [{ text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
     );
   }
 
@@ -5567,32 +5771,6 @@ function isEmptyBindValue(value) {
   );
 }
 
-function maskSensitiveValue(value) {
-  if (isEmptyBindValue(value)) {
-    return "empty.";
-  }
-
-  if (value === true) {
-    return "linked.";
-  }
-
-  const text = sanitizeTelegramText(String(value)).trim();
-
-  if (!text) {
-    return "empty.";
-  }
-
-  if (["1", "true", "yes", "linked", "bound", "connected"].includes(text.toLowerCase())) {
-    return "linked.";
-  }
-
-  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(text)) {
-    return maskEmailValue(text);
-  }
-
-  return maskTokenValue(text);
-}
-
 function formatBindValue(value) {
   if (isEmptyBindValue(value)) {
     return "empty.";
@@ -5615,31 +5793,6 @@ function formatBindValue(value) {
   return text;
 }
 
-function maskEmailValue(value) {
-  const [localPart, ...domainParts] = String(value).split("@");
-  const domain = domainParts.join("@");
-
-  if (!domain) {
-    return maskTokenValue(value);
-  }
-
-  return `${maskTokenValue(localPart)}@${domain}`;
-}
-
-function maskTokenValue(value) {
-  const chars = Array.from(String(value));
-
-  if (chars.length <= 2) {
-    return "*".repeat(Math.max(1, chars.length));
-  }
-
-  if (chars.length <= 4) {
-    return `${chars[0]}${"*".repeat(chars.length - 2)}${chars.at(-1)}`;
-  }
-
-  return `${chars.slice(0, 2).join("")}${"*".repeat(chars.length - 4)}${chars.slice(-2).join("")}`;
-}
-
 function formatDeviceLoginCount(value) {
   if (isEmptyBindValue(value)) {
     return "0";
@@ -5655,7 +5808,7 @@ function formatDeviceLoginCount(value) {
     return String(Math.trunc(number));
   }
 
-  return maskSensitiveValue(value);
+  return String(value);
 }
 
 function getDeviceLoginResultLines(deviceLogin = {}) {
