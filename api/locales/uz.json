@@ -48,6 +48,8 @@
   "bind_info_wait": "🙏 <b>Ulanmalar tekshirilmoqda...</b>\n\nIltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
   "inline_bind_title": "🔗 Ulanmalar: {accountId} ({zoneId})",
   "inline_bind_description": "Bosing — natija ushbu chatga yuboriladi",
+  "inline_server_title": "🔎 Server Aniqlash: {accountId} ({zoneId})",
+  "inline_server_description": "Bosing — region natijasi ushbu chatga yuboriladi",
   "inline_hint_title": "ID va serverni kiriting",
   "inline_hint_description": "Namuna: 1006613098 13019",
   "bind_info_title": "🔗 <b>Ulanmalar</b>",

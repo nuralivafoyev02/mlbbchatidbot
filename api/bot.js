@@ -1755,12 +1755,14 @@ function buildInlineHintResult(lang) {
   };
 }
 
-async function notifyInlineBindUsage(user, accountId, zoneId) {
+async function notifyInlineUsage(user, accountId, zoneId, feature) {
   if (!MAIN_GROUP_ID) return;
   const userMention = user.username
     ? `@${user.username}`
     : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
-  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ni inline orqali tekshirdi.`;
+  const actionWord =
+    feature === FEATURE_ACTIONS.SERVER_CHECK ? "ni check qildi." : "ni ulanmalarini tekshirdi.";
+  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ${actionWord}`;
   const inlineKeyboard = {
     inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]],
   };
@@ -1800,10 +1802,9 @@ async function handleInlineQuery(inlineQuery, options = {}) {
     const now = Date.now();
 
     // Telegram bir xil inline so'rovni bir necha marta qayta yuborishi mumkin.
-    // Qisqa muddat ichida bir xil ID-tekshiruv qaytarilsa — qayta API chaqiruv
-    // va kvota sarflamasdan keshlangan natijani qaytaramiz.
+    // Qisqa muddat ichida bir xil ID-tekshiruv qaytarilsa — keshlangan natijani
+    // qaytaramiz (API va kvota takror sarflanmaydi).
     if (recent && now - recent.at < INLINE_DEDUP_TTL_MS) {
-      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
       return await answerInlineQuery(queryId, recent.results);
     }
 
@@ -1828,52 +1829,102 @@ async function handleInlineQuery(inlineQuery, options = {}) {
       }
     }
 
-    const bindInfo = await lookupMlbbBindInfo(parsed.accountId, parsed.zoneId);
-    trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
+    // Server aniqlash va Ulanmalar tekshiruvini parallel bajaramiz — har biri
+    // o'z natijasini alohida inline karta qilib ko'rsatadi.
+    const [serverOutcome, bindOutcome] = await Promise.allSettled([
+      lookupMlbbAccount(parsed.accountId, parsed.zoneId),
+      lookupMlbbBindInfo(parsed.accountId, parsed.zoneId),
+    ]);
+    const serverLookup = serverOutcome.status === "fulfilled" ? serverOutcome.value : { ok: false };
+    const bindInfo = bindOutcome.status === "fulfilled" ? bindOutcome.value : { ok: false };
 
-    let results;
-    let lastResultText = null;
-    if (!bindInfo.ok) {
-      recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
+    const results = [];
+    const privateCopies = [];
+
+    if (serverLookup.ok) {
+      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.SERVER_CHECK);
+      const serverResultText = enrichPremiumEmojis(getResultText({
         accountId: parsed.accountId,
         zoneId: parsed.zoneId,
-        status: bindInfo.status,
+        nickname: serverLookup.nickname,
+        region: serverLookup.region,
+        serverType: detectServerType(parsed.zoneId),
+        status: "Profil topildi",
+        rawProvider: serverLookup.provider,
+      }, lang));
+      results.push({
+        type: "article",
+        id: `server:${userId}:${parsed.accountId}:${parsed.zoneId}`,
+        title: t("inline_server_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
+        description: t("inline_server_description", lang),
+        input_message_content: {
+          message_text: serverResultText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        },
       });
-      results = [buildInlineMessageResult(
-        t("bind_info_title", lang),
-        getBindInfoFailedText(bindInfo.reason, lang)
-      )];
+      privateCopies.push(serverResultText);
     } else {
-      lastResultText = enrichPremiumEmojis(getBindInfoResultText({
+      recordError("mlbb_lookup_failed", serverLookup.technicalReason || serverLookup.reason, {
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+        status: serverLookup.status,
+      });
+    }
+
+    if (bindInfo.ok) {
+      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
+      const bindResultText = enrichPremiumEmojis(getBindInfoResultText({
         accountId: parsed.accountId,
         zoneId: parsed.zoneId,
         ...bindInfo.data,
       }, limitData, lang));
-      results = [{
+      results.push({
         type: "article",
         id: `${userId}:${parsed.accountId}:${parsed.zoneId}`,
         title: t("inline_bind_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
         description: t("inline_bind_description", lang),
         input_message_content: {
-          message_text: lastResultText,
+          message_text: bindResultText,
           parse_mode: "HTML",
           disable_web_page_preview: true,
         },
-      }];
+      });
+      privateCopies.push(bindResultText);
+    } else {
+      recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+        status: bindInfo.status,
+      });
+    }
+
+    // Har ikkala tekshiruv ham muvaffaqiyatsiz bo'lsa — yagona xato karta.
+    if (results.length === 0) {
+      results.push(buildInlineMessageResult(
+        t("bind_info_title", lang),
+        getBindInfoFailedText(bindInfo.reason, lang)
+      ));
     }
 
     stats.inlineDedup.set(dedupKey, { at: now, results });
 
     await answerInlineQuery(queryId, results);
 
+    // Main guruhga foydalanish xabari — har bir muvaffaqiyatli tekshiruv uchun.
+    if (serverLookup.ok) {
+      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
+    }
     if (bindInfo.ok) {
-      await notifyInlineBindUsage(user, parsed.accountId, parsed.zoneId);
+      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
+    }
 
-      // Agar inline boshqa chatda ishlatilgan bo'lsa — natijani userni bot
-      // bilan shaxsiy chatiga ham yuboramiz (shuning uchun yechib ko'radi).
-      if (!isPrivate && lastResultText) {
+    // Inline boshqa chatda ishlatilgan bo'lsa — natijalarni userni bot bilan
+    // shaxsiy chatiga ham yuboramiz.
+    if (!isPrivate) {
+      for (const resultText of privateCopies) {
         try {
-          await sendMessage(userId, lastResultText, resultKeyboard(user));
+          await sendMessage(userId, resultText, resultKeyboard(user));
         } catch (error) {
           console.error("[INLINE_PRIVATE_COPY_FAILED]", error.message);
         }

@@ -1336,6 +1336,98 @@ test("inline mode answers a valid ID check with a sendable bind result", async (
   }
 });
 
+test("inline mode also surfaces a server detection article for the same ID", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText.startsWith("https://api.isan.eu.org/nickname/ml")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          success: true,
+          data: { id: "1006613098", zone: "13019", nickname: "TestPlayer", region: "Asia" },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 4906,
+          inline_query: {
+            id: "inline-q-5",
+            from: { id: 70095, first_name: "Ali" },
+            query: "1006613098 (13019)",
+            chat_type: "private",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const answerCall = calls.find((c) => c.url.includes("/answerInlineQuery"));
+
+    assert.ok(answerCall);
+    assert.equal(answerCall.payload.results.length, 2);
+
+    const serverArticle = answerCall.payload.results[0];
+    assert.match(serverArticle.title, /Server Aniqlash/);
+    assert.match(serverArticle.title, /1006613098/);
+    assert.match(serverArticle.input_message_content.message_text, /<b>Server Aniqlash Natijasi<\/b>/);
+    assert.match(serverArticle.input_message_content.message_text, /Original Server/);
+    assert.match(serverArticle.input_message_content.message_text, /Region:<\/b> Asia/);
+    assert.match(serverArticle.input_message_content.message_text, /Nickname:<\/b> TestPlayer/);
+
+    const bindArticle = answerCall.payload.results[1];
+    assert.match(bindArticle.input_message_content.message_text, /<b>Ulanmalar<\/b>/);
+    assert.match(bindArticle.input_message_content.message_text, /<b>Moonton:<\/b> owner@example\.com/);
+
+    // private chat query -> no duplicate copy back to the same user chat
+    assert.equal(
+      calls.some((c) => c.url.includes("/sendMessage") && c.payload.chat_id === 70095),
+      false
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("inline mode answers an invalid query with a usage hint", async () => {
   const originalFetch = global.fetch;
   const calls = [];

@@ -48,6 +48,8 @@
   "bind_info_wait": "🙏 <b>Проверка привязок...</b>\n\nПожалуйста, подождите. Это может занять некоторое время.",
   "inline_bind_title": "🔗 Привязки: {accountId} ({zoneId})",
   "inline_bind_description": "Нажмите — результат отправится в этот чат",
+  "inline_server_title": "🔎 Определение сервера: {accountId} ({zoneId})",
+  "inline_server_description": "Нажмите — результат по региону отправится в этот чат",
   "inline_hint_title": "Введите ID и сервер",
   "inline_hint_description": "Пример: 1006613098 13019",
   "bind_info_title": "🔗 <b>Привязки</b>",
