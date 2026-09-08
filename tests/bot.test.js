@@ -515,6 +515,42 @@ test("bind info result shows raw values from API", () => {
   assert.match(text, /📊 <b>Jami:<\/b> 1/);
 });
 
+test("jebray cek-bind flat device login keys are normalized and displayed", () => {
+  const normalized = normalizeBindInfoResponse({
+    data: {
+      AppleID: "I**********************v",
+      "Device Login Android": 0,
+      "Device Login iOS": 1,
+      Facebook: "T**************m",
+      "GAME CENTER": "(Not Connected)",
+      "Google Play": "(Not Connected)",
+      Moonton: "T********9 (I***********************@gmail.com)",
+      Telegram: "Imronbek Mukhammadjonov",
+      TikTok: "p****************d",
+      VK: "(Not Connected)",
+      WhatsApp: "(Not Connected)",
+      nickname: "V I N S",
+      player_id: 1006613098,
+      server: 13019,
+    },
+  });
+
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.data.deviceLogin.android, "0");
+  assert.equal(normalized.data.deviceLogin.ios, "1");
+
+  const text = getBindInfoResultText({
+    accountId: "1006613098",
+    zoneId: "13019",
+    ...normalized.data,
+  });
+
+  assert.match(text, /📱 <b>Device Login<\/b>/);
+  assert.match(text, /🤖 <b>Android:<\/b> 0/);
+  assert.match(text, /🍎 <b>iOS:<\/b> 1/);
+  assert.match(text, /📊 <b>Jami:<\/b> 1/);
+});
+
 test("bind info result shows raw values when provider omits device data", () => {
   const normalized = normalizeBindInfoResponse({
     data: {

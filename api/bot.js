@@ -3105,6 +3105,23 @@ function hasDirectBindKeys(source = {}) {
   );
 }
 
+function hasFlatDeviceLoginKeys(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return false;
+  }
+
+  return Object.keys(source).some((key) => {
+    const normalized = String(key).toLowerCase().replace(/[\s_-]+/g, "");
+
+    return (
+      normalized.includes("devicelogin") &&
+      (normalized.includes("android") ||
+        normalized.includes("ios") ||
+        normalized.includes("iphone"))
+    );
+  });
+}
+
 function normalizeBindInfoResponse(data) {
   const root = data?.data || data?.result || data?.account || data;
 
@@ -3162,7 +3179,9 @@ function normalizeBindInfoResponse(data) {
       root.devices,
       root.login,
       root.quick_login,
-      root.quickLogin
+      root.quickLogin,
+      hasFlatDeviceLoginKeys(root) ? root : undefined,
+      hasFlatDeviceLoginKeys(playerInfoRoot) ? playerInfoRoot : undefined
     ) ||
       {}
   );
@@ -3205,6 +3224,10 @@ function normalizeBindInfoResponse(data) {
           "androidDevices",
           "android_login",
           "androidLogin",
+          "device login android",
+          "deviceLoginAndroid",
+          "login_android",
+          "loginAndroid",
         ]),
         ios: pickFirstValue(deviceRoot, [
           "ios",
@@ -3222,6 +3245,10 @@ function normalizeBindInfoResponse(data) {
           "iosDevices",
           "ios_login",
           "iosLogin",
+          "device login ios",
+          "deviceLoginIos",
+          "login_ios",
+          "loginIos",
         ]),
       },
     },
