@@ -959,6 +959,11 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isTranslatedKeyboardButton(text, "btn_my_profile")) {
+    await handleMyProfileRequest(chatId, user);
+    return;
+  }
+
   if (isCommand(text, "unset_mandatory")) {
     if (!isAdmin(user.id)) return;
     await setMandatoryChannel(null);
@@ -1234,6 +1239,98 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
     }
     return;
   }
+
+  if (data === "my_profile") {
+    await handleMyProfileRequest(chatId, user);
+    return;
+  }
+}
+
+async function handleMyProfileRequest(chatId, user) {
+  const lang = getUserLang(user.id);
+  const displayName = user.first_name || user.username || String(user.id);
+
+  void safeSendChatAction(chatId, "typing");
+
+  // 1. Ulanmalar (bind) limiti
+  let bindRemaining = "N/A";
+  let bindTotal = 10;
+  try {
+    const bindLimit = await supabaseRpc("check_bind_limit_only", {
+      p_user_id: toPgBigint(user.id),
+      p_limit: 10,
+    });
+    if (bindLimit && typeof bindLimit.remaining === "number") {
+      bindRemaining = bindLimit.remaining;
+      bindTotal = bindLimit.total_limit || 10;
+    }
+  } catch (err) {
+    console.error("[MY_PROFILE_BIND_ERROR]", err.message);
+  }
+
+  // 2. To'liq malumot (full info) qoldig'i
+  let fullInfoRemaining = "N/A";
+  let fullInfoTotal = 3;
+  try {
+    const fullInfoQuota = await supabaseRpc("get_full_info_quota", {
+      p_user_id: toPgBigint(user.id),
+    });
+    if (fullInfoQuota && typeof fullInfoQuota.remaining === "number") {
+      fullInfoRemaining = fullInfoQuota.remaining;
+      fullInfoTotal = fullInfoQuota.remaining;
+    }
+  } catch (err) {
+    console.error("[MY_PROFILE_FULLINFO_ERROR]", err.message);
+  }
+
+  // 3. Foydalanish statistikasi (bot_usage_events dan)
+  let totalActions = 0;
+  let actionBreakdown = {};
+  try {
+    const events = await supabaseRequest(
+      `/bot_usage_events?user_id=eq.${toPgBigint(user.id)}&action=not.is.null&select=action&limit=5000`
+    );
+    if (Array.isArray(events)) {
+      totalActions = events.length;
+      events.forEach(function (e) {
+        const a = e.action || "unknown";
+        actionBreakdown[a] = (actionBreakdown[a] || 0) + 1;
+      });
+    }
+  } catch (err) {
+    console.error("[MY_PROFILE_ACTIONS_ERROR]", err.message);
+  }
+
+  // Action nomlarini tarjima qilish
+  const actionLabels = {
+    server_check: t("label_server_check", lang),
+    bind_info: t("label_bind_info", lang),
+    full_info: t("label_full_info", lang),
+    start: t("label_start", lang),
+    feedback: t("label_feedback", lang),
+  };
+
+  const lines = [
+    `👤 <b>${escapeHtml(displayName)}</b> — Mening profilim`,
+    "",
+    `🔗 <b>Ulanmalar tekshirish:</b> ${bindRemaining}/${bindTotal} ta qoldi`,
+    `📋 <b>To'liq malumot:</b> ${fullInfoRemaining} ta qoldi`,
+    "",
+    `📊 <b>Jami ishlatishlar:</b> ${totalActions} marta`,
+  ]
+
+  // Har bir funksiya bo'yicha
+  const breakdownEntries = Object.entries(actionBreakdown).sort(function (a, b) { return b[1] - a[1]; });
+  if (breakdownEntries.length > 0) {
+    lines.push("");
+    lines.push("<b>Funksiyalar bo'yicha:</b>");
+    breakdownEntries.forEach(function (entry) {
+      const label = actionLabels[entry[0]] || entry[0];
+      lines.push(`  ${label}: <b>${entry[1]}</b> marta`);
+    });
+  }
+
+  await sendMessage(chatId, lines.join("\n"), mainKeyboard(user));
 }
 
 async function handleLanguageCommand(chatId, user) {
@@ -1688,16 +1785,19 @@ async function handleLimitFullInfoCommand(chatId, user, input) {
   const targetUserId = (args[0] || "").replace(/^@/, "");
   const amount = Number.parseInt(args[1], 10);
 
-  if (!/^\d{1,20}$/.test(targetUserId) || !Number.isInteger(amount) || amount <= 0) {
+  if (!/^\d{1,20}$/.test(targetUserId) || !Number.isInteger(amount) || amount === 0) {
     await sendMessage(
       chatId,
       [
         "❌ Format xato.",
         "",
         "To'g'ri ko'rinish:",
-        "<code>/limit_fullinfo [tgid] [limit]</code>",
+        "<code>/limit_fullinfo [tgid] [miqdor]</code>",
         "",
-        "Namuna: <code>/limit_fullinfo 123456789 10</code>",
+        "Musbat qiymat — qo'shish, manfiy — kamaytirish.",
+        "",
+        "Namuna (qo'shish): <code>/limit_fullinfo 123456789 10</code>",
+        "Namuna (kamaytirish): <code>/limit_fullinfo 123456789 -5</code>",
       ].join("\n"),
       mainKeyboard(user)
     );
@@ -1710,20 +1810,32 @@ async function handleLimitFullInfoCommand(chatId, user, input) {
   }
 
   try {
-    const result = await supabaseRpc("add_full_info_quota", {
-      p_user_id: toPgBigint(targetUserId),
-      p_amount: amount,
-    });
+    let result = null;
+    const isNegative = amount < 0;
 
-    if (!result || result.ok !== true) {
-      throw new Error(result?.error || "add_full_info_quota javobi noto'g'ri");
+    if (isNegative) {
+      result = await supabaseRpc("consume_full_info_quota", {
+        p_user_id: toPgBigint(targetUserId),
+        p_action: "consume",
+        p_amount: Math.abs(amount),
+      });
+    } else {
+      result = await supabaseRpc("add_full_info_quota", {
+        p_user_id: toPgBigint(targetUserId),
+        p_amount: amount,
+      });
     }
 
+    if (!result || (result.ok !== true && result.error)) {
+      throw new Error(result?.error || "limit o'zgartirishda xatolik");
+    }
+
+    const absAmount = Math.abs(amount);
     const lines = [
-      `✅ <b>Limit qo'shildi.</b>`,
+      isNegative ? `✅ <b>Limit kamaytirildi.</b>` : `✅ <b>Limit qo'shildi.</b>`,
       "",
       `👤 User ID: <code>${escapeHtml(targetUserId)}</code>`,
-      `➕ Qo'shildi: <b>+${amount}</b> ta`,
+      isNegative ? `➖ Kamaytirildi: <b>${absAmount}</b> ta` : `➕ Qo'shildi: <b>+${amount}</b> ta`,
     ];
 
     if (typeof result.remaining === "number") {
@@ -1732,20 +1844,27 @@ async function handleLimitFullInfoCommand(chatId, user, input) {
 
     await sendMessage(chatId, lines.join("\n"), mainKeyboard(user));
 
-    // Limit olgan userga ham tabrik xabari boradi (bot bilan chat ochgan bo'lsa).
+    // Limit o'zgargan userga xabar yuborish (bot bilan chat ochgan bo'lsa).
     const targetChatId = Number(targetUserId);
     if (Number.isFinite(targetChatId) && targetChatId !== Number(user.id)) {
       const targetLang = await loadUserLangFromSupabase(targetUserId).catch(() => DEFAULT_LANG);
-      const grantedText = t("full_info_quota_granted_user", targetLang, {
-        count: amount,
-        remaining: typeof result.remaining === "number" ? result.remaining : amount,
-      });
+      let notifyText = "";
+
+      if (isNegative) {
+        notifyText = t("full_info_quota_reduced_user", targetLang, {
+          count: absAmount,
+          remaining: typeof result.remaining === "number" ? result.remaining : 0,
+        });
+      } else {
+        notifyText = t("full_info_quota_granted_user", targetLang, {
+          count: amount,
+          remaining: typeof result.remaining === "number" ? result.remaining : amount,
+        });
+      }
 
       try {
-        await sendMessage(targetChatId, grantedText, null);
+        await sendMessage(targetChatId, notifyText, null);
       } catch (notifyError) {
-        // User botni bloklagan yoki bot bilan chat ochmagan — bu xato emas,
-        // limit baribir berilgan. Xatoni log'ga yozamiz.
         console.error("[FULL_INFO_QUOTA_NOTIFY_ERROR]", notifyError.message);
       }
     }
@@ -4584,6 +4703,9 @@ function mainKeyboard(user = {}) {
       [{ text: t("btn_mandatory_setup", lang) }, { text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
     );
   }
+
+  // "Mening profilim" — har bir user uchun, eng pastda, 2 ta tugma joyini egallaydi
+  keyboard.push([{ text: t("btn_my_profile", lang) }]);
 
   return {
     keyboard,

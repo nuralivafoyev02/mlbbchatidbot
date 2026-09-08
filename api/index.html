@@ -964,6 +964,125 @@
     .limit-badge i {
       font-size: 14px
     }
+
+    /* Active users tabs */
+    .active-tab {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform .1s
+    }
+
+    .inactive-tab {
+      flex: 1;
+      padding: 8px 0;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      color: var(--text2);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform .1s
+    }
+
+    .inactive-tab:active {
+      transform: scale(0.97)
+    }
+
+    .active-tab:active {
+      transform: scale(0.97)
+    }
+
+    /* Active user row */
+    .active-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04)
+    }
+
+    .active-row:last-child {
+      border-bottom: none
+    }
+
+    .active-rank {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      flex-shrink: 0;
+      background: rgba(255,255,255,0.05);
+      color: var(--text2)
+    }
+
+    .active-rank.gold {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(245,158,11,0.4)
+    }
+
+    .active-rank.silver {
+      background: linear-gradient(135deg, #94a3b8, #64748b);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(148,163,184,0.3)
+    }
+
+    .active-rank.bronze {
+      background: linear-gradient(135deg, #d97706, #92400e);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(217,119,6,0.3)
+    }
+
+    .active-info {
+      flex: 1;
+      min-width: 0
+    }
+
+    .active-name {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .active-meta {
+      font-size: 11px;
+      color: var(--text2)
+    }
+
+    .active-count {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent3);
+      flex-shrink: 0
+    }
+
+    .active-row.top1 .active-name {
+      color: #fbbf24
+    }
+
+    .active-row.top2 .active-name {
+      color: #94a3b8
+    }
+
+    .active-row.top3 .active-name {
+      color: #d97706
+    }
   </style>
 </head>
 
@@ -1058,6 +1177,17 @@
               <div class="stat-value" id="statTotalActions">-</div>
               <div class="stat-label">Jami ishlatishlar</div>
             </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🏆 Eng faol foydalanuvchilar</div>
+          <div style="display:flex;gap:6px;margin-bottom:12px" id="activeTabs">
+            <button class="active-tab" data-period="today" onclick="loadActiveUsers('today')">Bugun</button>
+            <button class="inactive-tab" data-period="week" onclick="loadActiveUsers('week')">Joriy xafta</button>
+            <button class="inactive-tab" data-period="all" onclick="loadActiveUsers('all')">Umumiy davr</button>
+          </div>
+          <div id="activeUsersList">
+            <div class="empty" style="padding:20px"><div class="spinner"></div></div>
           </div>
         </div>
         <div class="card">
@@ -1247,6 +1377,7 @@
       ----------------------------------------------------------------------- */
       function initApp() {
         loadStats();
+        loadActiveUsers("today");
         loadUsers(true);
         loadSettings();
         setupInfiniteScroll();
@@ -1268,6 +1399,59 @@
         if (name === "Settings") loadSettings();
       }
       window.switchTab = switchTab;
+
+      /* -----------------------------------------------------------------------
+         Active Users
+      ----------------------------------------------------------------------- */
+      var currentActivePeriod = "today";
+
+      function loadActiveUsers(period) {
+        currentActivePeriod = period || "today";
+        // Update tab styles
+        document.querySelectorAll("#activeTabs button").forEach(function (btn) {
+          if (btn.getAttribute("data-period") === currentActivePeriod) {
+            btn.className = "active-tab";
+          } else {
+            btn.className = "inactive-tab";
+          }
+        });
+        var list = document.getElementById("activeUsersList");
+        list.innerHTML = '<div class="empty" style="padding:16px"><div class="spinner"></div></div>';
+
+        api("get_active_users", { period: currentActivePeriod, limit: 10 }).then(function (result) {
+          if (!result.ok || !result.data.users || result.data.users.length === 0) {
+            list.innerHTML = '<div class="empty" style="padding:20px;color:var(--text2);font-size:13px">Bu davrda foydalanish qayd etilmagan.</div>';
+            return;
+          }
+          var html = "";
+          result.data.users.forEach(function (u) {
+            var rankClass = "";
+            var rankContent = String(u.rank);
+            if (u.rank === 1) { rankClass = "gold"; rankContent = "🥇"; }
+            else if (u.rank === 2) { rankClass = "silver"; rankContent = "🥈"; }
+            else if (u.rank === 3) { rankClass = "bronze"; rankContent = "🥉"; }
+
+            var rowClass = "active-row";
+            if (u.rank === 1) rowClass += " top1";
+            else if (u.rank === 2) rowClass += " top2";
+            else if (u.rank === 3) rowClass += " top3";
+
+            var name = u.first_name || u.username || String(u.user_id);
+            var meta = u.username ? "@" + u.username : "ID: " + u.user_id;
+
+            html += '<div class="' + esc(rowClass) + '">';
+            html += '<div class="active-rank ' + esc(rankClass) + '">' + rankContent + '</div>';
+            html += '<div class="active-info">';
+            html += '<div class="active-name">' + esc(name) + '</div>';
+            html += '<div class="active-meta">' + esc(meta) + '</div>';
+            html += '</div>';
+            html += '<div class="active-count">' + formatNum(u.action_count) + '</div>';
+            html += '</div>';
+          });
+          list.innerHTML = html;
+        });
+      }
+      window.loadActiveUsers = loadActiveUsers;
 
       /* -----------------------------------------------------------------------
          Dashboard

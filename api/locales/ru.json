@@ -226,5 +226,7 @@
   "label_start": "🚀 /start",
   "label_server_check": "🔎 Проверка сервера",
   "label_bind_info": "🔗 Привязки",
-  "label_feedback": "💬 Отзывы"
+  "label_feedback": "💬 Отзывы",
+  "btn_my_profile": "👤 Мой профиль",
+  "full_info_quota_reduced_user": "⚠️ <b>Лимит уменьшен!</b>\n\nВаш лимит проверки полной информации уменьшен на <b>{count}</b>.\n📦 Осталось: <b>{remaining}</b>."
 }

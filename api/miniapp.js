@@ -105,6 +105,8 @@ module.exports = async function handler(req, res) {
           return handleGetAdmins(req, res);
         case "update_admins":
           return handleUpdateAdmins(req, res, body);
+        case "get_active_users":
+          return handleGetActiveUsers(req, res, body);
         case "check_api_status":
           return handleCheckApiStatus(req, res);
         default:
@@ -388,17 +390,29 @@ async function handleUpdateUser(req, res, body) {
     }
   }
 
-  // Full info quota: ADD amount to current quota
-  if (fullInfoAmount !== undefined && !isNaN(fullInfoAmount) && fullInfoAmount > 0) {
+  // Full info quota: add (positive) or reduce (negative) quota
+  if (fullInfoAmount !== undefined && !isNaN(fullInfoAmount) && fullInfoAmount !== 0) {
     try {
-      const result = await supabaseRpc("add_full_info_quota", {
-        p_user_id: toPgBigint(userId),
-        p_amount: fullInfoAmount,
-      });
-      updates.full_info_quota = result?.remaining || 0;
-      // Notify user via Telegram
-      void sendTelegramMessage(userId,
-        "\uD83C\uDF89 <b>Tabriklayman!</b>\n\nSizga <b>" + fullInfoAmount + " ta</b> to'liq ma'lumot tekshirish uchun paket berildi.\n\uD83D\uDCE6 Sizda jami <b>" + updates.full_info_quota + "</b> ta tekshirish imkoni mavjud.").catch(function() {});
+      if (fullInfoAmount > 0) {
+        const result = await supabaseRpc("add_full_info_quota", {
+          p_user_id: toPgBigint(userId),
+          p_amount: fullInfoAmount,
+        });
+        updates.full_info_quota = result?.remaining || 0;
+        void sendTelegramMessage(userId,
+          "🎉 <b>Tabriklayman!</b>\n\nSizga <b>" + fullInfoAmount + " ta</b> to'liq ma'lumot tekshirish uchun paket berildi.\n📦 Sizda jami <b>" + updates.full_info_quota + "</b> ta tekshirish imkoni mavjud.").catch(function() {});
+      } else {
+        // Negative: reduce quota via consume with refund action
+        const absAmount = Math.abs(fullInfoAmount);
+        const result = await supabaseRpc("consume_full_info_quota", {
+          p_user_id: toPgBigint(userId),
+          p_action: "consume",
+          p_amount: absAmount,
+        });
+        updates.full_info_quota = result?.remaining ?? 0;
+        void sendTelegramMessage(userId,
+          "⚠️ <b>Limit kamaytirildi!</b>\n\nSizning to'liq malumot tekshirish limitingiz <b>" + absAmount + " ta</b> ga kamaytirildi.\n📦 Qoldiq: <b>" + updates.full_info_quota + "</b> ta.").catch(function() {});
+      }
     } catch (e) {
       console.error("[UPDATE_FULLINFO_QUOTA]", e.message);
       return json(res, 500, { ok: false, error: "fullinfo_quota_update_failed", detail: e.message });
@@ -496,6 +510,84 @@ async function handleUpdateAdmins(req, res, body) {
     return json(res, 200, { ok: true, data: { adminIds: ids } });
   } catch (e) {
     return json(res, 500, { ok: false, error: "admins_update_failed" });
+  }
+}
+
+async function handleGetActiveUsers(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  const period = String(body.period || "today").trim();
+  const limit = Math.min(Math.max(parseInt(body.limit, 10) || 10, 1), 50);
+
+  try {
+    let dateFilter = "";
+    const bounds = getTashkentDayBounds();
+
+    if (period === "today") {
+      dateFilter = `&created_at=gte.${bounds.startIso}&created_at=lt.${bounds.endIso}`;
+    } else if (period === "week") {
+      // Current week: Monday 00:00 Tashkent to now
+      const tashkentNow = new Date(Date.now() + 5 * 60 * 60 * 1000);
+      const dayOfWeek = tashkentNow.getUTCDay();
+      const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const mondayMs = Date.UTC(
+        tashkentNow.getUTCFullYear(),
+        tashkentNow.getUTCMonth(),
+        tashkentNow.getUTCDate() - mondayOffset
+      ) - 5 * 60 * 60 * 1000;
+      const weekStartIso = new Date(mondayMs).toISOString();
+      dateFilter = `&created_at=gte.${weekStartIso}`;
+    }
+    // period === 'all' → no date filter
+
+    const params = `select=user_id&action=not.is.null${dateFilter}&limit=5000`;
+    const events = await supabaseRequest(`/bot_usage_events?${params}`);
+    const eventsArr = Array.isArray(events) ? events : [];
+
+    // Count by user_id
+    const userCounts = {};
+    eventsArr.forEach(function (e) {
+      const uid = String(e.user_id);
+      userCounts[uid] = (userCounts[uid] || 0) + 1;
+    });
+
+    // Sort and take top N
+    const sorted = Object.entries(userCounts)
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .slice(0, limit);
+
+    if (sorted.length === 0) {
+      return json(res, 200, { ok: true, data: { users: [], period } });
+    }
+
+    // Fetch user details
+    const userIds = sorted.map(function (s) { return s[0]; });
+    const userParams = `select=user_id,username,first_name,last_name,updates_count&or=(user_id.in.(${userIds.map(encodeURIComponent).join(',')}))`;
+    const usersData = await supabaseRequest(`/bot_users?${userParams}`);
+    const usersMap = {};
+    if (Array.isArray(usersData)) {
+      usersData.forEach(function (u) { usersMap[String(u.user_id)] = u; });
+    }
+
+    const result = sorted.map(function (entry, index) {
+      const uid = entry[0];
+      const count = entry[1];
+      const u = usersMap[uid] || {};
+      return {
+        rank: index + 1,
+        user_id: uid,
+        username: u.username || null,
+        first_name: u.first_name || null,
+        last_name: u.last_name || null,
+        action_count: count,
+        total_updates: u.updates_count || 0,
+      };
+    });
+
+    return json(res, 200, { ok: true, data: { users: result, period } });
+  } catch (e) {
+    console.error("[GET_ACTIVE_USERS]", e.message);
+    return json(res, 200, { ok: true, data: { users: [], period } });
   }
 }
 

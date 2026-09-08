@@ -226,5 +226,7 @@
   "label_start": "🚀 /start",
   "label_server_check": "🔎 Server tekshiruv",
   "label_bind_info": "🔗 Ulanmalar",
-  "label_feedback": "💬 Fikrlar"
+  "label_feedback": "💬 Fikrlar",
+  "btn_my_profile": "👤 Mening profilim",
+  "full_info_quota_reduced_user": "⚠️ <b>Limit kamaytirildi!</b>\n\nSizning to'liq malumot tekshirish limitingiz <b>{count} ta</b> ga kamaytirildi.\n📦 Qoldiq: <b>{remaining}</b> ta."
 }
