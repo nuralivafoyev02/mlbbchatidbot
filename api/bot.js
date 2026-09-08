@@ -221,6 +221,7 @@ if (!global.__MLBB_BOT_STATS__) {
     pendingBroadcasts: new Map(),
     pendingFeedbacks: new Map(),
     membershipCache: new Map(),
+    inlineDedup: new Map(),
     userModes: new Map(),
     userProfiles: new Map(),
     errors: [],
@@ -252,6 +253,7 @@ stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
 stats.membershipCache ||= new Map();
+stats.inlineDedup ||= new Map();
 if (!(stats.pendingFeedbacks instanceof Map)) {
   stats.pendingFeedbacks = new Map(Object.entries(stats.pendingFeedbacks || {}));
 }
@@ -373,6 +375,16 @@ async function processUpdate(update, options = {}) {
       },
       options
     );
+    return;
+  }
+
+  // Inline rejim: istalgan chatda @botusername + ID/server yozilsa tekshiradi.
+  // Faqat Ulanmalar (bind) tekshiruvi — to'liq ma'lumot inline orqali qo'llab-quvvatlanmaydi.
+  if (update.inline_query) {
+    await handleInlineQuery(update.inline_query, {
+      updateId: update.update_id,
+      updateType: "inline_query",
+    });
     return;
   }
 
@@ -1704,6 +1716,171 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
       inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+  }
+}
+
+const INLINE_DEDUP_TTL_MS = 30 * 1000;
+
+async function answerInlineQuery(inlineQueryId, results, options = {}) {
+  return telegram("answerInlineQuery", {
+    inline_query_id: inlineQueryId,
+    results,
+    cache_time: 0,
+    is_personal: true,
+    ...options,
+  });
+}
+
+function buildInlineMessageResult(title, text) {
+  const cleanText = String(text ?? "");
+  return {
+    type: "article",
+    id: `msg:${Date.now()}`,
+    title: String(title ?? cleanText).replace(/\s+/g, " ").trim().slice(0, 128),
+    description: cleanText.replace(/\s+/g, " ").trim().slice(0, 200),
+    input_message_content: {
+      message_text: cleanText,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    },
+  };
+}
+
+function buildInlineHintResult(lang) {
+  return {
+    type: "article",
+    id: "hint",
+    title: t("inline_hint_title", lang),
+    description: t("inline_hint_description", lang),
+  };
+}
+
+async function notifyInlineBindUsage(user, accountId, zoneId) {
+  if (!MAIN_GROUP_ID) return;
+  const userMention = user.username
+    ? `@${user.username}`
+    : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
+  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ni inline orqali tekshirdi.`;
+  const inlineKeyboard = {
+    inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]],
+  };
+  try {
+    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+  } catch (error) {
+    console.error("[INLINE_MAIN_GROUP_NOTIFY_FAILED]", error.message);
+  }
+}
+
+async function handleInlineQuery(inlineQuery, options = {}) {
+  const queryId = inlineQuery?.id;
+  if (!queryId) return;
+
+  const from = inlineQuery.from || {};
+  const userId = from.id;
+  const lang = getUserLang(userId);
+  const text = String(inlineQuery.query || "").trim();
+  const chatType = String(inlineQuery.chat_type || "");
+  const isPrivate = chatType === "private";
+
+  const user = {
+    id: from.id,
+    first_name: from.first_name || "",
+    last_name: from.last_name || "",
+    username: from.username || "",
+  };
+
+  try {
+    const parsed = parseMlbbInput(text);
+    if (!parsed.ok) {
+      return await answerInlineQuery(queryId, [buildInlineHintResult(lang)]);
+    }
+
+    const dedupKey = `${userId}:${parsed.accountId}:${parsed.zoneId}`;
+    const recent = stats.inlineDedup.get(dedupKey);
+    const now = Date.now();
+
+    // Telegram bir xil inline so'rovni bir necha marta qayta yuborishi mumkin.
+    // Qisqa muddat ichida bir xil ID-tekshiruv qaytarilsa — qayta API chaqiruv
+    // va kvota sarflamasdan keshlangan natijani qaytaramiz.
+    if (recent && now - recent.at < INLINE_DEDUP_TTL_MS) {
+      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
+      return await answerInlineQuery(queryId, recent.results);
+    }
+
+    let limitData = null;
+    if (!isAdmin(userId) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+      try {
+        const limitResult = await supabaseRpc("check_and_consume_bind_limit", {
+          p_user_id: toPgBigint(userId),
+          p_limit: 10,
+        });
+        if (limitResult && limitResult.allowed === false) {
+          return await answerInlineQuery(
+            queryId,
+            [buildInlineMessageResult(t("bind_info_title", lang), getBindInfoLimitReachedText(lang))]
+          );
+        }
+        if (limitResult && typeof limitResult.remaining === "number") {
+          limitData = limitResult;
+        }
+      } catch (error) {
+        console.error("[INLINE_BIND_LIMIT_CHECK_ERROR]", error);
+      }
+    }
+
+    const bindInfo = await lookupMlbbBindInfo(parsed.accountId, parsed.zoneId);
+    trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
+
+    let results;
+    let lastResultText = null;
+    if (!bindInfo.ok) {
+      recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+        status: bindInfo.status,
+      });
+      results = [buildInlineMessageResult(
+        t("bind_info_title", lang),
+        getBindInfoFailedText(bindInfo.reason, lang)
+      )];
+    } else {
+      lastResultText = enrichPremiumEmojis(getBindInfoResultText({
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+        ...bindInfo.data,
+      }, limitData, lang));
+      results = [{
+        type: "article",
+        id: `${userId}:${parsed.accountId}:${parsed.zoneId}`,
+        title: t("inline_bind_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
+        description: t("inline_bind_description", lang),
+        input_message_content: {
+          message_text: lastResultText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        },
+      }];
+    }
+
+    stats.inlineDedup.set(dedupKey, { at: now, results });
+
+    await answerInlineQuery(queryId, results);
+
+    if (bindInfo.ok) {
+      await notifyInlineBindUsage(user, parsed.accountId, parsed.zoneId);
+
+      // Agar inline boshqa chatda ishlatilgan bo'lsa — natijani userni bot
+      // bilan shaxsiy chatiga ham yuboramiz (shuning uchun yechib ko'radi).
+      if (!isPrivate && lastResultText) {
+        try {
+          await sendMessage(userId, lastResultText, resultKeyboard(user));
+        } catch (error) {
+          console.error("[INLINE_PRIVATE_COPY_FAILED]", error.message);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[INLINE_QUERY_ERROR]", error);
   }
 }
 
@@ -7096,6 +7273,10 @@ module.exports.__private = {
   isFullInfoPromptReply,
   lookupMlbbFullInfo,
   handleLimitFullInfoCommand,
+  handleInlineQuery,
+  answerInlineQuery,
+  buildInlineMessageResult,
+  buildInlineHintResult,
   checkUserMembership,
   createTelegraphPage,
   getTelegraphAccessToken,

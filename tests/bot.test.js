@@ -1252,6 +1252,272 @@ test("/info command is an alias for bind info lookup", async () => {
   }
 });
 
+test("inline mode answers a valid ID check with a sendable bind result", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+              Facebook: "fb-owner",
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 4901,
+          inline_query: {
+            id: "inline-q-1",
+            from: { id: 70091, first_name: "Ali" },
+            query: "1006613098 (13019)",
+            chat_type: "private",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const bindCall = calls.find((c) => c.url === "https://bind.example.test/bind");
+    const answerCall = calls.find((c) => c.url.includes("/answerInlineQuery"));
+
+    assert.ok(bindCall, "expected bind API lookup from inline query");
+    assert.deepEqual(bindCall.payload, {
+      player_id: "1006613098",
+      server_id: "13019",
+      x_key: "test-bind-key",
+    });
+
+    assert.ok(answerCall, "expected answerInlineQuery call");
+    assert.equal(answerCall.payload.inline_query_id, "inline-q-1");
+    assert.equal(answerCall.payload.is_personal, true);
+    assert.equal(answerCall.payload.cache_time, 0);
+
+    const first = answerCall.payload.results[0];
+    assert.equal(first.type, "article");
+    assert.match(first.title, /1006613098/);
+    assert.match(first.description, /chat/);
+    assert.match(first.input_message_content.message_text, /<b>Ulanmalar<\/b>/);
+    assert.match(first.input_message_content.message_text, /<b>Moonton:<\/b> owner@example\.com/);
+
+    // private chat query -> no duplicate copy back to the same user chat
+    assert.equal(
+      calls.some((c) => c.url.includes("/sendMessage") && c.payload.chat_id === 70091),
+      false
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("inline mode answers an invalid query with a usage hint", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({ ok: true, data: { bindings: { Moonton: "x@y.test" } } }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 4902,
+          inline_query: {
+            id: "inline-q-2",
+            from: { id: 70092, first_name: "Ali" },
+            query: "salom bitta id qidiryapman",
+            chat_type: "private",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const bindCalls = calls.filter((c) => c.url === "https://bind.example.test/bind");
+    const answerCall = calls.find((c) => c.url.includes("/answerInlineQuery"));
+
+    assert.equal(bindCalls.length, 0);
+    assert.ok(answerCall);
+    assert.equal(answerCall.payload.results[0].id, "hint");
+    assert.match(answerCall.payload.results[0].title, /ID/);
+    assert.match(answerCall.payload.results[0].description, /1006613098/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("inline mode from a group also sends the result to the user's private chat", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 4903,
+          inline_query: {
+            id: "inline-q-3",
+            from: { id: 70093, first_name: "Ali", username: "ali_inline" },
+            query: "1006613098 13019",
+            chat_type: "group",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const answerCall = calls.find((c) => c.url.includes("/answerInlineQuery"));
+    const copy = lastMessageTo(calls, 70093);
+
+    assert.ok(answerCall);
+    assert.ok(copy, "expected a private copy of the result");
+    assert.match(copy.text, /<b>Ulanmalar<\/b>/);
+    assert.match(copy.text, /1006613098/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("inline mode dedupes repeated identical queries without re-hitting the API", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const payload = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: urlText, payload });
+
+    if (urlText === "https://bind.example.test/bind") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            bindings: {
+              Moonton: "owner@example.com",
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const inlineUpdate = (updateId) => ({
+      method: "POST",
+      headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+      query: {},
+      body: {
+        update_id: updateId,
+        inline_query: {
+          id: `inline-q-4-${updateId}`,
+          from: { id: 70094, first_name: "Ali" },
+          query: "1006613098 (13019)",
+          chat_type: "private",
+        },
+      },
+    });
+
+    await handler(inlineUpdate(4904), createRes());
+    await handler(inlineUpdate(4905), createRes());
+
+    const bindCalls = calls.filter((c) => c.url === "https://bind.example.test/bind");
+    const answerCalls = calls.filter((c) => c.url.includes("/answerInlineQuery"));
+
+    assert.equal(bindCalls.length, 1, "identical inline query should reuse the cached result");
+    assert.equal(answerCalls.length, 2);
+    assert.match(answerCalls[1].payload.results[0].input_message_content.message_text, /Ulanmalar/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("content-range parser reads exact Supabase totals", () => {
   assert.equal(parseContentRangeTotal("0-9/42"), 42);
   assert.equal(parseContentRangeTotal("*/0"), 0);
