@@ -7055,7 +7055,7 @@ module.exports.sendDailyUsageReport = sendDailyUsageReport;
 module.exports.sendBroadcastPayload = sendBroadcastPayload;
 module.exports.sendBroadcastReport = sendBroadcastReport;
 module.exports.getBroadcastChatIds = getBroadcastChatIds;
-
+module.exports.enrichPremiumEmojis = enrichPremiumEmojis;
 module.exports.__private = {
   buildBengkelBindInfoRequest,
   buildBindInfoRequest,

@@ -1125,6 +1125,38 @@
     .active-row.top3 .active-name {
       color: #d97706
     }
+
+    .active-row {
+      cursor: pointer;
+      transition: background 0.15s ease
+    }
+
+    .active-row:hover {
+      background: rgba(255,255,255,0.04)
+    }
+
+    .action-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      margin-bottom: 8px
+    }
+
+    .action-name {
+      font-size: 13px;
+      font-weight: 600
+    }
+
+    .action-count {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent3);
+      flex-shrink: 0
+    }
   </style>
 </head>
 
@@ -1372,6 +1404,19 @@
     </div>
   </div>
 
+  <!-- Active User Actions Modal -->
+  <div class="modal-overlay" id="activeUserModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="activeUserModalName">Foydalanuvchi</h2>
+      <div id="activeUserModalPeriod" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+      <div id="activeUserActionsList"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeActiveUserModal()">Yopish</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Scroll to top -->
   <button class="scroll-top" id="scrollTop" onclick="scrollToTop()"><i class="bi bi-arrow-up"></i></button>
 
@@ -1485,6 +1530,7 @@
          Active Users
       ----------------------------------------------------------------------- */
       var currentActivePeriod = "today";
+      var lastActiveUsers = {};
 
       function loadActiveUsers(period) {
         currentActivePeriod = period || "today";
@@ -1505,6 +1551,7 @@
             return;
           }
           var html = "";
+          lastActiveUsers = {};
           result.data.users.forEach(function (u) {
             var rankClass = "";
             var rankContent = String(u.rank);
@@ -1520,7 +1567,9 @@
             var name = u.first_name || u.username || String(u.user_id);
             var meta = u.username ? "@" + u.username : "ID: " + u.user_id;
 
-            html += '<div class="' + esc(rowClass) + '">';
+            lastActiveUsers[String(u.user_id)] = u;
+
+            html += '<div class="' + esc(rowClass) + '" onclick="openActiveUserById(\'' + esc(String(u.user_id)) + '\')">';
             html += '<div class="active-rank ' + esc(rankClass) + '">' + rankContent + '</div>';
             html += '<div class="active-info">';
             html += '<div class="active-name">' + esc(name) + '</div>';
@@ -1533,6 +1582,68 @@
         });
       }
       window.loadActiveUsers = loadActiveUsers;
+
+      var ACTIVE_ACTION_LABELS = {
+        server_check: "🔎 Server tekshiruv",
+        bind_info: "🔗 Ulanmalar",
+        full_info: "📋 To'liq ma'lumot",
+        start: "🚀 /start",
+        feedback: "💬 Fikrlar"
+      };
+
+      var ACTIVE_PERIOD_LABELS = {
+        today: "Bugun",
+        week: "Joriy xafta",
+        all: "Umumiy davr"
+      };
+
+      function openActiveUserById(userId) {
+        var user = lastActiveUsers[String(userId)];
+        if (user) openActiveUserActions(user);
+      }
+      window.openActiveUserById = openActiveUserById;
+
+      function openActiveUserActions(user) {
+        var modal = document.getElementById("activeUserModal");
+        modal.classList.add("open");
+
+        var name = user.first_name || user.username || String(user.user_id);
+        document.getElementById("activeUserModalName").textContent = name;
+        document.getElementById("activeUserModalPeriod").textContent = "Davr: " + (ACTIVE_PERIOD_LABELS[currentActivePeriod] || currentActivePeriod);
+
+        var list = document.getElementById("activeUserActionsList");
+        list.innerHTML = '<div class="empty" style="padding:16px"><div class="spinner"></div></div>';
+
+        api("get_user_actions", { user_id: String(user.user_id), period: currentActivePeriod }).then(function (result) {
+          if (!result.ok || !result.data || !result.data.actions || result.data.actions.length === 0) {
+            list.innerHTML = '<div class="empty" style="padding:20px;color:var(--text2);font-size:13px">Bu davrda foydalanish qayd etilmagan.</div>';
+            return;
+          }
+
+          var total = result.data.total || 0;
+          var html = '<div style="margin-bottom:10px;font-size:13px;color:var(--text2)">Jami ishlatishlar: <b style="color:var(--accent3)">' + formatNum(total) + '</b></div>';
+
+          result.data.actions.forEach(function (a) {
+            var label = ACTIVE_ACTION_LABELS[a.action] || String(a.action);
+            html += '<div class="action-row">';
+            html += '<span class="action-name">' + esc(label) + '</span>';
+            html += '<span class="action-count">' + formatNum(a.count) + '</span>';
+            html += '</div>';
+          });
+
+          list.innerHTML = html;
+        });
+      }
+      window.openActiveUserActions = openActiveUserActions;
+
+      function closeActiveUserModal() {
+        document.getElementById("activeUserModal").classList.remove("open");
+      }
+      window.closeActiveUserModal = closeActiveUserModal;
+
+      document.getElementById("activeUserModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) closeActiveUserModal();
+      });
 
       /* -----------------------------------------------------------------------
          Dashboard

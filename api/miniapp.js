@@ -107,6 +107,8 @@ module.exports = async function handler(req, res) {
           return handleUpdateAdmins(req, res, body);
         case "get_active_users":
           return handleGetActiveUsers(req, res, body);
+        case "get_user_actions":
+          return handleGetUserActions(req, res, body);
         case "check_api_status":
           return handleCheckApiStatus(req, res);
         case "get_mandatory":
@@ -526,26 +528,7 @@ async function handleGetActiveUsers(req, res, body) {
   const limit = Math.min(Math.max(parseInt(body.limit, 10) || 10, 1), 50);
 
   try {
-    let dateFilter = "";
-    const bounds = getTashkentDayBounds();
-
-    if (period === "today") {
-      dateFilter = `&created_at=gte.${bounds.startIso}&created_at=lt.${bounds.endIso}`;
-    } else if (period === "week") {
-      // Current week: Monday 00:00 Tashkent to now
-      const tashkentNow = new Date(Date.now() + 5 * 60 * 60 * 1000);
-      const dayOfWeek = tashkentNow.getUTCDay();
-      const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const mondayMs = Date.UTC(
-        tashkentNow.getUTCFullYear(),
-        tashkentNow.getUTCMonth(),
-        tashkentNow.getUTCDate() - mondayOffset
-      ) - 5 * 60 * 60 * 1000;
-      const weekStartIso = new Date(mondayMs).toISOString();
-      dateFilter = `&created_at=gte.${weekStartIso}`;
-    }
-    // period === 'all' → no date filter
-
+    const dateFilter = buildActiveUsersDateFilter(period);
     const params = `select=user_id&action=not.is.null${dateFilter}&limit=5000`;
     const events = await supabaseRequest(`/bot_usage_events?${params}`);
     const eventsArr = Array.isArray(events) ? events : [];
@@ -594,6 +577,66 @@ async function handleGetActiveUsers(req, res, body) {
   } catch (e) {
     console.error("[GET_ACTIVE_USERS]", e.message);
     return json(res, 200, { ok: true, data: { users: [], period } });
+  }
+}
+
+function buildActiveUsersDateFilter(period) {
+  if (period === "today") {
+    const bounds = getTashkentDayBounds();
+    return `&created_at=gte.${bounds.startIso}&created_at=lt.${bounds.endIso}`;
+  }
+
+  if (period === "week") {
+    // Current week: Monday 00:00 Tashkent to now
+    const tashkentNow = new Date(Date.now() + 5 * 60 * 60 * 1000);
+    const dayOfWeek = tashkentNow.getUTCDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const mondayMs = Date.UTC(
+      tashkentNow.getUTCFullYear(),
+      tashkentNow.getUTCMonth(),
+      tashkentNow.getUTCDate() - mondayOffset
+    ) - 5 * 60 * 60 * 1000;
+    return `&created_at=gte.${new Date(mondayMs).toISOString()}`;
+  }
+
+  // period === 'all' → no date filter
+  return "";
+}
+
+async function handleGetUserActions(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  const userId = String(body.user_id || "").trim();
+  const period = String(body.period || "today").trim();
+
+  if (!/^-?\d{1,19}$/.test(userId)) {
+    return json(res, 200, { ok: true, data: { user_id: userId, actions: [], total: 0, period } });
+  }
+
+  try {
+    const dateFilter = buildActiveUsersDateFilter(period);
+    const params = `user_id=eq.${userId}&action=not.is.null${dateFilter}&select=action&limit=5000`;
+    const events = await supabaseRequest(`/bot_usage_events?${params}`);
+    const eventsArr = Array.isArray(events) ? events : [];
+
+    const counts = {};
+    eventsArr.forEach(function (e) {
+      const action = e.action || "unknown";
+      counts[action] = (counts[action] || 0) + 1;
+    });
+
+    const actions = Object.entries(counts)
+      .map(function (entry) {
+        return { action: entry[0], count: entry[1] };
+      })
+      .sort(function (a, b) {
+        return b.count - a.count;
+      });
+
+    return json(res, 200, { ok: true, data: { user_id: userId, actions, total: eventsArr.length, period } });
+  } catch (e) {
+    console.error("[GET_USER_ACTIONS]", e.message);
+    return json(res, 200, { ok: true, data: { user_id: userId, actions: [], total: 0, period } });
   }
 }
 

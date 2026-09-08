@@ -1,4 +1,4 @@
-import handler from "./api/bot.js";
+import handler, { enrichPremiumEmojis } from "./api/bot.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -321,11 +321,11 @@ async function sendBindInfoWaitMessage(update, env) {
       },
       body: JSON.stringify({
         chat_id: chatId,
-        text: [
+        text: enrichPremiumEmojis([
           "🙏 <b>Ulanmalar tekshirilmoqda...</b>",
           "",
           "Iltimos, kutib turing. Bu biroz vaqt olishi mumkin.",
-        ].join("\n"),
+        ].join("\n")),
         parse_mode: "HTML",
         disable_web_page_preview: true,
       }),
