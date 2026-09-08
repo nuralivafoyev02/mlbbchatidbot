@@ -187,6 +187,15 @@ const MLBB_BIND_INFO_TIMEOUT_MS = parseBoundedNumber(
   800,
   120000
 );
+// Inline mode faqat server aniqlash uchun ishlaydi va imkon qadar tez javob
+// berishi kerak, shuning uchun umumiy MLBB_LOOKUP_TIMEOUT_MS dan qisqaroq,
+// alohida cheklovga ega.
+const INLINE_SERVER_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
+  process.env.INLINE_SERVER_LOOKUP_TIMEOUT_MS,
+  Math.min(MLBB_LOOKUP_TIMEOUT_MS, 3500),
+  800,
+  MLBB_LOOKUP_TIMEOUT_MS
+);
 const FULL_INFO_API_URL = cleanEnv(process.env.FULL_INFO_API) || "https://api.jebray.com";
 const FULL_INFO_API_KEY = cleanEnv(process.env.FULL_INFO_API_KEY);
 const FULL_INFO_TIMEOUT_MS = parseBoundedNumber(
@@ -1755,14 +1764,12 @@ function buildInlineHintResult(lang) {
   };
 }
 
-async function notifyInlineUsage(user, accountId, zoneId, feature) {
+async function notifyInlineUsage(user, accountId, zoneId) {
   if (!MAIN_GROUP_ID) return;
   const userMention = user.username
     ? `@${user.username}`
     : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
-  const actionWord =
-    feature === FEATURE_ACTIONS.SERVER_CHECK ? "ni check qildi." : "ni ulanmalarini tekshirdi.";
-  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ${actionWord}`;
+  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ni check qildi.`;
   const inlineKeyboard = {
     inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]],
   };
@@ -1808,42 +1815,21 @@ async function handleInlineQuery(inlineQuery, options = {}) {
       return await answerInlineQuery(queryId, recent.results);
     }
 
-    let limitData = null;
-    if (!isAdmin(userId) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
-      try {
-        const limitResult = await supabaseRpc("check_and_consume_bind_limit", {
-          p_user_id: toPgBigint(userId),
-          p_limit: 10,
-        });
-        if (limitResult && limitResult.allowed === false) {
-          return await answerInlineQuery(
-            queryId,
-            [buildInlineMessageResult(t("bind_info_title", lang), getBindInfoLimitReachedText(lang))]
-          );
-        }
-        if (limitResult && typeof limitResult.remaining === "number") {
-          limitData = limitResult;
-        }
-      } catch (error) {
-        console.error("[INLINE_BIND_LIMIT_CHECK_ERROR]", error);
-      }
-    }
-
-    // Server aniqlash va Ulanmalar tekshiruvini parallel bajaramiz — har biri
-    // o'z natijasini alohida inline karta qilib ko'rsatadi.
-    const [serverOutcome, bindOutcome] = await Promise.allSettled([
-      lookupMlbbAccount(parsed.accountId, parsed.zoneId),
-      lookupMlbbBindInfo(parsed.accountId, parsed.zoneId),
-    ]);
-    const serverLookup = serverOutcome.status === "fulfilled" ? serverOutcome.value : { ok: false };
-    const bindInfo = bindOutcome.status === "fulfilled" ? bindOutcome.value : { ok: false };
+    // MUHIM: Inline mode faqat server aniqlash uchun ishlaydi. Ulanmalar
+    // (bind info) tekshiruvi bu yerdan ataylab olib tashlangan — u sekin
+    // ishlaydigan tashqi provayderlarga (ba'zan 120 soniyagacha) bog'liq
+    // bo'lib, inline javobni sezilarli sekinlashtirar edi. Ulanmalarni
+    // tekshirish faqat oddiy xabar/tugma oqimida ("🔗 Ulanmalar") qoladi.
+    const serverLookup = await lookupMlbbAccount(parsed.accountId, parsed.zoneId, {
+      timeoutMs: INLINE_SERVER_LOOKUP_TIMEOUT_MS,
+    });
 
     const results = [];
-    const privateCopies = [];
+    let serverResultText = "";
 
     if (serverLookup.ok) {
       trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.SERVER_CHECK);
-      const serverResultText = enrichPremiumEmojis(getResultText({
+      serverResultText = enrichPremiumEmojis(getResultText({
         accountId: parsed.accountId,
         zoneId: parsed.zoneId,
         nickname: serverLookup.nickname,
@@ -1863,47 +1849,15 @@ async function handleInlineQuery(inlineQuery, options = {}) {
           disable_web_page_preview: true,
         },
       });
-      privateCopies.push(serverResultText);
     } else {
       recordError("mlbb_lookup_failed", serverLookup.technicalReason || serverLookup.reason, {
         accountId: parsed.accountId,
         zoneId: parsed.zoneId,
         status: serverLookup.status,
       });
-    }
-
-    if (bindInfo.ok) {
-      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
-      const bindResultText = enrichPremiumEmojis(getBindInfoResultText({
-        accountId: parsed.accountId,
-        zoneId: parsed.zoneId,
-        ...bindInfo.data,
-      }, limitData, lang));
-      results.push({
-        type: "article",
-        id: `${userId}:${parsed.accountId}:${parsed.zoneId}`,
-        title: t("inline_bind_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
-        description: t("inline_bind_description", lang),
-        input_message_content: {
-          message_text: bindResultText,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        },
-      });
-      privateCopies.push(bindResultText);
-    } else {
-      recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
-        accountId: parsed.accountId,
-        zoneId: parsed.zoneId,
-        status: bindInfo.status,
-      });
-    }
-
-    // Har ikkala tekshiruv ham muvaffaqiyatsiz bo'lsa — yagona xato karta.
-    if (results.length === 0) {
       results.push(buildInlineMessageResult(
-        t("bind_info_title", lang),
-        getBindInfoFailedText(bindInfo.reason, lang)
+        t("inline_server_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
+        getFailedLookupText(parsed, serverLookup, lang)
       ));
     }
 
@@ -1911,20 +1865,14 @@ async function handleInlineQuery(inlineQuery, options = {}) {
 
     await answerInlineQuery(queryId, results);
 
-    // Main guruhga foydalanish xabari — har bir muvaffaqiyatli tekshiruv uchun.
     if (serverLookup.ok) {
-      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
-    }
-    if (bindInfo.ok) {
-      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
-    }
+      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId);
 
-    // Inline boshqa chatda ishlatilgan bo'lsa — natijalarni userni bot bilan
-    // shaxsiy chatiga ham yuboramiz.
-    if (!isPrivate) {
-      for (const resultText of privateCopies) {
+      // Inline boshqa chatda ishlatilgan bo'lsa — natijani userni bot bilan
+      // shaxsiy chatiga ham yuboramiz.
+      if (!isPrivate) {
         try {
-          await sendMessage(userId, resultText, resultKeyboard(user));
+          await sendMessage(userId, serverResultText, resultKeyboard(user));
         } catch (error) {
           console.error("[INLINE_PRIVATE_COPY_FAILED]", error.message);
         }
@@ -2793,7 +2741,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
   }
 }
 
-async function lookupMlbbAccount(accountId, zoneId) {
+async function lookupMlbbAccount(accountId, zoneId, options = {}) {
   try {
     const url = new URL(MLBB_LOOKUP_API_URL);
     url.searchParams.set("id", accountId);
@@ -2805,7 +2753,7 @@ async function lookupMlbbAccount(accountId, zoneId) {
         Accept: "application/json",
         "User-Agent": "MLBB-Server-Detector-Bot/1.0",
       },
-      timeoutMs: MLBB_LOOKUP_TIMEOUT_MS,
+      timeoutMs: options.timeoutMs || MLBB_LOOKUP_TIMEOUT_MS,
     });
 
     const contentType = response.headers.get("content-type") || "";
