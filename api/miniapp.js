@@ -7,7 +7,8 @@ const path = require("node:path");
 // ---------------------------------------------------------------------------
 const DEFAULT_ADMIN_USER = "admin";
 const DEFAULT_ADMIN_PASSWORD = "admin123";
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const SESSION_TTL_MS = 1000 * 60 * 60;           // 1 hour (default)
+const SESSION_TTL_REMEMBER_MS = 1000 * 60 * 60 * 24; // 24 hours (remember me)
 const COOKIE_NAME = "mlbb_miniapp_session";
 const USERS_PAGE_SIZE = 20;
 
@@ -149,8 +150,9 @@ function sign(value) {
   return crypto.createHmac("sha256", ADMIN_PANEL_SECRET).update(String(value)).digest("base64url");
 }
 
-function createSession(res) {
-  const payloadB64 = base64Encode(JSON.stringify({ sub: DEFAULT_ADMIN_USER, iat: Date.now(), exp: Date.now() + SESSION_TTL_MS }));
+function createSession(res, remember) {
+  const ttl = remember ? SESSION_TTL_REMEMBER_MS : SESSION_TTL_MS;
+  const payloadB64 = base64Encode(JSON.stringify({ sub: DEFAULT_ADMIN_USER, iat: Date.now(), exp: Date.now() + ttl }));
   const value = `${payloadB64}.${sign(payloadB64)}`;
   res.setHeader("Set-Cookie", `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax`);
   return value;
@@ -192,7 +194,8 @@ async function handleLogin(req, res, body) {
   if (!valid) {
     return json(res, 401, { ok: false, error: "invalid_credentials" });
   }
-  createSession(res);
+  const remember = body.remember_me === true || body.remember_me === "true";
+  createSession(res, remember);
   return json(res, 200, { ok: true });
 }
 

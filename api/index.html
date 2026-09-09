@@ -34,7 +34,10 @@
       --pink: #ec4899;
       --glass: rgba(255, 255, 255, 0.03);
       --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    }    html, body {
+    }
+
+    html,
+    body {
       height: 100%;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
@@ -45,7 +48,10 @@
       -webkit-overflow-scrolling: touch;
       -webkit-tap-highlight-color: transparent
     }
-    *, *::before, *::after {
+
+    *,
+    *::before,
+    *::after {
       box-sizing: border-box;
       max-width: 100vw
     }
@@ -214,6 +220,69 @@
       box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4)
     }
 
+    .login-remember {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      user-select: none
+    }
+
+    .login-remember input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      position: relative;
+      flex-shrink: 0;
+      transition: border-color .2s, background .2s
+    }
+
+    .login-remember input[type="checkbox"]:checked {
+      background: var(--accent);
+      border-color: var(--accent)
+    }
+
+    .login-remember input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 1px;
+      width: 5px;
+      height: 10px;
+      border: solid #fff;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg)
+    }
+
+    .login-remember span {
+      font-size: 13px;
+      color: var(--text2)
+    }
+
+    .login-btn.loading {
+      pointer-events: none;
+      opacity: 0.85
+    }
+
+    .login-btn .btn-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px
+    }
+
     .login-error {
       color: var(--red);
       font-size: 13px;
@@ -334,7 +403,7 @@
     }
 
     .stat-value {
-      font-size: 28px;
+      font-size: 30px;
       font-weight: 800;
       background: linear-gradient(135deg, var(--accent), var(--accent3));
       background-clip: text;
@@ -343,7 +412,7 @@
     }
 
     .stat-label {
-      font-size: 11px;
+      font-size: 13px;
       color: var(--text2);
       margin-top: 4px;
       font-weight: 500
@@ -697,19 +766,25 @@
       width: 44px;
       height: 24px;
     }
+
     .switch input {
       opacity: 0;
       width: 0;
       height: 0;
     }
+
     .slider {
       position: absolute;
       cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: #4a4a5a;
       border-radius: 24px;
       transition: .3s;
     }
+
     .slider:before {
       position: absolute;
       content: "";
@@ -721,10 +796,12 @@
       border-radius: 50%;
       transition: .3s;
     }
-    .switch input:checked + .slider {
+
+    .switch input:checked+.slider {
       background: var(--accent);
     }
-    .switch input:checked + .slider:before {
+
+    .switch input:checked+.slider:before {
       transform: translateX(20px);
     }
 
@@ -839,6 +916,118 @@
     @keyframes spin {
       to {
         transform: rotate(360deg)
+      }
+    }
+
+    /* Skeleton placeholder */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      border-radius: 8px
+    }
+
+    .skeleton-line {
+      height: 14px;
+      margin-bottom: 10px;
+      border-radius: 6px
+    }
+
+    .skeleton-line.w60 {
+      width: 60%
+    }
+
+    .skeleton-line.w40 {
+      width: 40%
+    }
+
+    .skeleton-line.w80 {
+      width: 80%
+    }
+
+    .skeleton-line.w50 {
+      width: 50%
+    }
+
+    .skeleton-line.w30 {
+      width: 30%
+    }
+
+    .skeleton-line.h20 {
+      height: 20px
+    }
+
+    .skeleton-line.h28 {
+      height: 28px
+    }
+
+    .skeleton-circle {
+      border-radius: 50%
+    }
+
+    .skeleton-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px
+    }
+
+    .skeleton-stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px
+    }
+
+    .skeleton-stat-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center
+    }
+
+    .skeleton-action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px
+    }
+
+    .skeleton-action-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 12px 10px;
+      text-align: center
+    }
+
+    .skeleton-user-item {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 8px
+    }
+
+    .skeleton-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04)
+    }
+
+    .skeleton-row:last-child {
+      border-bottom: none
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: 200% 0
+      }
+
+      100% {
+        background-position: -200% 0
       }
     }
 
@@ -1027,7 +1216,7 @@
       padding: 8px 0;
       border: 1px solid var(--card-border);
       border-radius: 8px;
-      background: rgba(255,255,255,0.03);
+      background: rgba(255, 255, 255, 0.03);
       color: var(--text2);
       font-size: 12px;
       font-weight: 500;
@@ -1050,7 +1239,7 @@
       align-items: center;
       gap: 12px;
       padding: 10px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.04)
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04)
     }
 
     .active-row:last-child {
@@ -1067,26 +1256,26 @@
       font-size: 14px;
       font-weight: 700;
       flex-shrink: 0;
-      background: rgba(255,255,255,0.05);
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text2)
     }
 
     .active-rank.gold {
       background: linear-gradient(135deg, #f59e0b, #d97706);
       color: #fff;
-      box-shadow: 0 0 12px rgba(245,158,11,0.4)
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.4)
     }
 
     .active-rank.silver {
       background: linear-gradient(135deg, #94a3b8, #64748b);
       color: #fff;
-      box-shadow: 0 0 10px rgba(148,163,184,0.3)
+      box-shadow: 0 0 10px rgba(148, 163, 184, 0.3)
     }
 
     .active-rank.bronze {
       background: linear-gradient(135deg, #d97706, #92400e);
       color: #fff;
-      box-shadow: 0 0 10px rgba(217,119,6,0.3)
+      box-shadow: 0 0 10px rgba(217, 119, 6, 0.3)
     }
 
     .active-info {
@@ -1132,7 +1321,7 @@
     }
 
     .active-row:hover {
-      background: rgba(255,255,255,0.04)
+      background: rgba(255, 255, 255, 0.04)
     }
 
     .action-row {
@@ -1142,7 +1331,7 @@
       gap: 12px;
       padding: 12px 14px;
       border-radius: 12px;
-      background: rgba(255,255,255,0.04);
+      background: rgba(255, 255, 255, 0.04);
       margin-bottom: 8px
     }
 
@@ -1177,6 +1366,10 @@
       <form id="loginForm" onsubmit="return doLogin(event)">
         <input class="login-field" type="text" id="loginUser" placeholder="Login" autocomplete="username">
         <input class="login-field" type="password" id="loginPass" placeholder="Parol" autocomplete="current-password">
+        <label class="login-remember" for="loginRemember">
+          <input type="checkbox" id="loginRemember">
+          <span>Eslab qolish (24 soat)</span>
+        </label>
         <button class="login-btn" type="submit" id="loginBtn">Kirish</button>
       </form>
       <div class="login-error" id="loginError"></div>
@@ -1202,32 +1395,50 @@
           <div class="action-grid" id="actionBreakdown">
             <div class="action-card blue">
               <div class="action-icon"><i class="bi bi-search"></i></div>
-              <div class="action-count" id="actCheck">-</div>
+              <div class="action-count" id="actCheck">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
               <div class="action-name">Server aniqlash</div>
             </div>
             <div class="action-card green">
               <div class="action-icon"><i class="bi bi-link-45deg"></i></div>
-              <div class="action-count" id="actBind">-</div>
+              <div class="action-count" id="actBind">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
               <div class="action-name">Ulanmalar</div>
             </div>
             <div class="action-card pink">
               <div class="action-icon"><i class="bi bi-file-earmark-text"></i></div>
-              <div class="action-count" id="actFullInfo">-</div>
+              <div class="action-count" id="actFullInfo">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
               <div class="action-name">To'liq malumot</div>
             </div>
             <div class="action-card yellow">
               <div class="action-icon"><i class="bi bi-person-video3"></i></div>
-              <div class="action-count" id="actTgProfile">-</div>
+              <div class="action-count" id="actTgProfile">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
               <div class="action-name">TG profil</div>
             </div>
             <div class="action-card accent">
               <div class="action-icon"><i class="bi bi-person-plus"></i></div>
-              <div class="action-count" id="actStart">-</div>
+              <div class="action-count" id="actStart">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
               <div class="action-name">Start</div>
             </div>
             <div class="action-card blue">
               <div class="action-icon"><i class="bi bi-chat-dots"></i></div>
-              <div class="action-count" id="actFeedback">-</div>
+              <div class="action-count" id="actFeedback">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
               <div class="action-name">Fikr yuborish</div>
             </div>
           </div>
@@ -1236,19 +1447,27 @@
           <div class="card-title">Statistika</div>
           <div class="stats-grid">
             <div class="stat-card">
-              <div class="stat-value" id="statDaily">-</div>
+              <div class="stat-value" id="statDaily">
+                <div class="skeleton skeleton-line w50" style="display:inline-block;margin:0 auto;height:28px"></div>
+              </div>
               <div class="stat-label">Bugun faol userlar</div>
             </div>
             <div class="stat-card green">
-              <div class="stat-value" id="statMonthly">-</div>
+              <div class="stat-value" id="statMonthly">
+                <div class="skeleton skeleton-line w50" style="display:inline-block;margin:0 auto;height:28px"></div>
+              </div>
               <div class="stat-label">Oylik aktiv</div>
             </div>
             <div class="stat-card pink">
-              <div class="stat-value" id="statTotalUsers">-</div>
+              <div class="stat-value" id="statTotalUsers">
+                <div class="skeleton skeleton-line w50" style="display:inline-block;margin:0 auto;height:28px"></div>
+              </div>
               <div class="stat-label">Jami userlar</div>
             </div>
             <div class="stat-card yellow">
-              <div class="stat-value" id="statTotalActions">-</div>
+              <div class="stat-value" id="statTotalActions">
+                <div class="skeleton skeleton-line w50" style="display:inline-block;margin:0 auto;height:28px"></div>
+              </div>
               <div class="stat-label">Jami ishlatishlar</div>
             </div>
           </div>
@@ -1261,16 +1480,54 @@
             <button class="inactive-tab" data-period="all" onclick="loadActiveUsers('all')">Umumiy davr</button>
           </div>
           <div id="activeUsersList">
-            <div class="empty" style="padding:20px"><div class="spinner"></div></div>
+            <div class="skeleton-row">
+              <div class="skeleton skeleton-circle" style="width:32px;height:32px;flex-shrink:0"></div>
+              <div style="flex:1">
+                <div class="skeleton skeleton-line w60"></div>
+                <div class="skeleton skeleton-line w40" style="height:10px"></div>
+              </div>
+              <div class="skeleton skeleton-line w30" style="height:16px;margin:0"></div>
+            </div>
+            <div class="skeleton-row">
+              <div class="skeleton skeleton-circle" style="width:32px;height:32px;flex-shrink:0"></div>
+              <div style="flex:1">
+                <div class="skeleton skeleton-line w60"></div>
+                <div class="skeleton skeleton-line w40" style="height:10px"></div>
+              </div>
+              <div class="skeleton skeleton-line w30" style="height:16px;margin:0"></div>
+            </div>
+            <div class="skeleton-row">
+              <div class="skeleton skeleton-circle" style="width:32px;height:32px;flex-shrink:0"></div>
+              <div style="flex:1">
+                <div class="skeleton skeleton-line w60"></div>
+                <div class="skeleton skeleton-line w40" style="height:10px"></div>
+              </div>
+              <div class="skeleton skeleton-line w30" style="height:16px;margin:0"></div>
+            </div>
           </div>
         </div>
         <div class="card">
           <div class="card-title">API holati</div>
           <div id="apiStatusList">
-            <div class="status-row">
-              <div class="status-dot loading"></div>
-              <div class="status-info">
-                <div class="status-name">Tekshirilmoqda...</div>
+            <div class="skeleton-row">
+              <div class="skeleton skeleton-circle" style="width:8px;height:8px;flex-shrink:0"></div>
+              <div style="flex:1">
+                <div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:4px"></div>
+                <div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div>
+              </div>
+            </div>
+            <div class="skeleton-row">
+              <div class="skeleton skeleton-circle" style="width:8px;height:8px;flex-shrink:0"></div>
+              <div style="flex:1">
+                <div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:4px"></div>
+                <div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div>
+              </div>
+            </div>
+            <div class="skeleton-row">
+              <div class="skeleton skeleton-circle" style="width:8px;height:8px;flex-shrink:0"></div>
+              <div style="flex:1">
+                <div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:4px"></div>
+                <div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div>
               </div>
             </div>
           </div>
@@ -1287,9 +1544,45 @@
           <input type="text" id="userSearch" placeholder="Qidirish: username, nom, TG ID..." oninput="debounceSearch()">
         </div>
         <div id="userList">
-          <div class="empty">
-            <div class="spinner"></div>
-            <div class="empty-text">Yuklanmoqda...</div>
+          <div class="skeleton-user-item">
+            <div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div>
+            <div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px">
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+            </div>
+          </div>
+          <div class="skeleton-user-item">
+            <div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div>
+            <div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px">
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+            </div>
+          </div>
+          <div class="skeleton-user-item">
+            <div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div>
+            <div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px">
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+            </div>
+          </div>
+          <div class="skeleton-user-item">
+            <div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div>
+            <div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px">
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+            </div>
+          </div>
+          <div class="skeleton-user-item">
+            <div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div>
+            <div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px">
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+              <div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div>
+            </div>
           </div>
         </div>
         <div id="scrollSentinel" style="height:1px"></div>
@@ -1324,13 +1617,17 @@
           <div class="card-title">Majburiy guruh / kanal</div>
           <div class="settings-group">
             <div class="settings-label">Havola yoki ID kiriting</div>
-            <input class="settings-input" type="text" id="mandatoryGroupIdInput" placeholder="https://t.me/@group, @group yoki -100..." style="width:100%;margin-bottom:8px" oninput="parseMandatoryInput()">
-            <button class="login-btn" id="mandatorySetBtn" style="width:100%;padding:8px;font-size:13px;margin:0" onclick="setMandatoryGroup()">O'rnatish</button>
-            <div id="mandatoryParsedInfo" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.08);border-radius:8px;border:1px solid rgba(99,102,241,0.15)">
+            <input class="settings-input" type="text" id="mandatoryGroupIdInput" placeholder="Kiriting..."
+              style="width:100%;margin-bottom:8px" oninput="parseMandatoryInput()">
+            <button class="login-btn" id="mandatorySetBtn" style="width:100%;padding:8px;font-size:13px;margin:0"
+              onclick="setMandatoryGroup()">O'rnatish</button>
+            <div id="mandatoryParsedInfo"
+              style="display:none;margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.08);border-radius:8px;border:1px solid rgba(99,102,241,0.15)">
               <div id="mandatoryParsedType" style="font-size:11px;color:var(--text2);margin-bottom:4px"></div>
               <div id="mandatoryParsedName" style="font-size:13px;color:var(--accent);font-weight:600"></div>
             </div>
-            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">t.me havolasi, @username yoki chat ID kiriting. Bot guruh/kanalda admin bo'lishi shart!</div>
+            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">t.me havolasi, @username yoki
+              chat ID kiriting. Bot guruh/kanalda admin bo'lishi shart!</div>
           </div>
           <div class="settings-group">
             <div class="settings-label">Holat</div>
@@ -1349,11 +1646,17 @@
               <div id="mandatoryGroupId" style="font-size:11px;color:var(--text2)"></div>
               <div id="mandatoryChatType" style="font-size:11px;margin-top:4px"></div>
               <div id="mandatoryAdminBadge" style="display:none;margin-top:6px">
-                <span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">⚠️ Bot admin emas</span>
+                <span
+                  style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">⚠️
+                  Bot admin emas</span>
               </div>
               <div style="display:flex;gap:8px;margin-top:10px">
-                <button class="login-btn" style="flex:1;padding:7px;font-size:12px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.25)" onclick="removeMandatoryGroup()"><i class="bi bi-x-circle"></i> Uzish</button>
-                <button class="login-btn" style="flex:1;padding:7px;font-size:12px;background:rgba(99,102,241,0.1);color:var(--accent);border:1px solid rgba(99,102,241,0.2)" onclick="openGroupLink()"><i class="bi bi-box-arrow-up-right"></i> Kanalni ochish</button>
+                <button class="login-btn"
+                  style="flex:1;padding:7px;font-size:12px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.25)"
+                  onclick="removeMandatoryGroup()"><i class="bi bi-x-circle"></i> Uzish</button>
+                <button class="login-btn"
+                  style="flex:1;padding:7px;font-size:12px;background:rgba(99,102,241,0.1);color:var(--accent);border:1px solid rgba(99,102,241,0.2)"
+                  onclick="openGroupLink()"><i class="bi bi-box-arrow-up-right"></i> Kanalni ochish</button>
               </div>
             </div>
           </div>
@@ -1461,23 +1764,31 @@
         if (e) e.preventDefault();
         var user = document.getElementById("loginUser").value.trim();
         var pass = document.getElementById("loginPass").value;
+        var remember = document.getElementById("loginRemember").checked;
         var btn = document.getElementById("loginBtn");
         var err = document.getElementById("loginError");
 
-        btn.textContent = "\u23F3 Kirilmoqda...";
+        btn.innerHTML = '<span class="btn-spinner"></span>Kirilmoqda...';
+        btn.classList.add("loading");
         btn.disabled = true;
         err.textContent = "";
 
-        return api("login", { username: user, password: pass }).then(function (result) {
+        return api("login", { username: user, password: pass, remember_me: remember }).then(function (result) {
           if (result.ok) {
             document.getElementById("loginScreen").classList.add("hidden");
             document.getElementById("app").classList.add("visible");
             initApp();
           } else {
             err.textContent = "Login yoki parol noto'g'ri";
-            btn.textContent = "Kirish";
+            btn.innerHTML = "Kirish";
+            btn.classList.remove("loading");
             btn.disabled = false;
           }
+        }).catch(function () {
+          err.textContent = "Server bilan bog'lanishda xatolik";
+          btn.innerHTML = "Kirish";
+          btn.classList.remove("loading");
+          btn.disabled = false;
         });
       }
       window.doLogin = doLogin;
@@ -1487,13 +1798,17 @@
           document.getElementById("app").classList.remove("visible");
           document.getElementById("loginScreen").classList.remove("hidden");
           document.getElementById("loginError").textContent = "";
-          document.getElementById("loginBtn").textContent = "Kirish";
+          document.getElementById("loginBtn").innerHTML = "Kirish";
+          document.getElementById("loginBtn").classList.remove("loading");
           document.getElementById("loginBtn").disabled = false;
         });
       }
       window.doLogout = doLogout;
 
       document.getElementById("loginPass").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") doLogin(e);
+      });
+      document.getElementById("loginUser").addEventListener("keydown", function (e) {
         if (e.key === "Enter") doLogin(e);
       });
 
@@ -1543,7 +1858,10 @@
           }
         });
         var list = document.getElementById("activeUsersList");
-        list.innerHTML = '<div class="empty" style="padding:16px"><div class="spinner"></div></div>';
+        list.innerHTML =
+          '<div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:32px;height:32px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton skeleton-line w60"></div><div class="skeleton skeleton-line w40" style="height:10px"></div></div><div class="skeleton skeleton-line w30" style="height:16px;margin:0"></div></div>' +
+          '<div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:32px;height:32px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton skeleton-line w60"></div><div class="skeleton skeleton-line w40" style="height:10px"></div></div><div class="skeleton skeleton-line w30" style="height:16px;margin:0"></div></div>' +
+          '<div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:32px;height:32px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton skeleton-line w60"></div><div class="skeleton skeleton-line w40" style="height:10px"></div></div><div class="skeleton skeleton-line w30" style="height:16px;margin:0"></div></div>';
 
         api("get_active_users", { period: currentActivePeriod, limit: 10 }).then(function (result) {
           if (!result.ok || !result.data.users || result.data.users.length === 0) {
@@ -1612,7 +1930,9 @@
         document.getElementById("activeUserModalPeriod").textContent = "Davr: " + (ACTIVE_PERIOD_LABELS[currentActivePeriod] || currentActivePeriod);
 
         var list = document.getElementById("activeUserActionsList");
-        list.innerHTML = '<div class="empty" style="padding:16px"><div class="spinner"></div></div>';
+        list.innerHTML =
+          '<div class="skeleton-row"><div style="flex:1"><div class="skeleton skeleton-line w80" style="height:13px;margin-bottom:6px"></div><div class="skeleton skeleton-line w50" style="height:10px;margin:0"></div></div><div class="skeleton skeleton-line w30" style="height:15px;margin:0"></div></div>' +
+          '<div class="skeleton-row"><div style="flex:1"><div class="skeleton skeleton-line w80" style="height:13px;margin-bottom:6px"></div><div class="skeleton skeleton-line w50" style="height:10px;margin:0"></div></div><div class="skeleton skeleton-line w30" style="height:15px;margin:0"></div></div>';
 
         api("get_user_actions", { user_id: String(user.user_id), period: currentActivePeriod }).then(function (result) {
           if (!result.ok || !result.data || !result.data.actions || result.data.actions.length === 0) {
@@ -1670,7 +1990,10 @@
 
       function animateNumber(id, target) {
         var el = document.getElementById(id);
-        var start = parseInt(el.textContent) || 0;
+        if (!el) return;
+        var currentText = el.textContent.trim();
+        var start = (currentText && !isNaN(parseInt(currentText))) ? parseInt(currentText) : 0;
+        el.textContent = formatNum(start);
         var diff = target - start;
         if (diff === 0 && start === target) { el.textContent = formatNum(target); return; }
         var steps = 20;
@@ -1685,14 +2008,15 @@
       }
 
       function formatNum(n) {
-        if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-        if (n >= 1000) return (n / 1000).toFixed(1) + "K";
-        return String(n);
+        return Number(n).toLocaleString("uz-UZ");
       }
 
       function loadApiStatus() {
         var list = document.getElementById("apiStatusList");
-        list.innerHTML = '<div class="status-row"><div class="status-dot loading"></div><div class="status-info"><div class="status-name">Tekshirilmoqda...</div></div></div>';
+        list.innerHTML =
+          '<div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:8px;height:8px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:4px"></div><div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div></div></div>' +
+          '<div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:8px;height:8px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:4px"></div><div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div></div></div>' +
+          '<div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:8px;height:8px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:4px"></div><div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div></div></div>';
 
         api("check_api_status").then(function (result) {
           if (!result.ok) {
@@ -1721,7 +2045,10 @@
           allUsers = [];
           currentUserPage = 0;
           hasMoreUsers = true;
-          document.getElementById("userList").innerHTML = '<div class="empty"><div class="spinner"></div><div class="empty-text" style="margin-top:8px">Yuklanmoqda...</div></div>';
+          document.getElementById("userList").innerHTML =
+            '<div class="skeleton-user-item"><div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div><div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div><div style="display:flex;gap:8px"><div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div><div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div></div></div>' +
+            '<div class="skeleton-user-item"><div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div><div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div><div style="display:flex;gap:8px"><div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div><div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div></div></div>' +
+            '<div class="skeleton-user-item"><div class="skeleton skeleton-line w60" style="height:14px;margin-bottom:6px"></div><div class="skeleton skeleton-line w40" style="height:11px;margin-bottom:8px"></div><div style="display:flex;gap:8px"><div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div><div class="skeleton skeleton-line" style="width:50px;height:20px;margin:0"></div></div></div>';
         }
         if (isLoadingMore || !hasMoreUsers) return;
         isLoadingMore = true;
@@ -2126,7 +2453,7 @@
               showToast("\u274c Xatolik: " + errMsg, "error");
             }
           }
-        }).catch(function() {
+        }).catch(function () {
           btn.textContent = "O'rnatish";
           btn.disabled = false;
           showToast("\u274c Server bilan bog'lanishda xatolik", "error");
