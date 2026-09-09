@@ -196,6 +196,15 @@ const INLINE_SERVER_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
   800,
   MLBB_LOOKUP_TIMEOUT_MS
 );
+// Inline rejimda Ulanmalar tekshiruvi ham parallel bajariladi, lekin bot javobini
+// sekinlatmasligi uchun alohida (server aniqlashga nisbatan kengroq, lekin to'liq
+// hisobdagi 120 soniyagacha emas) cheklangan timeout ishlatiladi.
+const INLINE_BIND_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
+  process.env.INLINE_BIND_LOOKUP_TIMEOUT_MS,
+  Math.min(MLBB_BIND_INFO_TIMEOUT_MS, 15000),
+  800,
+  MLBB_BIND_INFO_TIMEOUT_MS
+);
 const FULL_INFO_API_URL = cleanEnv(process.env.FULL_INFO_API) || "https://api.jebray.com";
 const FULL_INFO_API_KEY = cleanEnv(process.env.FULL_INFO_API_KEY);
 const FULL_INFO_TIMEOUT_MS = parseBoundedNumber(
@@ -1770,12 +1779,16 @@ function buildInlineHintResult(lang) {
   };
 }
 
-async function notifyInlineUsage(user, accountId, zoneId) {
+async function notifyInlineUsage(user, accountId, zoneId, feature) {
   if (!MAIN_GROUP_ID) return;
   const userMention = user.username
     ? `@${user.username}`
     : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
-  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ni check qildi.`;
+  const actionWord =
+    feature === FEATURE_ACTIONS.SERVER_CHECK
+      ? "ni check qildi."
+      : "ni ulanmalarini tekshirdi.";
+  const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ${actionWord}`;
   const inlineKeyboard = {
     inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]],
   };
@@ -1821,21 +1834,48 @@ async function handleInlineQuery(inlineQuery, options = {}) {
       return await answerInlineQuery(queryId, recent.results);
     }
 
-    // MUHIM: Inline mode faqat server aniqlash uchun ishlaydi. Ulanmalar
-    // (bind info) tekshiruvi bu yerdan ataylab olib tashlangan — u sekin
-    // ishlaydigan tashqi provayderlarga (ba'zan 120 soniyagacha) bog'liq
-    // bo'lib, inline javobni sezilarli sekinlashtirar edi. Ulanmalarni
-    // tekshirish faqat oddiy xabar/tugma oqimida ("🔗 Ulanmalar") qoladi.
-    const serverLookup = await lookupMlbbAccount(parsed.accountId, parsed.zoneId, {
-      timeoutMs: INLINE_SERVER_LOOKUP_TIMEOUT_MS,
-    });
+    let limitData = null;
+    if (!isAdmin(userId) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
+      try {
+        const limitResult = await supabaseRpc("check_and_consume_bind_limit", {
+          p_user_id: toPgBigint(userId),
+          p_limit: 10,
+        });
+        if (limitResult && limitResult.allowed === false) {
+          return await answerInlineQuery(
+            queryId,
+            [buildInlineMessageResult(t("bind_info_title", lang), getBindInfoLimitReachedText(lang))]
+          );
+        }
+        if (limitResult && typeof limitResult.remaining === "number") {
+          limitData = limitResult;
+        }
+      } catch (error) {
+        console.error("[INLINE_BIND_LIMIT_CHECK_ERROR]", error);
+      }
+    }
+
+    // Server aniqlash va Ulanmalar tekshiruvini parallel bajaramiz — har biri
+    // o'z natijasini alohida inline karta qilib ko'rsatadi. Bind tekshiruvi
+    // inline uchun alohida cheklangan timeout bilan ishlaydi — provayderlar
+    // sekin bo'lsa ham inline javob cheksiz kechikmaydi.
+    const [serverOutcome, bindOutcome] = await Promise.allSettled([
+      lookupMlbbAccount(parsed.accountId, parsed.zoneId, {
+        timeoutMs: INLINE_SERVER_LOOKUP_TIMEOUT_MS,
+      }),
+      lookupMlbbBindInfo(parsed.accountId, parsed.zoneId, {
+        timeoutMs: INLINE_BIND_LOOKUP_TIMEOUT_MS,
+      }),
+    ]);
+    const serverLookup = serverOutcome.status === "fulfilled" ? serverOutcome.value : { ok: false };
+    const bindInfo = bindOutcome.status === "fulfilled" ? bindOutcome.value : { ok: false };
 
     const results = [];
-    let serverResultText = "";
+    const privateCopies = [];
 
     if (serverLookup.ok) {
       trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.SERVER_CHECK);
-      serverResultText = enrichPremiumEmojis(getResultText({
+      const serverResultText = enrichPremiumEmojis(getResultText({
         accountId: parsed.accountId,
         zoneId: parsed.zoneId,
         nickname: serverLookup.nickname,
@@ -1855,15 +1895,47 @@ async function handleInlineQuery(inlineQuery, options = {}) {
           disable_web_page_preview: true,
         },
       });
+      privateCopies.push(serverResultText);
     } else {
       recordError("mlbb_lookup_failed", serverLookup.technicalReason || serverLookup.reason, {
         accountId: parsed.accountId,
         zoneId: parsed.zoneId,
         status: serverLookup.status,
       });
+    }
+
+    if (bindInfo.ok) {
+      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
+      const bindResultText = enrichPremiumEmojis(getBindInfoResultText({
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+        ...bindInfo.data,
+      }, limitData, lang));
+      results.push({
+        type: "article",
+        id: `${userId}:${parsed.accountId}:${parsed.zoneId}`,
+        title: t("inline_bind_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
+        description: t("inline_bind_description", lang),
+        input_message_content: {
+          message_text: bindResultText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        },
+      });
+      privateCopies.push(bindResultText);
+    } else {
+      recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+        status: bindInfo.status,
+      });
+    }
+
+    // Har ikkala tekshiruv ham muvaffaqiyatsiz bo'lsa — yagona xato karta.
+    if (results.length === 0) {
       results.push(buildInlineMessageResult(
-        t("inline_server_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
-        getFailedLookupText(parsed, serverLookup, lang)
+        t("bind_info_title", lang),
+        getBindInfoFailedText(bindInfo.reason, lang)
       ));
     }
 
@@ -1871,14 +1943,20 @@ async function handleInlineQuery(inlineQuery, options = {}) {
 
     await answerInlineQuery(queryId, results);
 
+    // Main guruhga foydalanish xabari — har bir muvaffaqiyatli tekshiruv uchun.
     if (serverLookup.ok) {
-      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId);
+      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
+    }
+    if (bindInfo.ok) {
+      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
+    }
 
-      // Inline boshqa chatda ishlatilgan bo'lsa — natijani userni bot bilan
-      // shaxsiy chatiga ham yuboramiz.
-      if (!isPrivate) {
+    // Inline boshqa chatda ishlatilgan bo'lsa — natijalarni userni bot bilan
+    // shaxsiy chatiga ham yuboramiz.
+    if (!isPrivate) {
+      for (const resultText of privateCopies) {
         try {
-          await sendMessage(userId, serverResultText, resultKeyboard(user));
+          await sendMessage(userId, resultText, resultKeyboard(user));
         } catch (error) {
           console.error("[INLINE_PRIVATE_COPY_FAILED]", error.message);
         }
@@ -2839,16 +2917,18 @@ async function lookupMlbbAccount(accountId, zoneId, options = {}) {
   }
 }
 
-async function lookupMlbbBindInfo(accountId, zoneId) {
+async function lookupMlbbBindInfo(accountId, zoneId, options = {}) {
+  const timeoutMs = options.timeoutMs || MLBB_BIND_INFO_TIMEOUT_MS;
+
   // 1) Jebray (api.jebray.com) — birinchi urinish
-  const jebrayResult = await lookupJebrayMlbbBindInfo(accountId, zoneId);
+  const jebrayResult = await lookupJebrayMlbbBindInfo(accountId, zoneId, timeoutMs);
   if (jebrayResult.ok) {
     return jebrayResult;
   }
 
   // 2) Bengkel fallback — Jebray natija bermasa
   if (isBengkelBindInfoProvider()) {
-    const bengkelResult = await lookupBengkelMlbbBindInfo(accountId, zoneId);
+    const bengkelResult = await lookupBengkelMlbbBindInfo(accountId, zoneId, timeoutMs);
     if (bengkelResult.ok) {
       return bengkelResult;
     }
@@ -2872,7 +2952,7 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
       method: request.method,
       headers: request.headers,
       body: request.body,
-      timeoutMs: MLBB_BIND_INFO_TIMEOUT_MS,
+      timeoutMs,
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -2934,7 +3014,7 @@ async function lookupMlbbBindInfo(accountId, zoneId) {
   }
 }
 
-async function lookupBengkelMlbbBindInfo(accountId, zoneId) {
+async function lookupBengkelMlbbBindInfo(accountId, zoneId, timeoutMs = MLBB_BIND_INFO_TIMEOUT_MS) {
   if (!MLBB_BIND_INFO_API_URL || isTelegramBotApiUrl(MLBB_BIND_INFO_API_URL)) {
     return {
       ok: false,
@@ -2952,7 +3032,7 @@ async function lookupBengkelMlbbBindInfo(accountId, zoneId) {
       method: request.method,
       headers: request.headers,
       body: request.body,
-      timeoutMs: MLBB_BIND_INFO_TIMEOUT_MS,
+      timeoutMs,
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -3009,7 +3089,7 @@ async function lookupBengkelMlbbBindInfo(accountId, zoneId) {
   }
 }
 
-async function lookupJebrayMlbbBindInfo(accountId, zoneId) {
+async function lookupJebrayMlbbBindInfo(accountId, zoneId, timeoutMs = FULL_INFO_TIMEOUT_MS) {
   if (!FULL_INFO_API_KEY) {
     return {
       ok: false,
@@ -3032,7 +3112,7 @@ async function lookupJebrayMlbbBindInfo(accountId, zoneId) {
         player_id: Number(accountId),
         zone_id: Number(zoneId),
       }),
-      timeoutMs: FULL_INFO_TIMEOUT_MS,
+      timeoutMs,
     });
 
     const bodyText = await response.text();
