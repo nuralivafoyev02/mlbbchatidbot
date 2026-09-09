@@ -143,6 +143,11 @@
       pointer-events: none
     }
 
+    .login-screen:not(.hidden) {
+      opacity: 1;
+      transform: scale(1)
+    }
+
     .login-card {
       background: var(--card);
       border: 1px solid var(--card-border);
@@ -919,6 +924,32 @@
       }
     }
 
+    /* Boot spinner */
+    .boot-spinner {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      transition: opacity .3s
+    }
+
+    .boot-spinner.hide {
+      opacity: 0;
+      pointer-events: none
+    }
+
+    .boot-spinner .boot-ring {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite
+    }
+
     /* Skeleton placeholder */
     .skeleton {
       background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 75%);
@@ -1357,8 +1388,13 @@
     <div class="bg-blob"></div>
   </div>
 
+  <!-- Boot Spinner -->
+  <div class="boot-spinner" id="bootSpinner">
+    <div class="boot-ring"></div>
+  </div>
+
   <!-- Login Screen -->
-  <div class="login-screen" id="loginScreen">
+  <div class="login-screen hidden" id="loginScreen">
     <div class="login-card">
       <div class="login-logo"><i class="bi bi-controller"></i></div>
       <div class="login-title">MLBB Admin Panel</div>
@@ -1815,13 +1851,24 @@
       /* -----------------------------------------------------------------------
          Auto session check — existing cookie ni tekshirish
       ----------------------------------------------------------------------- */
+      function dismissBoot() {
+        var boot = document.getElementById("bootSpinner");
+        if (boot) boot.classList.add("hide");
+      }
+
       api("get_stats").then(function (result) {
+        dismissBoot();
         if (result.ok) {
           document.getElementById("loginScreen").classList.add("hidden");
           document.getElementById("app").classList.add("visible");
           initApp();
+        } else {
+          document.getElementById("loginScreen").classList.remove("hidden");
         }
-      }).catch(function () {});
+      }).catch(function () {
+        dismissBoot();
+        document.getElementById("loginScreen").classList.remove("hidden");
+      });
 
       /* -----------------------------------------------------------------------
          Init
