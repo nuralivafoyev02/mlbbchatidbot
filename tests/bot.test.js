@@ -3485,12 +3485,13 @@ test("full info telegraph content separates sections with colors and no images",
   assert.ok(headers.some((h) => h.includes("🟣 Ijtimoiy ko'rsatkichlar")));
 
   const serialized = JSON.stringify(content);
-  assert.equal(content[0].tag, "figure", "profile image must be the first (head) node");
+  assert.equal(content[0].tag, "figure", "profile picture must be the first (head) node");
   assert.equal(content[0].children[0].tag, "img", "figure must wrap an img");
   assert.match(content[0].children[0].attrs.src, /akmpicture/);
-  assert.equal(serialized.includes('"img"'), true);
-  assert.equal(serialized.includes("figure"), true);
-  assert.equal(serialized.includes("hero_image"), false);
+  assert.equal(serialized.includes('"hero_image"'), false, "hero images must not be sent to the UI");
+  assert.equal(serialized.includes("Oxirgi o'ynalgan qahramonlar"), true, "last-used heroes are labeled unambiguously");
+  assert.equal(serialized.includes('"296"'), false, "raw numeric hero ids are hidden");
+  assert.equal(serialized.includes("Zetian"), true, "readable hero names still show");
   assert.equal(serialized.includes('"hr"'), true, "sections should be separated with hr dividers");
   const hrCount = content.filter((n) => n.tag === "hr").length;
   assert.ok(hrCount >= 4, `expected at least 4 divider lines, got ${hrCount}`);
@@ -3500,8 +3501,8 @@ test("full info telegraph content separates sections with colors and no images",
   const secondSectionIndex = content.findIndex(
     (n) => n.tag === "h3" && String(n.children && n.children[0]).includes("Kolleksiya")
   );
+  assert.equal(content[firstSectionIndex - 1].tag, "figure", "profile picture sits above the first section");
   assert.equal(content[secondSectionIndex - 1].tag, "hr", "a divider must sit between sections");
-  assert.notEqual(content[firstSectionIndex - 1].tag, "hr", "no divider before the first section");
 });
 
 test("full info readable squad hides numeric squad ids", () => {

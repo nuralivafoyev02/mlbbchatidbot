@@ -2466,6 +2466,8 @@ async function createTelegraphPage(title, content, authorName = "MLBB Chat ID Bo
 function buildFullInfoTelegraphContent(data = {}) {
   const nodes = [];
 
+  // Faqat profil rasmi chiqadi — hero rasmlari (recent_battles.hero_image va h.k.)
+  // UI ga yuborilmaydi.
   const avatarUrl = data.avatar || data.avatar_url || "";
   if (avatarUrl) {
     nodes.push(
@@ -2490,7 +2492,7 @@ function buildFullInfoTelegraphContent(data = {}) {
         ["Oxirgi kirish mamlakati", data.last_login_country],
         ["Manzil", Array.isArray(data.location) && data.location.length ? data.location.join(", ") : null],
         ["Squad", buildReadableSquad(data.squad)],
-        ["Oxirgi qahramonlar", Array.isArray(data.last_use_hero) && data.last_use_hero.length ? data.last_use_hero.join(", ") : null],
+        ["Oxirgi o'ynalgan qahramonlar", Array.isArray(data.last_use_hero) && data.last_use_hero.length ? buildReadableHeroNames(data.last_use_hero) : null],
       ],
     },
     {
@@ -2607,6 +2609,19 @@ function buildReadableSquad(squad = {}) {
   return `${name}${tag && !/^\d+$/.test(tag) ? ` (${tag})` : ""}`;
 }
 
+function buildReadableHeroNames(heroes = []) {
+  const readable = heroes.map(readableHeroName).filter(Boolean);
+  return readable.length ? readable.join(", ") : null;
+}
+
+// Raqamli ID lar (masalan "294", "296") o'qilmaydigan — ularni yashirib,
+// faqat haqiqiy qahramon nomini qaytaradi.
+function readableHeroName(hero) {
+  const name = String(hero ?? "").trim();
+  if (!name || /^\d+$/.test(name)) return null;
+  return name;
+}
+
 function appendTelegraphSection(nodes, section) {
   const rows = (section.rows || []).filter(([, value]) => value !== undefined && value !== null && value !== "");
   if (!rows.length) {
@@ -2640,7 +2655,8 @@ function buildTelegraphHeroLine(hero = {}) {
 function buildTelegraphBattleLine(battle = {}) {
   const resultEmoji = String(battle.result || "").toLowerCase() === "victory" ? "✅" : "❌";
   const resultLabel = String(battle.result || "Noma'lum");
-  const firstLine = `${resultEmoji} ${battle.hero || "Qahramon"} — ${battle.mode || "Rejim noma'lum"} (${resultLabel})`;
+  const heroName = readableHeroName(battle.hero) || "Noma'lum qahramon";
+  const firstLine = `${resultEmoji} ${heroName} — ${battle.mode || "Rejim noma'lum"} (${resultLabel})`;
   const statsLine = `Kill: ${battle.kills ?? "?"} | Death: ${battle.deaths ?? "?"} | Assist: ${battle.assists ?? "?"}`;
   const detailLine = [
     battle.date ? `Sana: ${battle.date}` : null,
