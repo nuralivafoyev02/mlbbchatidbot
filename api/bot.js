@@ -92,6 +92,9 @@ const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 const BUTTON_MANDATORY_SETUP = "⚙️ Majburiylikni sozlash";
 const BUTTON_ADMIN_PANEL = "🎛️ Admin Panel";
 const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/miniapp`;
+const BOT_LOGO_URL =
+  cleanEnv(process.env.BOT_LOGO_URL) ||
+  `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/logo.jpg`;
 const USERS_PAGE_SIZE = 10;
 const BROADCAST_USERS_PAGE_SIZE = 1000;
 const KNOWN_USERS_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -1756,6 +1759,9 @@ function buildInlineMessageResult(title, text) {
     id: `msg:${Date.now()}`,
     title: String(title ?? cleanText).replace(/\s+/g, " ").trim().slice(0, 128),
     description: cleanText.replace(/\s+/g, " ").trim().slice(0, 200),
+    thumbnail_url: BOT_LOGO_URL,
+    thumbnail_width: 64,
+    thumbnail_height: 64,
     input_message_content: {
       message_text: cleanText,
       parse_mode: "HTML",
@@ -1772,6 +1778,9 @@ function buildInlineHintResult(lang) {
     id: "hint",
     title: title,
     description: description,
+    thumbnail_url: BOT_LOGO_URL,
+    thumbnail_width: 64,
+    thumbnail_height: 64,
     input_message_content: {
       message_text: title + "\n\n" + description,
       parse_mode: "HTML",
@@ -1834,41 +1843,11 @@ async function handleInlineQuery(inlineQuery, options = {}) {
       return await answerInlineQuery(queryId, recent.results);
     }
 
-    let limitData = null;
-    if (!isAdmin(userId) && isSupabaseConfigured() && !isSupabaseAuthTemporarilyDisabled()) {
-      try {
-        const limitResult = await supabaseRpc("check_and_consume_bind_limit", {
-          p_user_id: toPgBigint(userId),
-          p_limit: 10,
-        });
-        if (limitResult && limitResult.allowed === false) {
-          return await answerInlineQuery(
-            queryId,
-            [buildInlineMessageResult(t("bind_info_title", lang), getBindInfoLimitReachedText(lang))]
-          );
-        }
-        if (limitResult && typeof limitResult.remaining === "number") {
-          limitData = limitResult;
-        }
-      } catch (error) {
-        console.error("[INLINE_BIND_LIMIT_CHECK_ERROR]", error);
-      }
-    }
-
-    // Server aniqlash va Ulanmalar tekshiruvini parallel bajaramiz — har biri
-    // o'z natijasini alohida inline karta qilib ko'rsatadi. Bind tekshiruvi
-    // inline uchun alohida cheklangan timeout bilan ishlaydi — provayderlar
-    // sekin bo'lsa ham inline javob cheksiz kechikmaydi.
-    const [serverOutcome, bindOutcome] = await Promise.allSettled([
-      lookupMlbbAccount(parsed.accountId, parsed.zoneId, {
-        timeoutMs: INLINE_SERVER_LOOKUP_TIMEOUT_MS,
-      }),
-      lookupMlbbBindInfo(parsed.accountId, parsed.zoneId, {
-        timeoutMs: INLINE_BIND_LOOKUP_TIMEOUT_MS,
-      }),
-    ]);
-    const serverLookup = serverOutcome.status === "fulfilled" ? serverOutcome.value : { ok: false };
-    const bindInfo = bindOutcome.status === "fulfilled" ? bindOutcome.value : { ok: false };
+    // Server aniqlash — inline rejim hozircha faqat shu funksiya uchun ishlaydi.
+    // Ulanmalar (bind info) tekshiruvi keyinchalik qo'shiladi.
+    const serverLookup = await lookupMlbbAccount(parsed.accountId, parsed.zoneId, {
+      timeoutMs: INLINE_SERVER_LOOKUP_TIMEOUT_MS,
+    });
 
     const results = [];
     const privateCopies = [];
@@ -1889,6 +1868,9 @@ async function handleInlineQuery(inlineQuery, options = {}) {
         id: `server:${userId}:${parsed.accountId}:${parsed.zoneId}`,
         title: t("inline_server_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
         description: t("inline_server_description", lang),
+        thumbnail_url: BOT_LOGO_URL,
+        thumbnail_width: 64,
+        thumbnail_height: 64,
         input_message_content: {
           message_text: serverResultText,
           parse_mode: "HTML",
@@ -1904,38 +1886,11 @@ async function handleInlineQuery(inlineQuery, options = {}) {
       });
     }
 
-    if (bindInfo.ok) {
-      trackFeatureUse(user, { id: userId }, FEATURE_ACTIONS.BIND_INFO);
-      const bindResultText = enrichPremiumEmojis(getBindInfoResultText({
-        accountId: parsed.accountId,
-        zoneId: parsed.zoneId,
-        ...bindInfo.data,
-      }, limitData, lang));
-      results.push({
-        type: "article",
-        id: `${userId}:${parsed.accountId}:${parsed.zoneId}`,
-        title: t("inline_bind_title", lang, { accountId: parsed.accountId, zoneId: parsed.zoneId }),
-        description: t("inline_bind_description", lang),
-        input_message_content: {
-          message_text: bindResultText,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        },
-      });
-      privateCopies.push(bindResultText);
-    } else {
-      recordError("mlbb_bind_info_failed", bindInfo.technicalReason || bindInfo.reason, {
-        accountId: parsed.accountId,
-        zoneId: parsed.zoneId,
-        status: bindInfo.status,
-      });
-    }
-
-    // Har ikkala tekshiruv ham muvaffaqiyatsiz bo'lsa — yagona xato karta.
+    // Server aniqlash muvaffaqiyatsiz bo'lsa — yagona xato karta.
     if (results.length === 0) {
       results.push(buildInlineMessageResult(
-        t("bind_info_title", lang),
-        getBindInfoFailedText(bindInfo.reason, lang)
+        t("failed_lookup_title", lang),
+        getFailedLookupText(null, { reason: serverLookup.reason }, lang)
       ));
     }
 
@@ -1943,12 +1898,9 @@ async function handleInlineQuery(inlineQuery, options = {}) {
 
     await answerInlineQuery(queryId, results);
 
-    // Main guruhga foydalanish xabari — har bir muvaffaqiyatli tekshiruv uchun.
+    // Main guruhga foydalanish xabari — muvaffaqiyatli tekshiruv uchun.
     if (serverLookup.ok) {
       await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
-    }
-    if (bindInfo.ok) {
-      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
     }
 
     // Inline boshqa chatda ishlatilgan bo'lsa — natijalarni userni bot bilan

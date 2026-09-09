@@ -1252,7 +1252,7 @@ test("/info command is an alias for bind info lookup", async () => {
   }
 });
 
-test("inline mode answers a valid ID check with a sendable bind result", async () => {
+test("inline mode answers a valid ID check with a sendable server result", async () => {
   const originalFetch = global.fetch;
   const calls = [];
 
@@ -1261,16 +1261,12 @@ test("inline mode answers a valid ID check with a sendable bind result", async (
     const payload = options.body ? JSON.parse(options.body) : null;
     calls.push({ url: urlText, payload });
 
-    if (urlText === "https://bind.example.test/bind") {
+    if (urlText.startsWith("https://api.isan.eu.org/nickname/ml")) {
       return new Response(
         JSON.stringify({
           ok: true,
-          data: {
-            bindings: {
-              Moonton: "owner@example.com",
-              Facebook: "fb-owner",
-            },
-          },
+          success: true,
+          data: { id: "1006613098", zone: "13019", nickname: "TestPlayer", region: "Asia" },
         }),
         {
           status: 200,
@@ -1304,15 +1300,7 @@ test("inline mode answers a valid ID check with a sendable bind result", async (
       createRes()
     );
 
-    const bindCall = calls.find((c) => c.url === "https://bind.example.test/bind");
     const answerCall = calls.find((c) => c.url.includes("/answerInlineQuery"));
-
-    assert.ok(bindCall, "expected bind API lookup from inline query");
-    assert.deepEqual(bindCall.payload, {
-      player_id: "1006613098",
-      server_id: "13019",
-      x_key: "test-bind-key",
-    });
 
     assert.ok(answerCall, "expected answerInlineQuery call");
     assert.equal(answerCall.payload.inline_query_id, "inline-q-1");
@@ -1321,10 +1309,18 @@ test("inline mode answers a valid ID check with a sendable bind result", async (
 
     const first = answerCall.payload.results[0];
     assert.equal(first.type, "article");
+    assert.match(first.title, /Server Aniqlash/);
     assert.match(first.title, /1006613098/);
-    assert.match(first.description, /chat/);
-    assert.match(first.input_message_content.message_text, /<b>Ulanmalar<\/b>/);
-    assert.match(first.input_message_content.message_text, /<b>Moonton:<\/b> owner@example\.com/);
+    assert.ok(first.input_message_content, "expected input_message_content for server article");
+    assert.match(first.input_message_content.message_text, /<b>Server Aniqlash Natijasi<\/b>/);
+    assert.match(first.input_message_content.message_text, /Nickname:<\/b> TestPlayer/);
+    assert.match(first.input_message_content.message_text, /Region:<\/b> Asia/);
+
+    assert.equal(
+      calls.some((c) => c.url === "https://bind.example.test/bind"),
+      false,
+      "inline mode should not call the bind provider"
+    );
 
     // private chat query -> no duplicate copy back to the same user chat
     assert.equal(
@@ -1336,7 +1332,7 @@ test("inline mode answers a valid ID check with a sendable bind result", async (
   }
 });
 
-test("inline mode also surfaces a server detection article for the same ID", async () => {
+test("inline mode surfaces a server detection article for the ID", async () => {
   const originalFetch = global.fetch;
   const calls = [];
 
@@ -1351,23 +1347,6 @@ test("inline mode also surfaces a server detection article for the same ID", asy
           ok: true,
           success: true,
           data: { id: "1006613098", zone: "13019", nickname: "TestPlayer", region: "Asia" },
-        }),
-        {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }
-      );
-    }
-
-    if (urlText === "https://bind.example.test/bind") {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          data: {
-            bindings: {
-              Moonton: "owner@example.com",
-            },
-          },
         }),
         {
           status: 200,
@@ -1404,7 +1383,7 @@ test("inline mode also surfaces a server detection article for the same ID", asy
     const answerCall = calls.find((c) => c.url.includes("/answerInlineQuery"));
 
     assert.ok(answerCall);
-    assert.equal(answerCall.payload.results.length, 2);
+    assert.equal(answerCall.payload.results.length, 1);
 
     const serverArticle = answerCall.payload.results[0];
     assert.match(serverArticle.title, /Server Aniqlash/);
@@ -1414,9 +1393,11 @@ test("inline mode also surfaces a server detection article for the same ID", asy
     assert.match(serverArticle.input_message_content.message_text, /Region:<\/b> Asia/);
     assert.match(serverArticle.input_message_content.message_text, /Nickname:<\/b> TestPlayer/);
 
-    const bindArticle = answerCall.payload.results[1];
-    assert.match(bindArticle.input_message_content.message_text, /<b>Ulanmalar<\/b>/);
-    assert.match(bindArticle.input_message_content.message_text, /<b>Moonton:<\/b> owner@example\.com/);
+    assert.equal(
+      calls.some((c) => c.url === "https://bind.example.test/bind"),
+      false,
+      "inline mode should not call the bind provider"
+    );
 
     // private chat query -> no duplicate copy back to the same user chat
     assert.equal(
@@ -1495,15 +1476,12 @@ test("inline mode from a group also sends the result to the user's private chat"
     const payload = options.body ? JSON.parse(options.body) : null;
     calls.push({ url: urlText, payload });
 
-    if (urlText === "https://bind.example.test/bind") {
+    if (urlText.startsWith("https://api.isan.eu.org/nickname/ml")) {
       return new Response(
         JSON.stringify({
           ok: true,
-          data: {
-            bindings: {
-              Moonton: "owner@example.com",
-            },
-          },
+          success: true,
+          data: { id: "1006613098", zone: "13019", nickname: "TestPlayer", region: "Asia" },
         }),
         {
           status: 200,
@@ -1542,7 +1520,8 @@ test("inline mode from a group also sends the result to the user's private chat"
 
     assert.ok(answerCall);
     assert.ok(copy, "expected a private copy of the result");
-    assert.match(copy.text, /<b>Ulanmalar<\/b>/);
+    assert.match(copy.text, /<b>Server Aniqlash Natijasi<\/b>/);
+    assert.match(copy.text, /Nickname:<\/b> TestPlayer/);
     assert.match(copy.text, /1006613098/);
   } finally {
     global.fetch = originalFetch;
@@ -1558,15 +1537,12 @@ test("inline mode dedupes repeated identical queries without re-hitting the API"
     const payload = options.body ? JSON.parse(options.body) : null;
     calls.push({ url: urlText, payload });
 
-    if (urlText === "https://bind.example.test/bind") {
+    if (urlText.startsWith("https://api.isan.eu.org/nickname/ml")) {
       return new Response(
         JSON.stringify({
           ok: true,
-          data: {
-            bindings: {
-              Moonton: "owner@example.com",
-            },
-          },
+          success: true,
+          data: { id: "1006613098", zone: "13019", nickname: "TestPlayer", region: "Asia" },
         }),
         {
           status: 200,
@@ -1600,12 +1576,12 @@ test("inline mode dedupes repeated identical queries without re-hitting the API"
     await handler(inlineUpdate(4904), createRes());
     await handler(inlineUpdate(4905), createRes());
 
-    const bindCalls = calls.filter((c) => c.url === "https://bind.example.test/bind");
+    const lookupCalls = calls.filter((c) => c.url.startsWith("https://api.isan.eu.org/nickname/ml"));
     const answerCalls = calls.filter((c) => c.url.includes("/answerInlineQuery"));
 
-    assert.equal(bindCalls.length, 1, "identical inline query should reuse the cached result");
+    assert.equal(lookupCalls.length, 1, "identical inline query should reuse the cached result");
     assert.equal(answerCalls.length, 2);
-    assert.match(answerCalls[1].payload.results[0].input_message_content.message_text, /Ulanmalar/);
+    assert.match(answerCalls[1].payload.results[0].input_message_content.message_text, /Server Aniqlash/);
   } finally {
     global.fetch = originalFetch;
   }
