@@ -1813,6 +1813,17 @@
       });
 
       /* -----------------------------------------------------------------------
+         Auto session check — existing cookie ni tekshirish
+      ----------------------------------------------------------------------- */
+      api("get_stats").then(function (result) {
+        if (result.ok) {
+          document.getElementById("loginScreen").classList.add("hidden");
+          document.getElementById("app").classList.add("visible");
+          initApp();
+        }
+      }).catch(function () {});
+
+      /* -----------------------------------------------------------------------
          Init
       ----------------------------------------------------------------------- */
       function initApp() {
