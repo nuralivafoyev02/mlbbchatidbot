@@ -5172,7 +5172,7 @@ function getBroadcastResultText(result, lang) {
 function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
   const keyboard = [
-    [{ text: t("btn_check", lang) }, { text: t("btn_bind_info", lang) }],
+    [{ text: t("btn_check", lang) }],
     [{ text: t("btn_full_info", lang) }, { text: t("btn_language", lang) }],
   ];
 
