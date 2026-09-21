@@ -76,7 +76,17 @@ async function runVercelHandler(req, env = {}) {
 }
 
 async function processBroadcastMessage(body = {}, env = {}) {
-  const { chatIds, payload, adminChatId, total, sent = 0, failed = 0 } = body || {};
+  const {
+    chatIds,
+    payload,
+    adminChatId,
+    total,
+    sent = 0,
+    blocked = 0,
+    inactive = 0,
+    initiate = 0,
+    errors = 0,
+  } = body || {};
 
   if (!payload) {
     return;
@@ -87,7 +97,14 @@ async function processBroadcastMessage(body = {}, env = {}) {
 
     if (!recipients.length) {
       console.error("[QUEUE_BROADCAST_EMPTY_RECIPIENTS]");
-      await sendBroadcastReportSafe(adminChatId, { total: 0, sent: 0, failed: 0 });
+      await sendBroadcastReportSafe(adminChatId, {
+        total: 0,
+        sent: 0,
+        blocked: 0,
+        inactive: 0,
+        initiate: 0,
+        errors: 0,
+      });
       return;
     }
 
@@ -95,7 +112,10 @@ async function processBroadcastMessage(body = {}, env = {}) {
       adminChatId,
       total: recipients.length,
       sent,
-      failed,
+      blocked,
+      inactive,
+      initiate,
+      errors,
     });
     return;
   }
@@ -104,7 +124,10 @@ async function processBroadcastMessage(body = {}, env = {}) {
     adminChatId,
     total,
     sent,
-    failed,
+    blocked,
+    inactive,
+    initiate,
+    errors,
   });
 }
 
@@ -115,12 +138,20 @@ async function processBroadcastChunk(chatIds, payload, env, meta = {}) {
     chunk.map((chatId) => sendBroadcastWithRetry(chatId, payload))
   );
 
-  const sent =
-    Number(meta.sent || 0) +
-    results.filter((result) => result.status === "fulfilled").length;
-  const failed =
-    Number(meta.failed || 0) +
-    results.filter((result) => result.status === "rejected").length;
+  const counts = { sent: 0, blocked: 0, inactive: 0, initiate: 0, errors: 0 };
+
+  results.forEach((result) => {
+    const category = result.status === "fulfilled" ? result.value?.category : "error";
+    counts[counts[category] != null ? category : "errors"] += 1;
+  });
+
+  const next = {
+    sent: Number(meta.sent || 0) + counts.sent,
+    blocked: Number(meta.blocked || 0) + counts.blocked,
+    inactive: Number(meta.inactive || 0) + counts.inactive,
+    initiate: Number(meta.initiate || 0) + counts.initiate,
+    errors: Number(meta.errors || 0) + counts.errors,
+  };
 
   const remaining = chatIds.slice(chunk.length);
 
@@ -131,8 +162,7 @@ async function processBroadcastChunk(chatIds, payload, env, meta = {}) {
         payload,
         adminChatId: meta.adminChatId,
         total: meta.total,
-        sent,
-        failed,
+        ...next,
       });
     } catch (error) {
       console.error("[QUEUE_BROADCAST_CONTINUE_ERROR]", error);
@@ -140,8 +170,7 @@ async function processBroadcastChunk(chatIds, payload, env, meta = {}) {
   } else if (meta.adminChatId) {
     await sendBroadcastReportSafe(meta.adminChatId, {
       total: Number(meta.total) || chatIds.length,
-      sent,
-      failed,
+      ...next,
     });
   }
 
@@ -163,10 +192,22 @@ async function sendBroadcastReportSafe(adminChatId, result) {
 async function sendBroadcastWithRetry(chatId, payload) {
   try {
     await handler.sendBroadcastPayload(chatId, payload);
+    return { ok: true, category: "sent" };
   } catch (error) {
-    // O'tkinchi xatolik (masalan 429 rate limit) bo'lsa bir marta qayta urinamiz
-    await sleep(1000);
-    await handler.sendBroadcastPayload(chatId, payload);
+    const category = handler.categorizeBroadcastSendError(error);
+
+    if (category === "error") {
+      // O'tkinchi xatolik (masalan 429 rate limit) bo'lsa bir marta qayta urinamiz
+      await sleep(1000);
+      try {
+        await handler.sendBroadcastPayload(chatId, payload);
+        return { ok: true, category: "sent" };
+      } catch (retryError) {
+        return { ok: false, category: handler.categorizeBroadcastSendError(retryError) };
+      }
+    }
+
+    return { ok: false, category };
   }
 }
 

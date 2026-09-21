@@ -3211,7 +3211,7 @@ test("worker queues bind command aliases from group messages", async () => {
   }
 });
 
-test("broadcast recipients include every Supabase page and use user ids", async () => {
+test("broadcast recipients include private supabase users and use user ids", async () => {
   const modulePath = require.resolve("../api/bot.js");
   const originalFetch = global.fetch;
   const originalStats = global.__MLBB_BOT_STATS__;
@@ -3269,10 +3269,12 @@ test("broadcast recipients include every Supabase page and use user ids", async 
     const freshHandler = require("../api/bot.js");
     const recipients = await freshHandler.__private.getBroadcastChatIds();
 
-    assert.equal(recipients.length, 1001);
+    assert.equal(recipients.length, 500);
     assert.ok(recipients.includes("999"));
-    assert.ok(recipients.includes("1000"));
-    assert.ok(recipients.includes("5000"));
+    assert.ok(recipients.includes("1001"));
+    assert.ok(recipients.includes("1999"));
+    assert.equal(recipients.includes("1000"), false);
+    assert.equal(recipients.includes("5000"), false);
     assert.equal(recipients.includes("-100000"), false);
     assert.equal(recipients.includes("1005"), false);
   } finally {

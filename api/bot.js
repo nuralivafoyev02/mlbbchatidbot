@@ -1624,7 +1624,7 @@ async function handleMessageCommand(chatId, user, message) {
 
   const broadcastId = createBroadcastId();
   const confirmToken = createBroadcastToken();
-  const recipientCount = await getBroadcastRecipientCount();
+  const recipientStats = await getBroadcastRecipientStats();
 
   stats.pendingBroadcasts.set(broadcastId, {
     adminId: String(user.id),
@@ -1633,12 +1633,12 @@ async function handleMessageCommand(chatId, user, message) {
     tokenHash: hashBroadcastToken(confirmToken),
     createdAt: Date.now(),
     status: "pending",
-    recipientCount,
+    recipientCount: recipientStats.privateCount,
   });
 
   await sendMessage(
     chatId,
-    getBroadcastConfirmText(broadcastPayload, recipientCount, getUserLang(user.id)),
+    getBroadcastConfirmText(broadcastPayload, recipientStats, getUserLang(user.id)),
     broadcastConfirmKeyboard(broadcastId, confirmToken, getUserLang(user.id))
   );
 }
@@ -4119,19 +4119,42 @@ async function broadcastMessage(payload) {
   const broadcastPayload =
     typeof payload === "string" ? createTextBroadcastPayload(payload) : payload;
   const chatIds = await getBroadcastChatIds();
-  let sent = 0;
-  let failed = 0;
+  const counts = { total: chatIds.length, sent: 0, blocked: 0, inactive: 0, initiate: 0, errors: 0 };
 
   for (const chunk of chunkArray(chatIds, 20)) {
     const results = await Promise.allSettled(
-      chunk.map((chatId) => sendBroadcastPayload(chatId, broadcastPayload))
+      chunk.map(async (chatId) => {
+        try {
+          await sendBroadcastPayload(chatId, broadcastPayload);
+          return "sent";
+        } catch (error) {
+          const category = categorizeBroadcastSendError(error);
+
+          if (category === "error") {
+            try {
+              await sendBroadcastPayload(chatId, broadcastPayload);
+              return "sent";
+            } catch (retryError) {
+              return categorizeBroadcastSendError(retryError);
+            }
+          }
+
+          return category;
+        }
+      })
     );
 
     results.forEach((result, index) => {
-      if (result.status === "fulfilled") {
-        sent += 1;
-      } else {
-        failed += 1;
+      const category = result.status === "fulfilled" ? result.value : "error";
+
+      if (category === "sent") {
+        counts.sent += 1;
+        return;
+      }
+
+      counts[counts[category] != null ? category : "errors"] += 1;
+
+      if (result.status === "rejected") {
         console.error("[BROADCAST_ERROR]", result.reason);
         recordError("broadcast_failed", result.reason?.message || String(result.reason), {
           chatId: chunk[index],
@@ -4140,11 +4163,7 @@ async function broadcastMessage(payload) {
     });
   }
 
-  return {
-    total: chatIds.length,
-    sent,
-    failed,
-  };
+  return counts;
 }
 
 async function getBroadcastChatIds() {
@@ -4164,11 +4183,53 @@ async function getBroadcastChatIds() {
   return Array.from(chatIds);
 }
 
-async function getBroadcastRecipientCount() {
-  return (await getBroadcastChatIds()).length;
+async function getBroadcastRecipientStats() {
+  const sendable = new Set(Array.from(stats.broadcastChats || []));
+  const groupOnly = new Set();
+
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return { total: sendable.size, privateCount: sendable.size, groupOnlyCount: 0 };
+  }
+
+  try {
+    const rows = await fetchAllSupabaseBroadcastRows();
+
+    rows.forEach((row) => {
+      const recipient = classifyBroadcastRecipient(row);
+
+      if (recipient?.type === "private") {
+        sendable.add(recipient.chatId);
+      } else if (recipient) {
+        groupOnly.add(recipient.chatId);
+      }
+    });
+  } catch (error) {
+    console.error("[SUPABASE_BROADCAST_STATS_ERROR]", error);
+    recordError("supabase_broadcast_stats_failed", error.message);
+  }
+
+  return {
+    total: sendable.size + groupOnly.size,
+    privateCount: sendable.size,
+    groupOnlyCount: groupOnly.size,
+  };
 }
 
 async function addSupabaseBroadcastRecipients(chatIds) {
+  const rows = await fetchAllSupabaseBroadcastRows();
+
+  rows.forEach((row) => {
+    const recipient = classifyBroadcastRecipient(row);
+
+    if (recipient?.type === "private") {
+      chatIds.add(recipient.chatId);
+    }
+  });
+}
+
+async function fetchAllSupabaseBroadcastRows() {
+  const rows = [];
+
   for (let offset = 0; ; offset += BROADCAST_USERS_PAGE_SIZE) {
     const params = new URLSearchParams();
 
@@ -4177,24 +4238,41 @@ async function addSupabaseBroadcastRecipients(chatIds) {
     params.set("limit", String(BROADCAST_USERS_PAGE_SIZE));
     params.set("offset", String(offset));
 
-    const rows = await supabaseRequest(`/bot_users?${params.toString()}`);
+    const page = await supabaseRequest(`/bot_users?${params.toString()}`);
 
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return;
+    if (!Array.isArray(page) || page.length === 0) {
+      return rows;
     }
 
-    rows.forEach((row) => {
-      const chatId = getBroadcastRecipientId(row);
+    rows.push(...page);
 
-      if (chatId) {
-        chatIds.add(chatId);
-      }
-    });
-
-    if (rows.length < BROADCAST_USERS_PAGE_SIZE) {
-      return;
+    if (page.length < BROADCAST_USERS_PAGE_SIZE) {
+      return rows;
     }
   }
+}
+
+function classifyBroadcastRecipient(row = {}) {
+  if (row.is_bot === true) {
+    return null;
+  }
+
+  const userId = toPgBigint(row.user_id);
+
+  if (userId && !userId.startsWith("-")) {
+    return {
+      chatId: userId,
+      type: String(row.chat_type || "") === "private" ? "private" : "group",
+    };
+  }
+
+  const chatId = toPgBigint(row.chat_id);
+
+  if (chatId && !chatId.startsWith("-") && (!row.chat_type || row.chat_type === "private")) {
+    return { chatId, type: "private" };
+  }
+
+  return null;
 }
 
 function getBroadcastRecipientId(row = {}) {
@@ -4226,6 +4304,35 @@ async function sendBroadcastPayload(chatId, payload) {
     entities: payload.entities || [],
     plain: true,
   });
+}
+
+function categorizeBroadcastSendError(error) {
+  const message = String(error?.message || error || "");
+  const status = Number((message.match(/HTTP\s+(\d{3})/) || [])[1] || 0);
+
+  if (status === 429 || status >= 500) {
+    return "error";
+  }
+
+  const lower = message.toLowerCase();
+
+  if (/bot was blocked|blocked by the user/.test(lower)) {
+    return "blocked";
+  }
+
+  if (/can'?t initiate|cannot initiate|initiate conversation/.test(lower)) {
+    return "initiate";
+  }
+
+  if (/deactivated/.test(lower)) {
+    return "inactive";
+  }
+
+  if (/chat not found|channel not found|user not found|group not found|not found/.test(lower)) {
+    return "inactive";
+  }
+
+  return "error";
 }
 
 async function sendFeedbackToAdmins(feedback) {
@@ -5053,13 +5160,23 @@ function getBroadcastExpiredText(lang) {
   return t("broadcast_expired", lang);
 }
 
-function getBroadcastConfirmText(payload, recipientCount = stats.broadcastChats.size, lang) {
+function getBroadcastConfirmText(payload, recipientStats = { privateCount: stats.broadcastChats.size }, lang) {
   lang = lang || DEFAULT_LANG;
+
+  if (typeof recipientStats === "number") {
+    recipientStats = { privateCount: recipientStats };
+  }
+
   const preview = typeof payload === "string" ? payload : payload?.previewText || payload?.text || "";
   const entities = (typeof payload === "object" && payload?.kind === "text") ? (payload.entities || []) : [];
   const header = [
     t("broadcast_confirm_title", lang),
-    t("broadcast_confirm_body", lang, { count: recipientCount }),
+    t("broadcast_confirm_body", lang),
+    t("broadcast_confirm_audience", lang, {
+      total: Number(recipientStats.total) || 0,
+      private: Number(recipientStats.privateCount) || 0,
+      groupOnly: Number(recipientStats.groupOnlyCount) || 0,
+    }),
     "",
     t("broadcast_confirm_message", lang),
   ].join("\n");
@@ -5158,15 +5275,40 @@ function getBroadcastQueuedErrorText(lang) {
   return t("broadcast_queued_error", lang);
 }
 
-function getBroadcastResultText(result, lang) {
+function getBroadcastResultText(result = {}, lang) {
   lang = lang || DEFAULT_LANG;
-  return [
+
+  const total = Number(result.total) || 0;
+  const sent = Number(result.sent) || 0;
+  const blocked = Number(result.blocked) || 0;
+  const inactive = Number(result.inactive) || 0;
+  const initiate = Number(result.initiate) || 0;
+  const errors = Number(result.errors) || 0;
+
+  const lines = [
     t("broadcast_result_title", lang),
     "",
-    t("broadcast_result_total", lang, { total: result.total }),
-    t("broadcast_result_sent", lang, { sent: result.sent }),
-    t("broadcast_result_failed", lang, { failed: result.failed }),
-  ].join("\n");
+    t("broadcast_result_total", lang, { total }),
+    t("broadcast_result_sent", lang, { sent }),
+  ];
+
+  if (blocked > 0) {
+    lines.push(t("broadcast_result_blocked", lang, { blocked }));
+  }
+
+  if (inactive > 0) {
+    lines.push(t("broadcast_result_inactive", lang, { count: inactive }));
+  }
+
+  if (initiate > 0) {
+    lines.push(t("broadcast_result_initiate", lang, { count: initiate }));
+  }
+
+  if (errors > 0) {
+    lines.push(t("broadcast_result_other_errors", lang, { count: errors }));
+  }
+
+  return lines.join("\n");
 }
 
 function mainKeyboard(user = {}) {
@@ -7303,6 +7445,7 @@ function sanitizeTelegramText(value) {
 
 module.exports.sendDailyUsageReport = sendDailyUsageReport;
 module.exports.sendBroadcastPayload = sendBroadcastPayload;
+module.exports.categorizeBroadcastSendError = categorizeBroadcastSendError;
 module.exports.sendBroadcastReport = sendBroadcastReport;
 module.exports.getBroadcastChatIds = getBroadcastChatIds;
 module.exports.enrichPremiumEmojis = enrichPremiumEmojis;
@@ -7323,6 +7466,7 @@ module.exports.__private = {
   enrichPremiumEmojis,
   getBroadcastChatIds,
   getBroadcastRecipientId,
+  getBroadcastRecipientStats,
   getCommandsText,
   getCustomEmojiIdText,
   getAdminFeedbackText,
