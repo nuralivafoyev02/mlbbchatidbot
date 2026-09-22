@@ -2227,22 +2227,47 @@
       /* -----------------------------------------------------------------------
          User Modal
       ----------------------------------------------------------------------- */
+      function buildModalInfoSkeleton() {
+        var rows = [
+          { w: "w40" },
+          { w: "w60" },
+          { w: "w80" },
+          { w: "w50" },
+        ];
+        return rows.map(function (r) {
+          return '<div class="skeleton-row">' +
+            '<div class="skeleton skeleton-circle" style="width:18px;height:18px;flex-shrink:0"></div>' +
+            '<div class="skeleton skeleton-line ' + r.w + '" style="margin:0"></div>' +
+            '</div>';
+        }).join("");
+      }
+
       function openUser(userId) {
         currentUserId = userId;
         var modal = document.getElementById("userModal");
         modal.classList.add("open");
 
-        document.getElementById("modalUserName").textContent = "Yuklanmoqda...";
-        document.getElementById("modalUserInfo").innerHTML = "";
-        document.getElementById("modalLimitBadges").innerHTML = "";
+        // Skeleton placeholders until data loads
+        document.getElementById("modalUserName").innerHTML =
+          '<span class="skeleton skeleton-line w50" style="height:22px;margin:0"></span>';
+        document.getElementById("modalUserInfo").innerHTML = buildModalInfoSkeleton();
+        document.getElementById("modalLimitBadges").innerHTML =
+          '<div style="display:flex;gap:8px;flex-wrap:wrap"><div class="skeleton skeleton-line" style="width:130px;height:24px;margin:0"></div><div class="skeleton skeleton-line" style="width:120px;height:24px;margin:0"></div></div>';
         document.getElementById("modalFullInfoQuota").value = "";
         document.getElementById("modalResetPwQuota").value = "";
-        document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: - | Kiritilgan qiymat ustiga qo'shiladi";
-        document.getElementById("modalResetPwHint").textContent = "Hozirgi qoldiq: - | Ijobiy qiymat ustiga qo'shiladi, manfiy kamaytiradi";
+        document.getElementById("modalFullInfoHint").innerHTML =
+          '<div class="skeleton skeleton-line w50" style="height:10px;margin:0"></div>';
+        document.getElementById("modalResetPwHint").innerHTML =
+          '<div class="skeleton skeleton-line w60" style="height:10px;margin:0"></div>';
 
         api("get_user", { user_id: userId }).then(function (result) {
           if (!result.ok) {
             document.getElementById("modalUserName").textContent = "Xatolik";
+            document.getElementById("modalUserInfo").innerHTML =
+              '<div style="color:var(--pink)">Malumotlarni yuklab bo\u02BBlmadi.</div>';
+            document.getElementById("modalLimitBadges").innerHTML = "";
+            document.getElementById("modalFullInfoHint").textContent = "";
+            document.getElementById("modalResetPwHint").textContent = "";
             return;
           }
 
