@@ -23,7 +23,7 @@ export default {
       });
     }
 
-    return runVercelHandler(req, env);
+    return runVercelHandler(req, env, ctx);
   },
 
   async queue(batch, env) {
@@ -67,10 +67,10 @@ export default {
   },
 };
 
-async function runVercelHandler(req, env = {}) {
+async function runVercelHandler(req, env = {}, ctx = null) {
   const res = createVercelResponse();
 
-  await handler(req, res, env);
+  await handler(req, res, env, ctx);
 
   return res.toResponse();
 }

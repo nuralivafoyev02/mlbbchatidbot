@@ -5467,3 +5467,176 @@ test("english language: language command shows uz, ru and en options", async () 
     global.fetch = originalFetch;
   }
 });
+
+test("profile: my_profile shows accounts section with inline actions", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 6101,
+          callback_query: {
+            id: "cb-6101",
+            from: { id: 7088, first_name: "Joe" },
+            message: {
+              chat: { id: 7088, type: "private" },
+              message_id: 41,
+              from: { id: 5081175125 },
+              text: "old",
+            },
+            data: "my_profile",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const sent = [...calls].reverse().find((c) => c.payload.text !== undefined && (c.payload.chat_id === 7088 || c.url.includes("editMessageText")));
+    assert.ok(sent, "profile message expected");
+    assert.match(sent.payload.text, /Mening profilim|My profile/, "profile title expected");
+    assert.match(sent.payload.text, /Akkauntlarim|My accounts/, "accounts section expected");
+
+    const buttons = sent.payload.reply_markup?.inline_keyboard?.flat() || [];
+    const datas = buttons.map((b) => b.callback_data);
+    assert.ok(datas.includes("profile_add"), "add account action expected");
+    assert.ok(datas.includes("profile_unlink"), "unlink action expected");
+    assert.ok(datas.includes("profile_viewers"), "viewers action expected");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("profile: profile_add prompt sets mode and asks for account input", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 8 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 6102,
+          callback_query: {
+            id: "cb-6102",
+            from: { id: 7088, first_name: "Joe" },
+            message: {
+              chat: { id: 7088, type: "private" },
+              message_id: 42,
+              from: { id: 5081175125 },
+              text: "old",
+            },
+            data: "profile_add",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const sent = [...calls].reverse().find((c) => c.payload.text !== undefined && c.url.includes("editMessageText"));
+    assert.ok(sent, "prompt edit expected");
+    assert.match(sent.payload.text, /User ID va Zone|User ID|MLBB/, "account input prompt expected");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("profile: invalid account input during add mode replies with format error", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 6103,
+          callback_query: {
+            id: "cb-6103",
+            from: { id: 7088, first_name: "Joe" },
+            message: {
+              chat: { id: 7088, type: "private" },
+              message_id: 43,
+              from: { id: 5081175125 },
+              text: "old",
+            },
+            data: "profile_add",
+          },
+        },
+      },
+      createRes()
+    );
+
+    // Endi profile_add mode orqali "abc" yuboriladi
+    const secondCalls = [];
+    const secondFetch = async (url, options) => {
+      secondCalls.push({ url: String(url), payload: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 10 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    global.fetch = secondFetch;
+
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 6104,
+          message: {
+            chat: { id: 7088, type: "private" },
+            from: { id: 7088, first_name: "Joe" },
+            text: "abc",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const sent = [...secondCalls].reverse().find((c) => c.payload.text !== undefined);
+    assert.ok(sent, "invalid account reply expected");
+    assert.match(sent.payload.text, /formati noto|Invalid account|Неверный формат/, "invalid format text expected");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("profile: account_owner_notify string resolves in all langs", () => {
+  assert.ok(t("account_owner_notify", "uz", { checker: "@tester", accountId: "123", zoneId: "5000" }).includes("@tester"));
+  assert.ok(t("account_owner_notify", "ru", { checker: "@tester", accountId: "123", zoneId: "5000" }).includes("@tester"));
+  assert.ok(t("account_owner_notify", "en", { checker: "@tester", accountId: "123", zoneId: "5000" }).includes("@tester"));
+});

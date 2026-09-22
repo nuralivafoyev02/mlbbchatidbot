@@ -321,7 +321,7 @@ if (!(stats.languageCache instanceof Map)) {
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 BROADCAST_USER_IDS.forEach((chatId) => rememberKnownPrivateChat(chatId));
 
-module.exports = async function handler(req, res, env = {}) {
+module.exports = async function handler(req, res, env = {}, ctx = null) {
   let update = null;
 
   try {
@@ -361,7 +361,7 @@ module.exports = async function handler(req, res, env = {}) {
     }
 
     update = parseRequestBody(req.body);
-    await processUpdate(update, { env });
+    await processUpdate(update, { env, ctx });
 
     return res.status(200).json({ ok: true });
   } catch (error) {
@@ -402,6 +402,7 @@ async function processUpdate(update, options = {}) {
       updateType: messageEntry[0],
       skipBindWait: update.__skip_bind_wait === true,
       bindWaitMessage: normalizeBindWaitMessage(update.__bind_wait_message),
+      ctx: options.ctx || null,
     });
     return;
   }
@@ -424,6 +425,7 @@ async function processUpdate(update, options = {}) {
     await handleInlineQuery(update.inline_query, {
       updateId: update.update_id,
       updateType: "inline_query",
+      ctx: options.ctx || null,
     });
     return;
   }
@@ -540,6 +542,7 @@ async function handleMessage(message, updateMeta = {}) {
   const user = message.from || {};
   const skipBindWait = updateMeta.skipBindWait === true;
   const bindWaitMessage = updateMeta.bindWaitMessage || null;
+  const ctx = updateMeta.ctx || null;
 
   trackUser(user, message.chat, {
     ...updateMeta,
@@ -560,6 +563,16 @@ async function handleMessage(message, updateMeta = {}) {
   if (!isGroupChat(message.chat)) {
     const isAllowed = await enforceMandatoryMembership(chatId, user);
     if (!isAllowed) return;
+  }
+
+  // "Akkaunt qo'shish" rejimi — foydalanuvchi User ID + Zone ID yuboradi.
+  if (!isGroupChat(message.chat) && getUserMode(user.id) === "profile_add" && text) {
+    if (/^[/!.]/.test(text) || isCommandLike(text)) {
+      rememberUserMode(user.id, null);
+    } else {
+      await handleProfileAddAccount(chatId, user, text);
+      return;
+    }
   }
 
   const checkUserMatch = text.match(/(?:@(\w+)|\b(\d+)\b)\s+user botdan foydalanganmi\?/i);
@@ -701,6 +714,7 @@ async function handleMessage(message, updateMeta = {}) {
         replyMarkup: null,
         skipWait: skipBindWait,
         waitMessage: bindWaitMessage,
+        ctx,
       });
       return;
     }
@@ -717,6 +731,7 @@ async function handleMessage(message, updateMeta = {}) {
         replyMarkup: null,
         skipWait: skipBindWait,
         waitMessage: bindWaitMessage,
+        ctx,
       });
       return;
     }
@@ -733,6 +748,7 @@ async function handleMessage(message, updateMeta = {}) {
         replyMarkup: null,
         skipWait: skipBindWait,
         waitMessage: bindWaitMessage,
+        ctx,
       });
       return;
     }
@@ -744,6 +760,7 @@ async function handleMessage(message, updateMeta = {}) {
 
     await detectAndReply(chatId, addressing.input, user, {
       replyMarkup: null,
+      ctx,
     });
     return;
   }
@@ -858,7 +875,7 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
-    await detectAndReply(chatId, input, user);
+    await detectAndReply(chatId, input, user, { ctx });
     return;
   }
 
@@ -1081,6 +1098,7 @@ async function handleMessage(message, updateMeta = {}) {
     await handleBindInfoRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
@@ -1089,6 +1107,7 @@ async function handleMessage(message, updateMeta = {}) {
     await handleBindInfoRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
@@ -1098,6 +1117,7 @@ async function handleMessage(message, updateMeta = {}) {
     await handleFullInfoRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
@@ -1106,6 +1126,7 @@ async function handleMessage(message, updateMeta = {}) {
     await handleFullInfoRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
@@ -1115,6 +1136,7 @@ async function handleMessage(message, updateMeta = {}) {
     await handleResetPwRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
@@ -1123,6 +1145,7 @@ async function handleMessage(message, updateMeta = {}) {
     await handleResetPwRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
@@ -1134,19 +1157,20 @@ async function handleMessage(message, updateMeta = {}) {
     await handleResetPwRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
+      ctx,
     });
     return;
   }
 
   if (getUserMode(user.id) === "server_check") {
-    await detectAndReply(chatId, text, user);
+    await detectAndReply(chatId, text, user, { ctx });
     return;
   }
 
   const parsed = parseMlbbInput(text);
 
   if (parsed.ok) {
-    await detectAndReply(chatId, text, user);
+    await detectAndReply(chatId, text, user, { ctx });
     return;
   }
 
@@ -1427,12 +1451,45 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
   }
 
   if (data === "my_profile") {
-    await handleMyProfileRequest(chatId, user);
+    await handleMyProfileRequest(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "profile_add") {
+    await handleProfileAddPrompt(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "profile_add_cancel") {
+    rememberUserMode(user.id, null);
+    await handleMyProfileRequest(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "profile_menu") {
+    rememberUserMode(user.id, null);
+    await handleMyProfileRequest(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "profile_unlink") {
+    await handleProfileUnlinkMenu(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data.startsWith("profile_unlink:")) {
+    const accountId = data.split(":")[1];
+    await handleProfileUnlinkConfirm(chatId, user, accountId, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "profile_viewers") {
+    await handleProfileViewersRequest(chatId, user, callbackQuery.message?.message_id);
     return;
   }
 }
 
-async function handleMyProfileRequest(chatId, user) {
+async function handleMyProfileRequest(chatId, user, messageId = null) {
   const lang = getUserLang(user.id);
   const displayName = user.first_name || user.username || String(user.id);
 
@@ -1464,54 +1521,268 @@ async function handleMyProfileRequest(chatId, user) {
     console.error("[MY_PROFILE_FULLINFO_ERROR]", err.message);
   }
 
-  // 3. Foydalanish statistikasi (bot_usage_events dan)
-  let totalActions = 0;
-  let actionBreakdown = {};
+  // 3. Akkauntlar ro'yxati
+  let accounts = [];
   try {
-    const events = await supabaseRequest(
-      `/bot_usage_events?user_id=eq.${toPgBigint(user.id)}&action=not.is.null&select=action&limit=5000`
-    );
-    if (Array.isArray(events)) {
-      totalActions = events.length;
-      events.forEach(function (e) {
-        const a = e.action || "unknown";
-        actionBreakdown[a] = (actionBreakdown[a] || 0) + 1;
-      });
-    }
+    const accResult = await supabaseRpc("list_user_accounts", {
+      p_user_id: toPgBigint(user.id),
+    });
+    accounts = Array.isArray(accResult) ? accResult : [];
   } catch (err) {
-    console.error("[MY_PROFILE_ACTIONS_ERROR]", err.message);
+    console.error("[MY_PROFILE_ACCOUNTS_ERROR]", err.message);
+    accounts = [];
   }
-
-  // Action nomlarini tarjima qilish
-  const actionLabels = {
-    server_check: t("label_server_check", lang),
-    reset_pw: t("label_reset_pw", lang),
-    full_info: t("label_full_info", lang),
-    start: t("label_start", lang),
-    feedback: t("label_feedback", lang),
-  };
 
   const lines = [
     t("profile_title", lang, { name: escapeHtml(displayName) }),
     "",
-    t("profile_reset_pw", lang, { remaining: resetPwRemaining }),
-    t("profile_full_info", lang, { remaining: fullInfoRemaining }),
-    "",
-    t("profile_total_actions", lang, { total: totalActions }),
-  ]
+  ];
 
-  // Har bir funksiya bo'yicha
-  const breakdownEntries = Object.entries(actionBreakdown).sort(function (a, b) { return b[1] - a[1]; });
-  if (breakdownEntries.length > 0) {
-    lines.push("");
-    lines.push(t("profile_breakdown_title", lang));
-    breakdownEntries.forEach(function (entry) {
-      const label = actionLabels[entry[0]] || entry[0];
-      lines.push(t("profile_breakdown_item", lang, { label, count: entry[1] }));
+  // Akkauntlar bo'limi
+  lines.push(t("profile_accounts_title", lang, { count: accounts.length, max: ACCOUNT_MAX_COUNT }));
+  if (accounts.length === 0) {
+    lines.push(t("profile_accounts_empty", lang));
+  } else {
+    accounts.forEach(function (acc, index) {
+      lines.push(t("profile_account_item", lang, {
+        index: index + 1,
+        accountId: acc.account_id,
+        zoneId: acc.zone_id,
+      }));
     });
   }
 
-  await sendMessage(chatId, lines.join("\n"), mainKeyboard(user));
+  lines.push(
+    "",
+    t("profile_reset_pw", lang, { remaining: resetPwRemaining }),
+    t("profile_full_info", lang, { remaining: fullInfoRemaining })
+  );
+
+  const replyMarkup = {
+    inline_keyboard: [
+      [{ text: t("profile_add_account_btn", lang), callback_data: "profile_add" }],
+      [
+        { text: t("profile_unlink_account_btn", lang), callback_data: "profile_unlink" },
+        { text: t("profile_viewers_btn", lang), callback_data: "profile_viewers" },
+      ],
+    ],
+  };
+
+  await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), replyMarkup);
+}
+
+const ACCOUNT_MAX_COUNT = 5;
+
+function buildProfileUnlinkKeyboard(lang, accounts) {
+  const buttons = accounts.map(function (acc, index) {
+    return [{
+      text: t("profile_account_item", lang, {
+        index: index + 1,
+        accountId: acc.account_id,
+        zoneId: acc.zone_id,
+      }).replace(/<code>|<\/code>/g, ""),
+      callback_data: `profile_unlink:${acc.id}`,
+    }];
+  });
+  buttons.push([{ text: t("profile_back_btn", lang), callback_data: "profile_menu" }]);
+  return { inline_keyboard: buttons };
+}
+
+function buildProfileViewersKeyboard(lang) {
+  return {
+    inline_keyboard: [[{ text: t("profile_back_btn", lang), callback_data: "profile_menu" }]],
+  };
+}
+
+function formatProfileEventTime(iso) {
+  try {
+    return new Date(iso).toLocaleString("uz-UZ", { timeZone: "Asia/Tashkent" });
+  } catch (err) {
+    return String(iso || "");
+  }
+}
+
+async function handleProfileAddPrompt(chatId, user, messageId = null) {
+  rememberUserMode(user.id, "profile_add");
+  const lang = getUserLang(user.id);
+  const replyMarkup = {
+    inline_keyboard: [[{ text: t("profile_add_cancel", lang), callback_data: "profile_add_cancel" }]],
+  };
+  await sendOrEditAdminMessage(chatId, messageId, t("profile_add_prompt", lang), replyMarkup);
+}
+
+async function handleProfileUnlinkMenu(chatId, user, messageId = null) {
+  const lang = getUserLang(user.id);
+
+  let accounts = [];
+  try {
+    const accResult = await supabaseRpc("list_user_accounts", {
+      p_user_id: toPgBigint(user.id),
+    });
+    accounts = Array.isArray(accResult) ? accResult : [];
+  } catch (err) {
+    console.error("[MY_PROFILE_UNLINK_ERROR]", err.message);
+    accounts = [];
+  }
+
+  if (accounts.length === 0) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_empty", lang), mainKeyboard(user));
+    return;
+  }
+
+  await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_title", lang), buildProfileUnlinkKeyboard(lang, accounts));
+}
+
+async function handleProfileUnlinkConfirm(chatId, user, accountId, messageId = null) {
+  const lang = getUserLang(user.id);
+  const unlinkId = String(accountId || "").trim();
+  if (!/^\d+$/.test(unlinkId)) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_not_found", lang), mainKeyboard(user));
+    return;
+  }
+
+  let accounts = [];
+  try {
+    const accResult = await supabaseRpc("list_user_accounts", {
+      p_user_id: toPgBigint(user.id),
+    });
+    accounts = Array.isArray(accResult) ? accResult : [];
+  } catch (err) {
+    console.error("[MY_PROFILE_UNLINK_ERROR]", err.message);
+    accounts = [];
+  }
+
+  const target = listUserAccountById(accounts, unlinkId);
+  if (!target) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_not_found", lang), mainKeyboard(user));
+    return;
+  }
+
+  try {
+    const result = await supabaseRpc("remove_user_account", {
+      p_user_id: toPgBigint(user.id),
+      p_account_id: target.account_id,
+      p_zone_id: target.zone_id,
+    });
+
+    console.log("[REMOVE_USER_ACCOUNT_RESULT]", JSON.stringify(result));
+
+    if (result && result.ok === true) {
+      await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_success", lang, {
+        accountId: target.account_id,
+        zoneId: target.zone_id,
+      }), mainKeyboard(user));
+      await handleMyProfileRequest(chatId, user);
+    } else {
+      await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_not_found", lang), mainKeyboard(user));
+    }
+  } catch (err) {
+    console.error("[REMOVE_USER_ACCOUNT_ERROR]", err);
+    recordError("remove_user_account_failed", err.message, { accountId: target.account_id });
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_not_found", lang), mainKeyboard(user));
+  }
+}
+
+function listUserAccountById(accounts, id) {
+  return accounts.find(function (acc) { return String(acc.id) === String(id); }) || null;
+}
+
+async function handleProfileAddAccount(chatId, user, text, messageId = null) {
+  const lang = getUserLang(user.id);
+  const parsed = parseMlbbInput(text);
+
+  if (!parsed.ok) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_add_invalid", lang), mainKeyboard(user));
+    return;
+  }
+
+  if (!isSupabaseConfigured()) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_add_failed", lang), mainKeyboard(user));
+    return;
+  }
+
+  try {
+    const result = await supabaseRpc("add_user_account", {
+      p_user_id: toPgBigint(user.id),
+      p_account_id: parsed.accountId,
+      p_zone_id: parsed.zoneId,
+    });
+
+    console.log("[ADD_USER_ACCOUNT_RESULT]", JSON.stringify(result));
+
+    if (!result || typeof result !== "object" || Array.isArray(result) || result.ok !== true) {
+      const errorKey = {
+        invalid_user: "profile_add_failed",
+        limit_reached: "profile_add_limit_reached",
+        already_exists: "profile_add_already_exists",
+      }[result?.error] || "profile_add_failed";
+      await sendOrEditAdminMessage(chatId, messageId, t(errorKey, lang), mainKeyboard(user));
+      return;
+    }
+
+    await sendOrEditAdminMessage(
+      chatId,
+      messageId,
+      t("profile_add_success", lang, {
+        accountId: parsed.accountId,
+        zoneId: parsed.zoneId,
+      }),
+      mainKeyboard(user)
+    );
+    rememberUserMode(user.id, null);
+    await handleMyProfileRequest(chatId, user);
+  } catch (err) {
+    console.error("[ADD_USER_ACCOUNT_ERROR]", err);
+    recordError("add_user_account_failed", err.message, {
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+    });
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_add_failed", lang), mainKeyboard(user));
+  }
+}
+
+async function handleProfileViewersRequest(chatId, user, messageId = null) {
+  const lang = getUserLang(user.id);
+
+  let viewers = [];
+  try {
+    const history = await supabaseRpc("get_account_check_history", {
+      p_user_id: toPgBigint(user.id),
+      p_limit: 10,
+    });
+    viewers = Array.isArray(history) ? history : [];
+  } catch (err) {
+    console.error("[MY_PROFILE_VIEWERS_ERROR]", err.message);
+    viewers = [];
+  }
+
+  const actionLabels = {
+    server_check: t("profile_viewers_action_check", lang),
+    full_info: t("profile_viewers_action_full_info", lang),
+    bind_info: t("profile_viewers_action_bind_info", lang),
+  };
+
+  const lines = [t("profile_viewers_title", lang), ""];
+
+  if (viewers.length === 0) {
+    lines.push(t("profile_viewers_empty", lang));
+  } else {
+    viewers.forEach(function (v) {
+      const checker = v.checker_username
+        ? `@${escapeHtml(v.checker_username)}`
+        : `<a href="tg://user?id=${v.checker_user_id}">${escapeHtml(v.checker_first_name || "Foydalanuvchi")}</a>`;
+      lines.push(t("profile_viewers_item", lang, {
+        checker,
+        accountId: v.account_id,
+        zoneId: v.zone_id,
+        action: actionLabels[v.action] || v.action,
+        time: formatProfileEventTime(v.created_at),
+      }));
+      lines.push("");
+    });
+  }
+
+  await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), buildProfileViewersKeyboard(lang));
 }
 
 async function handleLanguageCommand(chatId, user) {
@@ -1778,12 +2049,13 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
     replyMarkup
   );
   await safeDeleteBindWaitMessage(chatId, waitMessage);
+  runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
     const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni ulanmalarini tekshirdi.`;
     const inlineKeyboard = {
-      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+      inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
   }
@@ -1848,7 +2120,7 @@ async function notifyInlineUsage(user, accountId, zoneId, feature) {
       : "ni ulanmalarini tekshirdi.";
   const notificationText = `#foydalanish\n${userMention} <b>${accountId} (${zoneId})</b> ${actionWord}`;
   const inlineKeyboard = {
-    inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]],
+    inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]],
   };
   try {
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
@@ -1950,6 +2222,7 @@ async function handleInlineQuery(inlineQuery, options = {}) {
     // Main guruhga foydalanish xabari — muvaffaqiyatli tekshiruv uchun.
     if (serverLookup.ok) {
       await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
+      runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
     }
 
     // Inline boshqa chatda ishlatilgan bo'lsa — natijalarni userni bot bilan
@@ -2145,6 +2418,7 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
 
   await sendFullInfoResult(chatId, resultText, resultKeyboardMarkup);
   await safeDeleteBindWaitMessage(chatId, waitMessage);
+  runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.FULL_INFO);
 
   // Paket qoldig'ini alohida xabar qilib yuboramiz — keyboard bilan
   if (typeof remainingAfter === "number") {
@@ -2157,7 +2431,7 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
     const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> akkauntining to'liq ma'lumotlarini oldi.`;
     const inlineKeyboard = {
-      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+      inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
   }
@@ -2493,7 +2767,7 @@ async function handleResetPwRequest(chatId, input, user = {}, options = {}) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
     const notificationText = `#foydalanish\n${userMention} <b>${escapeHtml(resultEmail)}</b> uchun parolni tiklash xatini yubordi.`;
     const inlineKeyboard = {
-      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+      inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
   }
@@ -3186,13 +3460,13 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
   };
 
   await sendMessage(chatId, getResultText(result, getUserLang(user.id)), replyMarkup);
-
+  runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
 
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
     const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni check qildi.`;
     const inlineKeyboard = {
-      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+      inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
   }
@@ -7646,6 +7920,73 @@ async function supabaseRpc(functionName, args, options = {}) {
   });
 }
 
+function getAccountOwnerNotifyActionLabel(action, lang) {
+  if (action === FEATURE_ACTIONS.FULL_INFO) {
+    return t("account_owner_notify_action_full_info", lang);
+  }
+  if (action === FEATURE_ACTIONS.BIND_INFO) {
+    return t("account_owner_notify_action_bind_info", lang);
+  }
+  return t("account_owner_notify_action_check", lang);
+}
+
+// Tekshiruv natijasi userga yuborilgach fonga ishlaydi (ctx.waitUntil orqali).
+// Bitta query akkaunt egasini topadi va tekshiruvni log qiladi; ega ru'yxatdan
+// o'tgan bo'lsa va tekshiruvchi egasining o'zi bo'lmasa — egasiga xabar boradi.
+async function runAccountOwnerNotify(ctx, user, accountId, zoneId, action) {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  const task = (async () => {
+    try {
+      const record = await supabaseRpc("record_account_check", {
+        p_account_id: String(accountId),
+        p_zone_id: String(zoneId),
+        p_checker_user_id: toPgBigint(user.id),
+        p_checker_username: cleanTextValue(user.username, 64),
+        p_checker_first_name: cleanTextValue(user.first_name, 128),
+        p_action: action,
+      });
+
+      if (!record || record.notify !== true || !record.owner_user_id) {
+        return;
+      }
+
+      const ownerUserId = String(record.owner_user_id);
+      const lang = await loadUserLangFromSupabase(ownerUserId);
+      const checkerMention = user.username
+        ? `@${escapeHtml(user.username)}`
+        : `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+
+      const text = t("account_owner_notify", lang, {
+        checker: checkerMention,
+        accountId: String(accountId),
+        zoneId: String(zoneId),
+        action: getAccountOwnerNotifyActionLabel(action, lang),
+      });
+
+      const inlineKeyboard = {
+        inline_keyboard: [[{ text: t("btn_open_profile", lang), url: `tg://user?id=${user.id}` }]],
+      };
+
+      await safeSendMessage(ownerUserId, text, inlineKeyboard);
+    } catch (error) {
+      console.error("[ACCOUNT_OWNER_NOTIFY_ERROR]", error);
+      recordError("account_owner_notify_failed", error.message, {
+        accountId,
+        zoneId,
+      });
+    }
+  })();
+
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(task);
+  } else {
+    void task;
+  }
+}
+
 async function supabaseRequest(path, options = {}) {
   if (!isSupabaseConfigured()) {
     throw new Error(getSupabaseConfigError() || "Supabase env sozlanmagan");
@@ -8011,6 +8352,11 @@ module.exports.__private = {
   sanitizeTelegramUsername,
   trackUser,
   validateSupabaseServiceKey,
+  handleMyProfileRequest,
+  handleProfileAddAccount,
+  handleProfileViewersRequest,
+  getAccountOwnerNotifyActionLabel,
+  ACCOUNT_MAX_COUNT,
   t,
   getUserLang,
   setUserLang,
