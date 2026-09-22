@@ -20,7 +20,6 @@ const SUPPORT_USERNAME = (process.env.SUPPORT_USERNAME || "Ksava_org").replace(/
 const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || "checkmlbbidBot").trim();
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 
-const DEFAULT_BIND_LIMIT = 10;
 const DEFAULT_FULLINFO_QUOTA = 3;
 const DEFAULT_RESETPW_QUOTA = 3;
 
@@ -279,7 +278,7 @@ async function handleGetUsers(req, res, body) {
 
   try {
     const params = new URLSearchParams();
-    params.set("select", "user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
+    params.set("select", "user_id,chat_id,username,first_name,last_name,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
     params.set("order", "last_seen_at.desc.nullslast");
     params.set("limit", String(USERS_PAGE_SIZE));
     params.set("offset", String(offset));
@@ -310,7 +309,7 @@ async function handleSearchUsers(req, res, body) {
 
   try {
     const params = new URLSearchParams();
-    params.set("select", "user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
+    params.set("select", "user_id,chat_id,username,first_name,last_name,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
     params.set("order", "last_seen_at.desc.nullslast");
     params.set("limit", "50");
 
@@ -346,7 +345,7 @@ async function handleGetUser(req, res, body) {
 
   try {
     const data = await supabaseRequest(
-      `/bot_users?user_id=eq.${encodeURIComponent(userId)}&select=user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at,phone_number&limit=1`
+      `/bot_users?user_id=eq.${encodeURIComponent(userId)}&select=user_id,chat_id,username,first_name,last_name,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at,phone_number&limit=1`
     );
 
     if (!Array.isArray(data) || data.length === 0) {
@@ -376,7 +375,6 @@ async function handleUpdateUser(req, res, body) {
   if (!(await requireAuth(req, res))) return;
 
   const userId = String(body.user_id || "").trim();
-  const bindLimit = body.custom_bind_limit !== undefined ? parseInt(body.custom_bind_limit, 10) : undefined;
   const fullInfoAmount = body.full_info_amount !== undefined ? parseInt(body.full_info_amount, 10) : undefined;
   const resetPwAmount = body.reset_pw_amount !== undefined ? parseInt(body.reset_pw_amount, 10) : undefined;
 
@@ -385,23 +383,6 @@ async function handleUpdateUser(req, res, body) {
   }
 
   const updates = {};
-
-  // Bind limit: set directly and notify user
-  if (bindLimit !== undefined && !isNaN(bindLimit)) {
-    try {
-      await supabaseRpc("set_custom_bind_limit", {
-        p_target_user_id: toPgBigint(userId),
-        p_new_limit: bindLimit,
-      });
-      updates.custom_bind_limit = bindLimit;
-      // Notify user via Telegram
-      void sendTelegramMessage(userId,
-        "\u2705 <b>Limit yangilandi!</b>\n\nUlanmalarni tekshirish kunlik limitingiz <b>" + bindLimit + "</b> ta ga o'zgartirildi.").catch(function() {});
-    } catch (e) {
-      console.error("[UPDATE_BIND_LIMIT]", e.message);
-      return json(res, 500, { ok: false, error: "bind_limit_update_failed", detail: e.message });
-    }
-  }
 
   // Full info quota: add (positive) or reduce (negative) quota
   if (fullInfoAmount !== undefined && !isNaN(fullInfoAmount) && fullInfoAmount !== 0) {
@@ -489,7 +470,7 @@ async function sendTelegramMessage(chatId, text) {
 async function handleGetSettings(req, res) {
   if (!(await requireAuth(req, res))) return;
 
-  const settings = { defaultBindLimit: DEFAULT_BIND_LIMIT, defaultFullinfoQuota: DEFAULT_FULLINFO_QUOTA, defaultResetPwQuota: DEFAULT_RESETPW_QUOTA };
+  const settings = { defaultFullinfoQuota: DEFAULT_FULLINFO_QUOTA, defaultResetPwQuota: DEFAULT_RESETPW_QUOTA };
 
   try {
     const rows = await supabaseRequest("/admin_settings?key=eq.miniapp_settings&select=value&limit=1");
@@ -506,12 +487,10 @@ async function handleGetSettings(req, res) {
 async function handleUpdateSettings(req, res, body) {
   if (!(await requireAuth(req, res))) return;
 
-  const defaultBindLimit = parseInt(body.defaultBindLimit, 10);
   const defaultFullinfoQuota = parseInt(body.defaultFullinfoQuota, 10);
   const defaultResetPwQuota = parseInt(body.defaultResetPwQuota, 10);
 
   const settings = {};
-  if (!isNaN(defaultBindLimit) && defaultBindLimit >= 0) settings.defaultBindLimit = defaultBindLimit;
   if (!isNaN(defaultFullinfoQuota) && defaultFullinfoQuota >= 0) settings.defaultFullinfoQuota = defaultFullinfoQuota;
   if (!isNaN(defaultResetPwQuota) && defaultResetPwQuota >= 0) settings.defaultResetPwQuota = defaultResetPwQuota;
 

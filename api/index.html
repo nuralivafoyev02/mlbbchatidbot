@@ -574,11 +574,6 @@
       font-weight: 500
     }
 
-    .user-badge.bind {
-      background: rgba(99, 102, 241, 0.15);
-      color: var(--accent3)
-    }
-
     .user-badge.fi {
       background: rgba(236, 72, 153, 0.15);
       color: var(--pink)
@@ -1218,11 +1213,6 @@
       font-weight: 500
     }
 
-    .limit-badge.bind {
-      background: rgba(99, 102, 241, 0.12);
-      color: var(--accent3)
-    }
-
     .limit-badge.fi {
       background: rgba(236, 72, 153, 0.12);
       color: var(--pink)
@@ -1447,14 +1437,6 @@
               </div>
               <div class="action-name">Server aniqlash</div>
             </div>
-            <div class="action-card green">
-              <div class="action-icon"><i class="bi bi-link-45deg"></i></div>
-              <div class="action-count" id="actBind">
-                <div class="skeleton skeleton-line w40"
-                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
-              </div>
-              <div class="action-name">Ulanmalar</div>
-            </div>
             <div class="action-card pink">
               <div class="action-icon"><i class="bi bi-file-earmark-text"></i></div>
               <div class="action-count" id="actFullInfo">
@@ -1470,14 +1452,6 @@
                   style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
               </div>
               <div class="action-name">Parolni tiklash</div>
-            </div>
-            <div class="action-card yellow">
-              <div class="action-icon"><i class="bi bi-person-video3"></i></div>
-              <div class="action-count" id="actTgProfile">
-                <div class="skeleton skeleton-line w40"
-                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
-              </div>
-              <div class="action-name">TG profil</div>
             </div>
             <div class="action-card accent">
               <div class="action-icon"><i class="bi bi-person-plus"></i></div>
@@ -1653,12 +1627,6 @@
         <div class="card">
           <div class="card-title">Default limitlar</div>
           <div class="settings-group">
-            <div class="settings-label">Ulanmalarni tekshirish limiti (kunlik)</div>
-            <input class="settings-input" type="number" id="setBindLimit" min="0" value="10">
-            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">Har bir user uchun kunlik default
-              limit</div>
-          </div>
-          <div class="settings-group">
             <div class="settings-label">To'liq ma'lumot limiti (paket)</div>
             <input class="settings-input" type="number" id="setFullInfoLimit" min="0" value="3">
             <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">Har bir user uchun boshlang'ich
@@ -1749,11 +1717,6 @@
         <div class="card-title">Ma'lumotlar</div>
         <div id="modalUserInfo" style="font-size:13px;color:var(--text2)"></div>
         <div id="modalLimitBadges" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>
-      </div>
-      <div class="modal-field">
-        <label>Ulanmalar limiti (kunlik)</label>
-        <input type="number" id="modalBindLimit" min="0" placeholder="Default: 10">
-        <div class="hint" id="modalBindHint">Hozirgi: - | Qiymat kiritilsa kunlik limit o'zgaradi</div>
       </div>
       <div class="modal-field">
         <label>To'liq malumot qo'shish</label>
@@ -2062,10 +2025,8 @@
           var d = result.data;
           var b = d.todayBreakdown || {};
           animateNumber("actCheck", b.server_check || 0);
-          animateNumber("actBind", b.bind_info || 0);
           animateNumber("actFullInfo", b.full_info || 0);
           animateNumber("actResetPw", b.reset_pw || 0);
-          animateNumber("actTgProfile", b.tg_profile || 0);
           animateNumber("actStart", b.start || 0);
           animateNumber("actFeedback", b.feedback || 0);
           animateNumber("statDaily", d.dailyUsers || 0);
@@ -2201,14 +2162,12 @@
           if (u.username) metaParts.push("@" + u.username);
           if (u.last_seen_at) metaParts.push(timeAgo(u.last_seen_at));
           var meta = metaParts.join(" \u00b7 ");
-          var bind = (u.custom_bind_limit !== null && u.custom_bind_limit !== undefined) ? u.custom_bind_limit : "10";
           var fi = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : "-";
           var rp = (u.reset_pw_quota !== null && u.reset_pw_quota !== undefined) ? u.reset_pw_quota : "-";
           html += '<div class="user-item" data-uid="' + esc(u.user_id) + '">';
           html += '<div class="user-name">' + esc(name) + "</div>";
           html += '<div class="user-meta">' + esc(meta) + "</div>";
           html += '<div class="user-limits">';
-          html += '<span class="user-badge bind"><i class="bi bi-link-45deg"></i> ' + bind + "</span>";
           html += '<span class="user-badge fi"><i class="bi bi-file-earmark-text"></i> ' + fi + "</span>";
           html += '<span class="user-badge rp"><i class="bi bi-unlock"></i> ' + rp + "</span>";
           html += "</div></div>";
@@ -2276,10 +2235,8 @@
         document.getElementById("modalUserName").textContent = "Yuklanmoqda...";
         document.getElementById("modalUserInfo").innerHTML = "";
         document.getElementById("modalLimitBadges").innerHTML = "";
-        document.getElementById("modalBindLimit").value = "";
         document.getElementById("modalFullInfoQuota").value = "";
         document.getElementById("modalResetPwQuota").value = "";
-        document.getElementById("modalBindHint").textContent = "Hozirgi: - | Qiymat kiritilsa kunlik limit o'zgaradi";
         document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: - | Kiritilgan qiymat ustiga qo'shiladi";
         document.getElementById("modalResetPwHint").textContent = "Hozirgi qoldiq: - | Ijobiy qiymat ustiga qo'shiladi, manfiy kamaytiradi";
 
@@ -2304,23 +2261,18 @@
           document.getElementById("modalUserInfo").innerHTML = info;
 
           // Limit badges
-          var bindCurrent = (u.custom_bind_limit !== null && u.custom_bind_limit !== undefined) ? u.custom_bind_limit : 10;
           var fiCurrent = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : 0;
           var rpCurrent = (u.reset_pw_quota !== null && u.reset_pw_quota !== undefined) ? u.reset_pw_quota : 0;
           var badgesHtml = '';
-          badgesHtml += '<span class="limit-badge bind"><i class="bi bi-link-45deg"></i> Kunlik limit: ' + bindCurrent + '</span>';
           badgesHtml += '<span class="limit-badge fi"><i class="bi bi-file-earmark-text"></i> To\u02BBliq malumot qoldig\u02BBi: ' + fiCurrent + '</span>';
           badgesHtml += '<span class="limit-badge rp"><i class="bi bi-unlock"></i> Parolni tiklash: ' + rpCurrent + '</span>';
           document.getElementById("modalLimitBadges").innerHTML = badgesHtml;
 
           // Hints
-          document.getElementById("modalBindHint").textContent = "Hozirgi kunlik limit: " + bindCurrent + " | Qiymat kiritilsa yangilanadi";
           document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: " + fiCurrent + " | Kiritilgan qiymat ustiga qo'shiladi";
           document.getElementById("modalResetPwHint").textContent = "Hozirgi qoldiq: " + rpCurrent + " | Ijobiy qiymat ustiga qo'shiladi, manfiy kamaytiradi";
 
           // Inputs: leave empty for fresh input
-          document.getElementById("modalBindLimit").value = "";
-          document.getElementById("modalBindLimit").placeholder = "Yangi limit: " + bindCurrent;
           document.getElementById("modalFullInfoQuota").value = "";
           document.getElementById("modalFullInfoQuota").placeholder = "Qo'shish miqdori";
           document.getElementById("modalResetPwQuota").value = "";
@@ -2342,11 +2294,9 @@
         btn.disabled = true;
 
         var body = { user_id: currentUserId };
-        var bindVal = document.getElementById("modalBindLimit").value;
         var fiVal = document.getElementById("modalFullInfoQuota").value;
         var rpVal = document.getElementById("modalResetPwQuota").value;
 
-        if (bindVal !== "") body.custom_bind_limit = parseInt(bindVal, 10);
         if (fiVal !== "") body.full_info_amount = parseInt(fiVal, 10);
         if (rpVal !== "") body.reset_pw_amount = parseInt(rpVal, 10);
 
@@ -2375,7 +2325,6 @@
       function loadSettings() {
         api("get_settings").then(function (result) {
           if (result.ok && result.data) {
-            document.getElementById("setBindLimit").value = result.data.defaultBindLimit || 10;
             document.getElementById("setFullInfoLimit").value = result.data.defaultFullinfoQuota || 3;
             document.getElementById("setResetPwLimit").value = result.data.defaultResetPwQuota || 3;
           }
@@ -2391,12 +2340,10 @@
       window.loadSettings = loadSettings;
 
       function saveSettings() {
-        var bindLimit = parseInt(document.getElementById("setBindLimit").value, 10);
         var fiLimit = parseInt(document.getElementById("setFullInfoLimit").value, 10);
         var rpLimit = parseInt(document.getElementById("setResetPwLimit").value, 10);
 
         api("update_settings", {
-          defaultBindLimit: isNaN(bindLimit) ? 10 : bindLimit,
           defaultFullinfoQuota: isNaN(fiLimit) ? 3 : fiLimit,
           defaultResetPwQuota: isNaN(rpLimit) ? 3 : rpLimit,
         }).then(function (result) {

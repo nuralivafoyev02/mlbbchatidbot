@@ -607,9 +607,9 @@ async function handleMessage(message, updateMeta = {}) {
 
     let queryPath = "";
     if (targetUsername) {
-      queryPath = `/bot_users?username=ilike.${encodeURIComponent(targetUsername)}&select=user_id,updates_count,last_seen_at,username,first_name,custom_bind_limit&limit=1`;
+      queryPath = `/bot_users?username=ilike.${encodeURIComponent(targetUsername)}&select=user_id,updates_count,last_seen_at,username,first_name&limit=1`;
     } else if (targetId) {
-      queryPath = `/bot_users?user_id=eq.${encodeURIComponent(targetId)}&select=user_id,updates_count,last_seen_at,username,first_name,custom_bind_limit&limit=1`;
+      queryPath = `/bot_users?user_id=eq.${encodeURIComponent(targetId)}&select=user_id,updates_count,last_seen_at,username,first_name&limit=1`;
     }
 
     if (queryPath) {
@@ -804,45 +804,6 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     await handleUsersListRequest(chatId, user, 0);
-    return;
-  }
-
-  if (isCommand(text, "limit")) {
-    if (!isAdmin(user.id)) {
-      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
-      return;
-    }
-
-    const args = text.split(/\s+/);
-    if (args.length !== 3) {
-      await sendMessage(chatId, "<b>Noto'g'ri format!</b>\n\nTo'g'ri foydalanish: /limit [tgid] [miqdor]", mainKeyboard(user));
-      return;
-    }
-
-    const targetTgId = parseInt(args[1], 10);
-    const newLimit = parseInt(args[2], 10);
-
-    if (isNaN(targetTgId) || isNaN(newLimit) || newLimit < 0) {
-      await sendMessage(chatId, "<b>Xato!</b> ID va limit faqat musbat sonlardan iborat bo'lishi kerak.", mainKeyboard(user));
-      return;
-    }
-
-    try {
-      const res = await supabaseRpc("set_custom_bind_limit", {
-        p_target_user_id: toPgBigint(targetTgId),
-        p_new_limit: newLimit
-      });
-
-      if (res && res.ok) {
-        await sendMessage(chatId, `Muvaffaqiyatli! Foydalanuvchi (${targetTgId}) limiti <b>${newLimit}</b> ga o'zgartirildi ✅`, mainKeyboard(user));
-        await safeSendMessage(targetTgId, `Tabriklaymiz! Sizning ulanmalarni tekshirish limitingiz <b>${newLimit}</b> ta ga o'zgartirildi ✅`, null);
-      } else {
-        await sendMessage(chatId, "Bazada xatolik yuz berdi.", mainKeyboard(user));
-      }
-    } catch (error) {
-      console.error("[SET_CUSTOM_LIMIT_ERROR]", error);
-      await sendMessage(chatId, "Serverda xatolik yuz berdi.", mainKeyboard(user));
-    }
     return;
   }
 
