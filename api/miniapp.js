@@ -22,6 +22,7 @@ const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 
 const DEFAULT_BIND_LIMIT = 10;
 const DEFAULT_FULLINFO_QUOTA = 3;
+const DEFAULT_RESETPW_QUOTA = 3;
 
 // Premium emoji enrichment (same as bot.js)
 let PREMIUM_EMOJIS = {};
@@ -278,7 +279,7 @@ async function handleGetUsers(req, res, body) {
 
   try {
     const params = new URLSearchParams();
-    params.set("select", "user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
+    params.set("select", "user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
     params.set("order", "last_seen_at.desc.nullslast");
     params.set("limit", String(USERS_PAGE_SIZE));
     params.set("offset", String(offset));
@@ -309,7 +310,7 @@ async function handleSearchUsers(req, res, body) {
 
   try {
     const params = new URLSearchParams();
-    params.set("select", "user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
+    params.set("select", "user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at");
     params.set("order", "last_seen_at.desc.nullslast");
     params.set("limit", "50");
 
@@ -345,7 +346,7 @@ async function handleGetUser(req, res, body) {
 
   try {
     const data = await supabaseRequest(
-      `/bot_users?user_id=eq.${encodeURIComponent(userId)}&select=user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at,phone_number&limit=1`
+      `/bot_users?user_id=eq.${encodeURIComponent(userId)}&select=user_id,chat_id,username,first_name,last_name,custom_bind_limit,full_info_quota,reset_pw_quota,bind_info_checks_today,last_bind_info_check_date,updates_count,first_seen_at,last_seen_at,phone_number&limit=1`
     );
 
     if (!Array.isArray(data) || data.length === 0) {
@@ -377,6 +378,7 @@ async function handleUpdateUser(req, res, body) {
   const userId = String(body.user_id || "").trim();
   const bindLimit = body.custom_bind_limit !== undefined ? parseInt(body.custom_bind_limit, 10) : undefined;
   const fullInfoAmount = body.full_info_amount !== undefined ? parseInt(body.full_info_amount, 10) : undefined;
+  const resetPwAmount = body.reset_pw_amount !== undefined ? parseInt(body.reset_pw_amount, 10) : undefined;
 
   if (!userId) {
     return json(res, 400, { ok: false, error: "user_id_required" });
@@ -430,6 +432,34 @@ async function handleUpdateUser(req, res, body) {
     }
   }
 
+  // Reset pw quota: add (positive) or reduce (negative) quota
+  if (resetPwAmount !== undefined && !isNaN(resetPwAmount) && resetPwAmount !== 0) {
+    try {
+      if (resetPwAmount > 0) {
+        const result = await supabaseRpc("add_reset_pw_quota", {
+          p_user_id: toPgBigint(userId),
+          p_amount: resetPwAmount,
+        });
+        updates.reset_pw_quota = result?.remaining || 0;
+        void sendTelegramMessage(userId,
+          "🎉 <b>Tabriklayman!</b>\n\nSizga <b>" + resetPwAmount + " ta</b> parolni tiklash uchun paket berildi.\n📦 Sizda jami <b>" + updates.reset_pw_quota + "</b> ta imkoniyat mavjud.").catch(function() {});
+      } else {
+        const absAmount = Math.abs(resetPwAmount);
+        const result = await supabaseRpc("consume_reset_pw_quota", {
+          p_user_id: toPgBigint(userId),
+          p_action: "consume",
+          p_amount: absAmount,
+        });
+        updates.reset_pw_quota = result?.remaining ?? 0;
+        void sendTelegramMessage(userId,
+          "⚠️ <b>Limit kamaytirildi!</b>\n\nSizning parolni tiklash limitingiz <b>" + absAmount + " ta</b> ga kamaytirildi.\n📦 Qoldiq: <b>" + updates.reset_pw_quota + "</b> ta.").catch(function() {});
+      }
+    } catch (e) {
+      console.error("[UPDATE_RESETPW_QUOTA]", e.message);
+      return json(res, 500, { ok: false, error: "resetpw_quota_update_failed", detail: e.message });
+    }
+  }
+
   return json(res, 200, { ok: true, data: updates });
 }
 
@@ -459,7 +489,7 @@ async function sendTelegramMessage(chatId, text) {
 async function handleGetSettings(req, res) {
   if (!(await requireAuth(req, res))) return;
 
-  const settings = { defaultBindLimit: DEFAULT_BIND_LIMIT, defaultFullinfoQuota: DEFAULT_FULLINFO_QUOTA };
+  const settings = { defaultBindLimit: DEFAULT_BIND_LIMIT, defaultFullinfoQuota: DEFAULT_FULLINFO_QUOTA, defaultResetPwQuota: DEFAULT_RESETPW_QUOTA };
 
   try {
     const rows = await supabaseRequest("/admin_settings?key=eq.miniapp_settings&select=value&limit=1");
@@ -478,10 +508,12 @@ async function handleUpdateSettings(req, res, body) {
 
   const defaultBindLimit = parseInt(body.defaultBindLimit, 10);
   const defaultFullinfoQuota = parseInt(body.defaultFullinfoQuota, 10);
+  const defaultResetPwQuota = parseInt(body.defaultResetPwQuota, 10);
 
   const settings = {};
   if (!isNaN(defaultBindLimit) && defaultBindLimit >= 0) settings.defaultBindLimit = defaultBindLimit;
   if (!isNaN(defaultFullinfoQuota) && defaultFullinfoQuota >= 0) settings.defaultFullinfoQuota = defaultFullinfoQuota;
+  if (!isNaN(defaultResetPwQuota) && defaultResetPwQuota >= 0) settings.defaultResetPwQuota = defaultResetPwQuota;
 
   try {
     await supabaseRequest("/admin_settings?on_conflict=key", {

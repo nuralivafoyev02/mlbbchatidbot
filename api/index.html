@@ -584,6 +584,11 @@
       color: var(--pink)
     }
 
+    .user-badge.rp {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e
+    }
+
     .pagination {
       display: flex;
       align-items: center;
@@ -1223,6 +1228,11 @@
       color: var(--pink)
     }
 
+    .limit-badge.rp {
+      background: rgba(34, 197, 94, 0.12);
+      color: #22c55e
+    }
+
     .limit-badge i {
       font-size: 14px
     }
@@ -1453,6 +1463,14 @@
               </div>
               <div class="action-name">To'liq malumot</div>
             </div>
+            <div class="action-card green">
+              <div class="action-icon"><i class="bi bi-unlock"></i></div>
+              <div class="action-count" id="actResetPw">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
+              <div class="action-name">Parolni tiklash</div>
+            </div>
             <div class="action-card yellow">
               <div class="action-icon"><i class="bi bi-person-video3"></i></div>
               <div class="action-count" id="actTgProfile">
@@ -1646,6 +1664,12 @@
             <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">Har bir user uchun boshlang'ich
               paket</div>
           </div>
+          <div class="settings-group">
+            <div class="settings-label">Parolni tiklash limiti (paket)</div>
+            <input class="settings-input" type="number" id="setResetPwLimit" min="0" value="3">
+            <div class="hint" style="font-size:11px;color:var(--text2);margin-top:4px">Har bir user uchun boshlang'ich
+              paket</div>
+          </div>
           <button class="login-btn" style="margin-top:8px" onclick="saveSettings()"><i class="bi bi-floppy"></i>
             Saqlash</button>
         </div>
@@ -1735,6 +1759,11 @@
         <label>To'liq malumot qo'shish</label>
         <input type="number" id="modalFullInfoQuota" min="1" placeholder="Qo'shish miqdori">
         <div class="hint" id="modalFullInfoHint">Hozirgi qoldiq: - | Kiritilgan qiymat ustiga qo'shiladi</div>
+      </div>
+      <div class="modal-field">
+        <label>Parolni tiklash packeti qo'shish</label>
+        <input type="number" id="modalResetPwQuota" placeholder="Qo'shish miqdori (manfiy = kamaytirish)">
+        <div class="hint" id="modalResetPwHint">Hozirgi qoldiq: - | Ijobiy qiymat ustiga qo'shiladi, manfiy kamaytiradi</div>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeModal()">Bekor qilish</button>
@@ -1963,6 +1992,7 @@
         server_check: "🔎 Server tekshiruv",
         bind_info: "🔗 Ulanmalar",
         full_info: "📋 To'liq ma'lumot",
+        reset_pw: "🔐 Parolni tiklash",
         start: "🚀 /start",
         feedback: "💬 Fikrlar"
       };
@@ -2034,6 +2064,7 @@
           animateNumber("actCheck", b.server_check || 0);
           animateNumber("actBind", b.bind_info || 0);
           animateNumber("actFullInfo", b.full_info || 0);
+          animateNumber("actResetPw", b.reset_pw || 0);
           animateNumber("actTgProfile", b.tg_profile || 0);
           animateNumber("actStart", b.start || 0);
           animateNumber("actFeedback", b.feedback || 0);
@@ -2172,12 +2203,14 @@
           var meta = metaParts.join(" \u00b7 ");
           var bind = (u.custom_bind_limit !== null && u.custom_bind_limit !== undefined) ? u.custom_bind_limit : "10";
           var fi = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : "-";
+          var rp = (u.reset_pw_quota !== null && u.reset_pw_quota !== undefined) ? u.reset_pw_quota : "-";
           html += '<div class="user-item" data-uid="' + esc(u.user_id) + '">';
           html += '<div class="user-name">' + esc(name) + "</div>";
           html += '<div class="user-meta">' + esc(meta) + "</div>";
           html += '<div class="user-limits">';
           html += '<span class="user-badge bind"><i class="bi bi-link-45deg"></i> ' + bind + "</span>";
           html += '<span class="user-badge fi"><i class="bi bi-file-earmark-text"></i> ' + fi + "</span>";
+          html += '<span class="user-badge rp"><i class="bi bi-unlock"></i> ' + rp + "</span>";
           html += "</div></div>";
         });
         return html;
@@ -2245,8 +2278,10 @@
         document.getElementById("modalLimitBadges").innerHTML = "";
         document.getElementById("modalBindLimit").value = "";
         document.getElementById("modalFullInfoQuota").value = "";
+        document.getElementById("modalResetPwQuota").value = "";
         document.getElementById("modalBindHint").textContent = "Hozirgi: - | Qiymat kiritilsa kunlik limit o'zgaradi";
         document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: - | Kiritilgan qiymat ustiga qo'shiladi";
+        document.getElementById("modalResetPwHint").textContent = "Hozirgi qoldiq: - | Ijobiy qiymat ustiga qo'shiladi, manfiy kamaytiradi";
 
         api("get_user", { user_id: userId }).then(function (result) {
           if (!result.ok) {
@@ -2271,20 +2306,25 @@
           // Limit badges
           var bindCurrent = (u.custom_bind_limit !== null && u.custom_bind_limit !== undefined) ? u.custom_bind_limit : 10;
           var fiCurrent = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : 0;
+          var rpCurrent = (u.reset_pw_quota !== null && u.reset_pw_quota !== undefined) ? u.reset_pw_quota : 0;
           var badgesHtml = '';
           badgesHtml += '<span class="limit-badge bind"><i class="bi bi-link-45deg"></i> Kunlik limit: ' + bindCurrent + '</span>';
           badgesHtml += '<span class="limit-badge fi"><i class="bi bi-file-earmark-text"></i> To\u02BBliq malumot qoldig\u02BBi: ' + fiCurrent + '</span>';
+          badgesHtml += '<span class="limit-badge rp"><i class="bi bi-unlock"></i> Parolni tiklash: ' + rpCurrent + '</span>';
           document.getElementById("modalLimitBadges").innerHTML = badgesHtml;
 
           // Hints
           document.getElementById("modalBindHint").textContent = "Hozirgi kunlik limit: " + bindCurrent + " | Qiymat kiritilsa yangilanadi";
           document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: " + fiCurrent + " | Kiritilgan qiymat ustiga qo'shiladi";
+          document.getElementById("modalResetPwHint").textContent = "Hozirgi qoldiq: " + rpCurrent + " | Ijobiy qiymat ustiga qo'shiladi, manfiy kamaytiradi";
 
           // Inputs: leave empty for fresh input
           document.getElementById("modalBindLimit").value = "";
           document.getElementById("modalBindLimit").placeholder = "Yangi limit: " + bindCurrent;
           document.getElementById("modalFullInfoQuota").value = "";
           document.getElementById("modalFullInfoQuota").placeholder = "Qo'shish miqdori";
+          document.getElementById("modalResetPwQuota").value = "";
+          document.getElementById("modalResetPwQuota").placeholder = "Qo'shish miqdori";
         });
       }
       window.openUser = openUser;
@@ -2304,9 +2344,11 @@
         var body = { user_id: currentUserId };
         var bindVal = document.getElementById("modalBindLimit").value;
         var fiVal = document.getElementById("modalFullInfoQuota").value;
+        var rpVal = document.getElementById("modalResetPwQuota").value;
 
         if (bindVal !== "") body.custom_bind_limit = parseInt(bindVal, 10);
         if (fiVal !== "") body.full_info_amount = parseInt(fiVal, 10);
+        if (rpVal !== "") body.reset_pw_amount = parseInt(rpVal, 10);
 
         api("update_user", body).then(function (result) {
           btn.innerHTML = '<i class="bi bi-floppy"></i> Saqlash';
@@ -2335,6 +2377,7 @@
           if (result.ok && result.data) {
             document.getElementById("setBindLimit").value = result.data.defaultBindLimit || 10;
             document.getElementById("setFullInfoLimit").value = result.data.defaultFullinfoQuota || 3;
+            document.getElementById("setResetPwLimit").value = result.data.defaultResetPwQuota || 3;
           }
         });
 
@@ -2350,10 +2393,12 @@
       function saveSettings() {
         var bindLimit = parseInt(document.getElementById("setBindLimit").value, 10);
         var fiLimit = parseInt(document.getElementById("setFullInfoLimit").value, 10);
+        var rpLimit = parseInt(document.getElementById("setResetPwLimit").value, 10);
 
         api("update_settings", {
           defaultBindLimit: isNaN(bindLimit) ? 10 : bindLimit,
           defaultFullinfoQuota: isNaN(fiLimit) ? 3 : fiLimit,
+          defaultResetPwQuota: isNaN(rpLimit) ? 3 : rpLimit,
         }).then(function (result) {
           if (result.ok) {
             showToast("\u2705 Sozlamalar saqlandi", "success");

@@ -3,9 +3,9 @@
 
 begin;
 
--- Mini app settings (default bind limit, default fullinfo quota)
+-- Mini app settings (default bind limit, default fullinfo quota, default reset pw quota)
 insert into public.admin_settings (key, value, updated_at)
-values ('miniapp_settings', '{"defaultBindLimit":10,"defaultFullinfoQuota":3}'::jsonb, now())
+values ('miniapp_settings', '{"defaultBindLimit":10,"defaultFullinfoQuota":3,"defaultResetPwQuota":3}'::jsonb, now())
 on conflict (key) do nothing;
 
 -- Admin IDs list (for the mini app admin list management)
