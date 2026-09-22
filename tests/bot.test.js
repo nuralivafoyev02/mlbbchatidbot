@@ -38,6 +38,13 @@ const {
   isAdmin,
   isValidWebhookSecret,
   isKeyboardButton,
+  lookupResetPassword,
+  getInvalidResetPwEmailText,
+  getResetPwFailedText,
+  getResetPwLimitReachedText,
+  getResetPwPromptText,
+  getResetPwSuccessText,
+  getResetPwWaitText,
   buildFullInfoTelegraphContent,
   buildReadableSquad,
   createTelegraphPage,
@@ -4496,5 +4503,879 @@ test("membership check: telegram errors throw, real non-member answers false", a
     assert.equal(await checkUserMembership(-100123, 555), false);
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("reset pw lookup classifies no-account, too-many and auth provider errors", async () => {
+  const originalFetch = global.fetch;
+
+  try {
+    global.fetch = async () =>
+      new Response(JSON.stringify({ success: false, raw_message: "Error_NoAccount" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+
+    const noAccount = await lookupResetPassword("user@example.com");
+    assert.equal(noAccount.ok, false);
+    assert.equal(noAccount.reason, "reset_pw_no_account");
+
+    global.fetch = async () =>
+      new Response(JSON.stringify({ success: false, raw_message: "Error_FailedTooMuch" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+
+    const tooMany = await lookupResetPassword("user@example.com");
+    assert.equal(tooMany.ok, false);
+    assert.equal(tooMany.reason, "reset_pw_too_many");
+
+    global.fetch = async () =>
+      new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+
+    const authError = await lookupResetPassword("user@example.com");
+    assert.equal(authError.ok, false);
+    assert.equal(authError.reason, "reset_pw_auth_required");
+    assert.match(authError.technicalReason, /HTTP 401/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("reset pw lookup posts the email and returns success data", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+
+    return new Response(
+      JSON.stringify({ success: true, email: "sent@example.com", elapsed: 1.1 }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  };
+
+  try {
+    const result = await lookupResetPassword("owner@example.com");
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://fullinfo.example.test/tools/reset-pw");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.headers["X-API-Key"], "test-full-info-key");
+    assert.deepEqual(JSON.parse(calls[0].options.body), { email: "owner@example.com" });
+    assert.equal(result.data.email, "sent@example.com");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("reset pw texts are localized", () => {
+  assert.match(getResetPwPromptText("uz"), /Parolni tiklash/);
+  assert.match(getResetPwPromptText("uz"), /Moonton email/);
+  assert.match(getResetPwWaitText("uz"), /kutib turing/);
+  assert.match(getResetPwLimitReachedText("uz", { supportUsername: "test" }), /Limitga yetdingiz/);
+
+  assert.match(getInvalidResetPwEmailText("uz"), /Email manzil noto'g'ri/);
+  assert.match(getResetPwSuccessText("uz", { email: "x@y.test" }), /Parolni tiklash xati yuborildi/);
+  assert.match(getResetPwFailedText("reset_pw_no_account", "uz"), /Akkaunt topilmadi/);
+  assert.match(getResetPwFailedText("reset_pw_too_many", "uz"), /ko'p urinish/);
+  assert.match(getResetPwFailedText("reset_pw_auth_required", "uz"), /avtorizatsiya/);
+
+  assert.match(getResetPwPromptText("ru"), /Сброс пароля/);
+  assert.match(getResetPwPromptText("ru"), /Moonton email/);
+  assert.match(getResetPwWaitText("ru"), /подожд/i);
+  assert.match(getResetPwFailedText("reset_pw_no_account", "ru"), /Аккаунт не найден/i);
+});
+
+test("reset-pw button prompts for a Moonton email with force reply", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 10 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5101,
+          message: {
+            chat: { id: 7051, type: "private" },
+            from: { id: 7051, first_name: "Ali" },
+            text: "🔐 Parolni tiklash",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].payload.text, /Moonton email/);
+    assert.equal(calls[0].payload.reply_markup.force_reply, true);
+    assert.equal(calls[0].payload.reply_markup.input_field_placeholder, "Sizning email");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("/resetpw without an email prompts with force reply", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url, payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 11 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5102,
+          message: {
+            chat: { id: 7052, type: "private" },
+            from: { id: 7052, first_name: "Ali" },
+            text: "/resetpw",
+          },
+        },
+      },
+      createRes()
+    );
+
+    assert.equal(calls.length, 1);
+    const prompt = calls[0].payload;
+    assert.match(prompt.text, /Moonton email/);
+    assert.equal(prompt.reply_markup.force_reply, true);
+    assert.equal(prompt.reply_markup.input_field_placeholder, "Sizning email");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("reset-pw flow sends wait then success and consumes one unit, nothing on failure", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    MAIN_GROUP_ID: process.env.MAIN_GROUP_ID,
+  };
+  const payload = Buffer.from(
+    JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+  ).toString("base64url");
+  const rpcCalls = [];
+  const telegramCalls = [];
+  let providerShouldFail = false;
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+
+    if (urlText.includes("supabase.co")) {
+      rpcCalls.push({ url: urlText, body: JSON.parse(options.body || "{}") });
+
+      if (urlText.includes("/rpc/get_reset_pw_quota")) {
+        return new Response(JSON.stringify({ allowed: true, remaining: 3, total_limit: 3 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (urlText.includes("/rpc/consume_reset_pw_quota")) {
+        return new Response(JSON.stringify({ ok: true, remaining: 2 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.includes("api.telegram.org/bot")) {
+      const method = urlText.split("/").pop();
+      telegramCalls.push({ method, payload: JSON.parse(options.body) });
+
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 300 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.includes("fullinfo.example.test")) {
+      if (providerShouldFail) {
+        return new Response(
+          JSON.stringify({ success: false, raw_message: "Error_NoAccount" }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, email: "sent@example.com" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.SUPABASE_URL = "https://trybbxovootehqvaiydn.supabase.co";
+    process.env.SUPABASE_SERVICE_KEY = `header.${payload}.signature`;
+    process.env.MAIN_GROUP_ID = "-100999";
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+
+    // Muvaffaqiyatli so'rov: 1 birlik yechiladi, qoldiq ko'rsatiladi.
+    const res1 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 601,
+          message: {
+            chat: { id: 7061, type: "private" },
+            from: { id: 7061, first_name: "ResetPw" },
+            text: "/resetpw owner@example.com",
+          },
+        },
+      },
+      res1
+    );
+
+    const consumeCall = rpcCalls.find((call) =>
+      call.url.includes("/rpc/consume_reset_pw_quota")
+    );
+    assert.ok(consumeCall, "consume rpc must be called after success");
+    assert.equal(consumeCall.body.p_user_id, "7061");
+    assert.equal(consumeCall.body.p_action, "consume");
+    assert.equal(consumeCall.body.p_amount, 1);
+
+    const waitMessage = telegramCalls.find(
+      (call) => call.method === "sendMessage" && /Parolni tiklash so'rovi yuborilmoqda/.test(call.payload.text)
+    );
+    assert.ok(waitMessage, "wait message should be sent");
+
+    const successMessage = telegramCalls.find(
+      (call) =>
+        call.method === "sendMessage" && /Parolni tiklash xati yuborildi/.test(call.payload.text)
+    );
+    assert.ok(successMessage, "success message should be sent");
+    assert.match(successMessage.payload.text, /sent@example\.com/, "provider email must be used");
+
+    const quotaMessage = telegramCalls.find(
+      (call) =>
+        call.method === "sendMessage" && /Paketingizda qolgan/.test(call.payload.text)
+    );
+    assert.ok(quotaMessage, "remaining quota must be sent as a separate message");
+    assert.match(quotaMessage.payload.text, /2 ta/, "remaining quota (3-1=2) must be shown");
+
+    // Xatolikli so'rov: consume umuman chaqirilmaydi, xat yuborilmadi.
+    providerShouldFail = true;
+    rpcCalls.length = 0;
+    telegramCalls.length = 0;
+
+    const res2 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 602,
+          message: {
+            chat: { id: 7061, type: "private" },
+            from: { id: 7061, first_name: "ResetPw" },
+            text: "/resetpw owner@example.com",
+          },
+        },
+      },
+      res2
+    );
+
+    assert.equal(
+      rpcCalls.filter((call) => call.url.includes("/rpc/consume_reset_pw_quota")).length,
+      0,
+      "consume must not be called when the provider reports no account"
+    );
+    const failedMessage = telegramCalls.find(
+      (call) => call.method === "sendMessage" && /Akkaunt topilmadi/.test(call.payload.text)
+    );
+    assert.ok(failedMessage, "no-account failure message should be sent");
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
+
+test("reset-pw quota: fail-closed when supabase is not configured or rpc fails", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    MAIN_GROUP_ID: process.env.MAIN_GROUP_ID,
+  };
+  const telegramCalls = [];
+  let rpcShouldFail = false;
+
+  const buildFetchMock = () =>
+    async (url, options = {}) => {
+      const urlText = String(url);
+
+      if (urlText.includes("supabase.co")) {
+        if (rpcShouldFail) {
+          return new Response(JSON.stringify({ message: "database down" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({ allowed: true, remaining: 5, total_limit: 5 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (urlText.includes("api.telegram.org/bot")) {
+        const method = urlText.split("/").pop();
+        telegramCalls.push({ method, payload: JSON.parse(options.body) });
+
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 300 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.MAIN_GROUP_ID = "-100999";
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    // 1) Supabase sozlanmagan — admin bo'lmagan user bloklanadi (fail-closed).
+    global.fetch = buildFetchMock();
+    const freshHandler1 = require("../api/bot.js");
+    const res1 = createRes();
+
+    await freshHandler1(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 611,
+          message: {
+            chat: { id: 7062, type: "private" },
+            from: { id: 7062, first_name: "NoSupabase" },
+            text: "/resetpw owner@example.com",
+          },
+        },
+      },
+      res1
+    );
+
+    assert.ok(
+      telegramCalls.some(
+        (call) =>
+          call.method === "sendMessage" && /vaqtincha ishlamayapti/.test(call.payload.text)
+      ),
+      "service unavailable message should be sent when supabase is not configured"
+    );
+
+    // 2) Supabase bor, lekin RPC xato qaytaradi — ham bloklanadi.
+    telegramCalls.length = 0;
+    process.env.SUPABASE_URL = "https://trybbxovootehqvaiydn.supabase.co";
+    process.env.SUPABASE_SERVICE_KEY = `header.${Buffer.from(
+      JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+    ).toString("base64url")}.signature`;
+    rpcShouldFail = true;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler2 = require("../api/bot.js");
+    const res2 = createRes();
+
+    await freshHandler2(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 612,
+          message: {
+            chat: { id: 7063, type: "private" },
+            from: { id: 7063, first_name: "RpcFail" },
+            text: "/resetpw owner@example.com",
+          },
+        },
+      },
+      res2
+    );
+
+    assert.ok(
+      telegramCalls.some(
+        (call) =>
+          call.method === "sendMessage" && /vaqtincha ishlamayapti/.test(call.payload.text)
+      ),
+      "service unavailable message should be sent when the rpc fails"
+    );
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
+
+test("reset-pw quota: blocks non-admin with no quota, allows admin without quota", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    MAIN_GROUP_ID: process.env.MAIN_GROUP_ID,
+  };
+  const payload = Buffer.from(
+    JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+  ).toString("base64url");
+  const rpcCalls = [];
+  const telegramCalls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+
+    if (urlText.includes("supabase.co")) {
+      rpcCalls.push({ url: urlText, body: JSON.parse(options.body || "{}") });
+
+      if (urlText.includes("/rpc/get_reset_pw_quota")) {
+        return new Response(JSON.stringify({ allowed: false, remaining: 0, total_limit: 0 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.includes("api.telegram.org/bot")) {
+      const method = urlText.split("/").pop();
+      telegramCalls.push({ method, payload: JSON.parse(options.body) });
+
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 300 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.includes("fullinfo.example.test")) {
+      return new Response(JSON.stringify({ success: true, email: "sent@example.com" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.SUPABASE_URL = "https://trybbxovootehqvaiydn.supabase.co";
+    process.env.SUPABASE_SERVICE_KEY = `header.${payload}.signature`;
+    process.env.MAIN_GROUP_ID = "-100999";
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+
+    // 1) Admin bo'lmagan user, limit 0 — bloklanadi, provider chaqirilmaydi.
+    const res1 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 621,
+          message: {
+            chat: { id: 7064, type: "private" },
+            from: { id: 7064, first_name: "NoQuota" },
+            text: "/resetpw owner@example.com",
+          },
+        },
+      },
+      res1
+    );
+
+    const limitMessage = telegramCalls.find(
+      (call) => call.method === "sendMessage" && /Limitga yetdingiz/.test(call.payload.text)
+    );
+    assert.ok(limitMessage, "limit reached message should be sent");
+    assert.equal(
+      rpcCalls.filter((call) => call.url.includes("/tools/reset-pw")).length,
+      0,
+      "provider must not be called when quota is exhausted"
+    );
+
+    // 2) Admin — limit tekshiruvi umuman chaqirilmaydi.
+    rpcCalls.length = 0;
+    telegramCalls.length = 0;
+
+    const res2 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 622,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: "/resetpw owner@example.com",
+          },
+        },
+      },
+      res2
+    );
+
+    assert.equal(
+      rpcCalls.filter((call) => call.url.includes("/rpc/get_reset_pw_quota")).length,
+      0,
+      "admin must not be quota-checked"
+    );
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
+
+test("/limit_resetpw grants and consumes quota for admins, hidden for non-admins", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    MAIN_GROUP_ID: process.env.MAIN_GROUP_ID,
+  };
+  const payload = Buffer.from(
+    JSON.stringify({ ref: "trybbxovootehqvaiydn", role: "service_role" })
+  ).toString("base64url");
+  const rpcCalls = [];
+  const telegramCalls = [];
+  const grantBody = [
+    { url: "/rpc/add_reset_pw_quota", body: JSON.stringify({ ok: true, user_id: "123", granted: 10, remaining: 13 }) },
+    { url: "/rpc/consume_reset_pw_quota", body: JSON.stringify({ ok: true, remaining: 3 }) },
+  ];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+
+    if (urlText.includes("supabase.co")) {
+      rpcCalls.push({ url: urlText, body: JSON.parse(options.body || "{}") });
+
+      const matched = grantBody.find((entry) => urlText.includes(entry.url));
+      if (matched) {
+        return new Response(matched.body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.includes("api.telegram.org/bot")) {
+      const method = urlText.split("/").pop();
+      telegramCalls.push({ method, payload: JSON.parse(options.body) });
+
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 300 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.SUPABASE_URL = "https://trybbxovootehqvaiydn.supabase.co";
+    process.env.SUPABASE_SERVICE_KEY = `header.${payload}.signature`;
+    process.env.MAIN_GROUP_ID = "-100999";
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+
+    // Admin: +10 limit beriladi, qoldiq 13.
+    const res1 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 631,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: "/limit_resetpw 123 10",
+          },
+        },
+      },
+      res1
+    );
+
+    const grantCall = rpcCalls.find((call) => call.url.includes("/rpc/add_reset_pw_quota"));
+    assert.ok(grantCall, "add_reset_pw_quota rpc must be called");
+    assert.equal(grantCall.body.p_user_id, "123");
+    assert.equal(grantCall.body.p_amount, 10);
+
+    const grantMessage = telegramCalls.find(
+      (call) => call.method === "sendMessage" && /Limit qo'shildi/.test(call.payload.text)
+    );
+    assert.ok(grantMessage, "grant confirmation should be sent");
+    assert.match(grantMessage.payload.text, /\+10/);
+    assert.match(grantMessage.payload.text, /13/);
+
+    const grantedUserMessage = telegramCalls.find(
+      (call) =>
+        call.method === "sendMessage" &&
+        String(call.payload.chat_id) === "123" &&
+        /Tabriklayman/.test(call.payload.text)
+    );
+    assert.ok(grantedUserMessage, "target user should receive the congratulation message");
+    assert.match(grantedUserMessage.payload.text, /<b>10 ta<\/b>/);
+    assert.match(grantedUserMessage.payload.text, /<b>13<\/b> ta/);
+
+    // Admin: -5 kamaytirish — consume_rpc chaqiriladi.
+    rpcCalls.length = 0;
+    telegramCalls.length = 0;
+
+    const res2 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 632,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: "/limit_resetpw 123 -5",
+          },
+        },
+      },
+      res2
+    );
+
+    const reduceCall = rpcCalls.find((call) => call.url.includes("/rpc/consume_reset_pw_quota"));
+    assert.ok(reduceCall, "consume rpc must be called for negative amounts");
+    assert.equal(reduceCall.body.p_user_id, "123");
+    assert.equal(reduceCall.body.p_action, "consume");
+    assert.equal(reduceCall.body.p_amount, 5);
+
+    const reduceMessage = telegramCalls.find(
+      (call) => call.method === "sendMessage" && /Limit kamaytirildi/.test(call.payload.text)
+    );
+    assert.ok(reduceMessage, "reduce confirmation should be sent");
+    assert.match(reduceMessage.payload.text, /➖ Kamaytirildi: <b>5<\/b>/);
+    assert.match(reduceMessage.payload.text, /3/);
+
+    const reducedUserMessage = telegramCalls.find(
+      (call) =>
+        call.method === "sendMessage" &&
+        String(call.payload.chat_id) === "123" &&
+        /Limit kamaytirildi/.test(call.payload.text)
+    );
+    assert.ok(reducedUserMessage, "target user should receive the reduced notice");
+    assert.match(reducedUserMessage.payload.text, /<b>5 ta<\/b>/);
+    assert.match(reducedUserMessage.payload.text, /<b>3<\/b>/);
+
+    // Admin: format xato — RPC chaqirilmaydi.
+    rpcCalls.length = 0;
+    const res3 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 633,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125, first_name: "Admin" },
+            text: "/limit_resetpw abc",
+          },
+        },
+      },
+      res3
+    );
+    assert.equal(
+      rpcCalls.filter(
+        (call) =>
+          call.url.includes("/rpc/add_reset_pw_quota") ||
+          call.url.includes("/rpc/consume_reset_pw_quota")
+      ).length,
+      0,
+      "invalid input must not hit the grant rpc"
+    );
+
+    // Admin bo'lmagan: unknown javob, grant RPC chaqirilmaydi.
+    telegramCalls.length = 0;
+    const res4 = createRes();
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 634,
+          message: {
+            chat: { id: 7065, type: "private" },
+            from: { id: 7065, first_name: "Random" },
+            text: "/limit_resetpw 123 10",
+          },
+        },
+      },
+      res4
+    );
+    assert.equal(
+      rpcCalls.filter((call) => call.url.includes("/rpc/add_reset_pw_quota")).length,
+      0,
+      "non-admin must not hit the grant rpc"
+    );
+    assert.ok(
+      telegramCalls.some(
+        (call) => call.method === "sendMessage" && /tushunmadim/.test(call.payload.text)
+      ),
+      "non-admin should get the unknown command reply"
+    );
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
   }
 });
