@@ -65,6 +65,9 @@ const {
   trackFeatureUse,
   trackUser,
   validateSupabaseServiceKey,
+  t,
+  translations,
+  inferTranslationsLang,
 } = handler.__private;
 
 function createRes() {
@@ -5377,5 +5380,90 @@ test("/limit_resetpw grants and consumes quota for admins, hidden for non-admins
     global.__MLBB_BOT_STATS__ = originalStats;
     delete require.cache[modulePath];
     require("../api/bot.js");
+  }
+});
+
+test("english language: translations cover all uz keys and inferTranslationsLang maps codes", () => {
+  const uzKeys = Object.keys(translations.uz);
+  const enKeys = Object.keys(translations.en);
+  const ruKeys = Object.keys(translations.ru);
+  assert.equal(uzKeys.length === enKeys.length, true, "uz/en key count must match");
+  assert.equal(uzKeys.length === ruKeys.length, true, "uz/ru key count must match");
+  for (const key of uzKeys) {
+    assert.ok(enKeys.includes(key), `en is missing key: ${key}`);
+    assert.ok(ruKeys.includes(key), `ru is missing key: ${key}`);
+  }
+  for (const key of enKeys) {
+    assert.ok(translations.en[key], `en value must not be empty for key: ${key}`);
+  }
+  assert.deepEqual(handler.__private.SUPPORTED_LANGS, ["uz", "ru", "en"]);
+
+  assert.equal(inferTranslationsLang("en-US"), "en");
+  assert.equal(inferTranslationsLang("en"), "en");
+  assert.equal(inferTranslationsLang("ru-RU"), "ru");
+  assert.equal(inferTranslationsLang("uz"), "uz");
+  assert.equal(inferTranslationsLang("fr"), "uz");
+  assert.equal(inferTranslationsLang(""), "uz");
+});
+
+test("english language: t() resolves keys and localized text helpers work in en", () => {
+  const unknown = t("unknown_text", "en");
+  assert.match(unknown, /understand/i);
+
+  assert.match(t("check_prompt", "en"), /Server check/i);
+  assert.match(t("full_info_prompt", "en"), /Full info/i);
+  assert.match(t("reset_pw_prompt", "en"), /Password reset/i);
+  assert.match(t("reset_pw_prompt", "en"), /Moonton email/i);
+  assert.match(t("btn_reset_pw", "en"), /Password reset/i);
+  assert.match(t("btn_lang_en", "en"), /English/i);
+  assert.equal(t("btn_view_result", "en"), "View result");
+
+  assert.match(getFullInfoPromptText("en"), /Full info/);
+  assert.match(getFullInfoWaitText("en"), /Collecting information/i);
+  assert.match(getResetPwPromptText("en"), /Password reset/);
+  assert.match(getResetPwWaitText("en"), /15-30 seconds/i);
+  assert.match(getResetPwSuccessText("en", { email: "x@y.test" }), /reset email sent/i);
+  assert.match(getResetPwLimitReachedText("en", { supportUsername: "test" }), /Limit reached/i);
+});
+
+test("english language: language command shows uz, ru and en options", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5201,
+          message: {
+            chat: { id: 7088, type: "private" },
+            from: { id: 7088, first_name: "Joe" },
+            text: "/language",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const sent = calls.find((c) => String(c.url).includes("sendMessage"));
+    assert.ok(sent, "sendMessage call must exist");
+    assert.ok(/Tilni tanlang|choose the language/i.test(sent.payload.text), "language picker text expected");
+    const buttons = sent.payload.reply_markup.inline_keyboard.map((row) => row[0].text);
+    assert.ok(buttons.some((b) => /O'zbek/.test(b)), "uz option available");
+    assert.ok(buttons.some((b) => /Русский/.test(b)), "ru option available");
+    assert.ok(buttons.some((b) => /English/.test(b)), "en option available");
+  } finally {
+    global.fetch = originalFetch;
   }
 });

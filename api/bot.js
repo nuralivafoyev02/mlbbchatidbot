@@ -1,11 +1,12 @@
 const crypto = require("node:crypto");
 // --- i18n: Load from locale JSON files ---
-const SUPPORTED_LANGS = ["uz", "ru"];
+const SUPPORTED_LANGS = ["uz", "ru", "en"];
 const DEFAULT_LANG = "uz";
 
 const translations = {
   uz: require("./locales/uz.json"),
   ru: require("./locales/ru.json"),
+  en: require("./locales/en.json"),
 };
 
 function t(key, lang, params = {}) {
@@ -45,6 +46,14 @@ async function loadUserLangFromSupabase(userId) {
   } catch (error) {
     console.error("[LOAD_LANG_ERROR]", error.message);
   }
+  return DEFAULT_LANG;
+}
+
+function inferTranslationsLang(languageCode = "") {
+  const code = String(languageCode || "").toLowerCase();
+  if (code.startsWith("en")) return "en";
+  if (code.startsWith("ru")) return "ru";
+  if (code.startsWith("uz")) return "uz";
   return DEFAULT_LANG;
 }
 
@@ -541,6 +550,9 @@ async function handleMessage(message, updateMeta = {}) {
     let lang = getUserLang(user.id);
     if (!stats.languageCache.has(String(user.id))) {
       lang = await loadUserLangFromSupabase(user.id);
+      if (lang === DEFAULT_LANG && user.language_code) {
+        lang = inferTranslationsLang(user.language_code);
+      }
       setUserLang(user.id, lang);
     }
   }
@@ -8027,6 +8039,7 @@ module.exports.__private = {
   t,
   getUserLang,
   setUserLang,
+  inferTranslationsLang,
   SUPPORTED_LANGS,
   DEFAULT_LANG,
   translations,
