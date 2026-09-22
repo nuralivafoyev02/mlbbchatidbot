@@ -1531,22 +1531,22 @@ async function handleMyProfileRequest(chatId, user) {
   };
 
   const lines = [
-    `👤 <b>${escapeHtml(displayName)}</b> — Mening profilim`,
+    t("profile_title", lang, { name: escapeHtml(displayName) }),
     "",
-    `🔐 <b>Parolni tiklash:</b> ${resetPwRemaining} ta qoldi`,
-    `📋 <b>To'liq malumot:</b> ${fullInfoRemaining} ta qoldi`,
+    t("profile_reset_pw", lang, { remaining: resetPwRemaining }),
+    t("profile_full_info", lang, { remaining: fullInfoRemaining }),
     "",
-    `📊 <b>Jami ishlatishlar:</b> ${totalActions} marta`,
+    t("profile_total_actions", lang, { total: totalActions }),
   ]
 
   // Har bir funksiya bo'yicha
   const breakdownEntries = Object.entries(actionBreakdown).sort(function (a, b) { return b[1] - a[1]; });
   if (breakdownEntries.length > 0) {
     lines.push("");
-    lines.push("<b>Funksiyalar bo'yicha:</b>");
+    lines.push(t("profile_breakdown_title", lang));
     breakdownEntries.forEach(function (entry) {
       const label = actionLabels[entry[0]] || entry[0];
-      lines.push(`  ${label}: <b>${entry[1]}</b> marta`);
+      lines.push(t("profile_breakdown_item", lang, { label, count: entry[1] }));
     });
   }
 
@@ -2132,7 +2132,10 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
   let pageUrl = null;
   try {
     const content = buildFullInfoTelegraphContent(fullInfo.data);
-    const page = await createTelegraphPage(getFullInfoPageTitle(fullInfo.data), content);
+    const page = await createTelegraphPage(
+      getFullInfoPageTitle(fullInfo.data, getUserLang(user.id)),
+      content
+    );
     pageUrl = page?.url || null;
   } catch (error) {
     recordError("telegraph_page_failed", error.message, {
@@ -2780,10 +2783,11 @@ function getInvalidFullInfoInputText(lang) {
   return t("full_info_invalid_input", lang);
 }
 
-function getFullInfoPageTitle(data = {}) {
+function getFullInfoPageTitle(data = {}, lang) {
+  lang = lang || DEFAULT_LANG;
   const nickname = escapeHtml(data.nickname || "MLBB Player");
   const date = getTashkentDateString();
-  return `To'liq ma'lumot | ${nickname} (${date})`;
+  return t("full_info_page_title", lang, { nickname, date });
 }
 
 async function getTelegraphAccessToken() {
@@ -5167,19 +5171,29 @@ function getFullInfoPostText(result = {}, pageUrl, lang, { remaining = null } = 
     `🆔 <code>${escapeHtml(result.accountId)}</code> ${result.zoneId ? `· 🌐 <code>${escapeHtml(result.zoneId)}</code>` : ""}`,
   ];
 
-  if (d.level) lines.push(`📊 <b>Level:</b> ${escapeHtml(d.level)}`);
-  if (d.rank) lines.push(`🏆 <b>Rank:</b> ${escapeHtml(d.rank)}`);
+  if (d.level) lines.push(t("full_info_post_level", lang, { value: escapeHtml(d.level) }));
+  if (d.rank) lines.push(t("full_info_post_rank", lang, { value: escapeHtml(d.rank) }));
   const readableSquad = buildReadableSquad(d.squad);
-  if (readableSquad) lines.push(`🛡 <b>Squad:</b> ${escapeHtml(readableSquad)}`);
+  if (readableSquad) lines.push(t("full_info_post_squad", lang, { value: escapeHtml(readableSquad) }));
   if (Array.isArray(d.location) && d.location.length) {
-    lines.push(`📍 <b>Manzil:</b> ${escapeHtml(d.location.join(", "))}`);
+    lines.push(t("full_info_post_location", lang, { value: escapeHtml(d.location.join(", ")) }));
   }
   if (d.collection) {
     lines.push("");
-    lines.push(`🎨 <b>Kolleksiya:</b> ${escapeHtml(d.collection.heroes || 0)} qahramon · ${escapeHtml(d.collection.skins || 0)} skin`);
+    lines.push(
+      t("full_info_post_collection", lang, {
+        heroes: escapeHtml(d.collection.heroes || 0),
+        skins: escapeHtml(d.collection.skins || 0),
+      })
+    );
   }
   if (d.combat && Number.isFinite(d.combat.win_rate)) {
-    lines.push(`⚔️ <b>Win rate:</b> ${escapeHtml(d.combat.win_rate)}% · <b>Jami:</b> ${escapeHtml(d.combat.total_matches || 0)} o'yin`);
+    lines.push(
+      t("full_info_post_combat", lang, {
+        winRate: escapeHtml(d.combat.win_rate),
+        total: escapeHtml(d.combat.total_matches || 0),
+      })
+    );
   }
 
   if (pageUrl) {
@@ -5228,9 +5242,9 @@ function getBindInfoResultText(result = {}, limitData = null, lang) {
     t("bind_moonton", lang, { value: escapeHtml(bindings.moonton) }),
     t("bind_vk", lang, { value: escapeHtml(bindings.vk) }),
     t("bind_google_play", lang, { value: escapeHtml(bindings.googlePlay) }),
-    `<tg-emoji emoji-id="5271527792641595125">😎</tg-emoji> <b>TikTok:</b> ${escapeHtml(bindings.tiktok)}`,
-    `<tg-emoji emoji-id="5269427536453984598">😎</tg-emoji> <b>Facebook:</b> ${escapeHtml(bindings.facebook)}`,
-    `<tg-emoji emoji-id="5821379843861778259">⚪️</tg-emoji> <b>Apple:</b> ${escapeHtml(bindings.apple)}`,
+    t("bind_tiktok", lang, { value: escapeHtml(bindings.tiktok) }),
+    t("bind_facebook", lang, { value: escapeHtml(bindings.facebook) }),
+    t("bind_apple", lang, { value: escapeHtml(bindings.apple) }),
     t("bind_gcid", lang, { value: escapeHtml(bindings.gcid) }),
     t("bind_telegram", lang, { value: escapeHtml(bindings.telegram) }),
     t("bind_whatsapp", lang, { value: escapeHtml(bindings.whatsapp) }),
