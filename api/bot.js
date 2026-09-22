@@ -105,6 +105,7 @@ const FEATURE_ACTIONS = Object.freeze({
   SERVER_CHECK: "server_check",
   BIND_INFO: "bind_info",
   FULL_INFO: "full_info",
+  RESET_PW: "reset_pw",
   FEEDBACK: "feedback",
 });
 const DAILY_REPORT_ACTION_KEYS = Object.freeze({
@@ -112,6 +113,7 @@ const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   server_check: "label_server_check",
   bind_info: "label_bind_info",
   full_info: "label_full_info",
+  reset_pw: "label_reset_pw",
   feedback: "label_feedback",
 });
 function getDailyReportActionLabel(action, lang) {
@@ -228,6 +230,14 @@ const FULL_INFO_RETRIES = parseBoundedNumber(
   2,
   0,
   3
+);
+// Moonton parolni tiklash endpoint'i Moonton serveriga ulanib xat yuboradi va
+// odatda 12-30 soniya davom etadi (502 bo'lsa ~30 s). Shu sabab timeout keng.
+const RESET_PW_TIMEOUT_MS = parseBoundedNumber(
+  process.env.RESET_PW_TIMEOUT_MS,
+  45000,
+  800,
+  120000
 );
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
@@ -605,32 +615,27 @@ async function handleMessage(message, updateMeta = {}) {
         const displayName = userStat.first_name || targetUsername || String(targetUserId);
         const updatesCount = userStat.updates_count || 0;
 
-        // Ulanmalar (bind info) qoldig'i
-        let bindRemaining = "N/A";
-        let bindTotal = 10;
+        // Parolni tiklash (reset pw) qoldig'i
+        let resetPwRemaining = "N/A";
         try {
-          const bindLimit = await supabaseRpc("check_bind_limit_only", {
+          const resetPwQuota = await supabaseRpc("get_reset_pw_quota", {
             p_user_id: toPgBigint(targetUserId),
-            p_limit: 10,
           });
-          if (bindLimit && typeof bindLimit.remaining === "number") {
-            bindRemaining = bindLimit.remaining;
-            bindTotal = bindLimit.total_limit || 10;
+          if (resetPwQuota && typeof resetPwQuota.remaining === "number") {
+            resetPwRemaining = resetPwQuota.remaining;
           }
         } catch (err) {
-          console.error("[USER_INFO_BIND_LIMIT_ERROR]", err.message);
+          console.error("[USER_INFO_RESET_PW_ERROR]", err.message);
         }
 
         // To'liq malumot (full info) qoldig'i
         let fullInfoRemaining = "N/A";
-        let fullInfoTotal = 3;
         try {
           const fullInfoQuota = await supabaseRpc("get_full_info_quota", {
             p_user_id: toPgBigint(targetUserId),
           });
           if (fullInfoQuota && typeof fullInfoQuota.remaining === "number") {
             fullInfoRemaining = fullInfoQuota.remaining;
-            fullInfoTotal = fullInfoQuota.remaining; // default 3 da boshlangan
           }
         } catch (err) {
           console.error("[USER_INFO_FULL_INFO_ERROR]", err.message);
@@ -643,8 +648,8 @@ async function handleMessage(message, updateMeta = {}) {
           targetUsername ? `\ud83d\udc64 <b>Username:</b> @${escapeHtml(targetUsername)}` : null,
           "",
           `\ud83d\udcca <b>Jami tekshirishlar:</b> ${updatesCount}`,
-          `\ud83d\udd17 <b>Ulanmalar tekshirish qoldig'i:</b> ${bindRemaining}/${bindTotal}`,
-          `\ud83d\udccb <b>To'liq malumot qoldig'i:</b> ${fullInfoRemaining}/${fullInfoTotal}`,
+          `\ud83d\udd10 <b>Parolni tiklash qoldig'i:</b> ${resetPwRemaining}`,
+          `\ud83d\udccb <b>To'liq malumot qoldig'i:</b> ${fullInfoRemaining}`,
         ].filter(Boolean);
 
         await sendMessage(chatId, lines.join("\n"), null);
@@ -697,6 +702,22 @@ async function handleMessage(message, updateMeta = {}) {
       }
 
       await handleFullInfoRequest(chatId, fullInput, user, {
+        replyMarkup: null,
+        skipWait: skipBindWait,
+        waitMessage: bindWaitMessage,
+      });
+      return;
+    }
+
+    if (isResetPwCommand(addressedText) || isResetPwCommand(addressing.input)) {
+      const resetInput = stripResetPwCommand(addressedText);
+
+      if (!resetInput) {
+        await sendMessage(chatId, getResetPwPromptText(getUserLang(user.id)), null);
+        return;
+      }
+
+      await handleResetPwRequest(chatId, resetInput, user, {
         replyMarkup: null,
         skipWait: skipBindWait,
         waitMessage: bindWaitMessage,
@@ -878,6 +899,16 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
+  if (isCommand(text, "limit_resetpw")) {
+    if (!isAdmin(user.id)) {
+      await sendMessage(chatId, getUnknownText(getUserLang(user.id)), mainKeyboard(user));
+      return;
+    }
+
+    await handleLimitResetPwCommand(chatId, user, stripCommand(text, "limit_resetpw"));
+    return;
+  }
+
   if (isFullInfoCommand(text)) {
     const input = stripFullInfoCommand(text);
     rememberUserMode(user.id, "full_info");
@@ -888,6 +919,22 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     await handleFullInfoRequest(chatId, input, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
+  if (isResetPwCommand(text)) {
+    const input = stripResetPwCommand(text);
+    rememberUserMode(user.id, "reset_pw");
+
+    if (!input) {
+      await sendMessage(chatId, getResetPwPromptText(getUserLang(user.id)), resetPwForceReply(getUserLang(user.id)));
+      return;
+    }
+
+    await handleResetPwRequest(chatId, input, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
     });
@@ -930,6 +977,12 @@ async function handleMessage(message, updateMeta = {}) {
   if (isTranslatedKeyboardButton(text, "btn_full_info")) {
     rememberUserMode(user.id, "full_info");
     await sendMessage(chatId, getFullInfoPromptText(getUserLang(user.id)), fullInfoForceReply(getUserLang(user.id)));
+    return;
+  }
+
+  if (isTranslatedKeyboardButton(text, "btn_reset_pw")) {
+    rememberUserMode(user.id, "reset_pw");
+    await sendMessage(chatId, getResetPwPromptText(getUserLang(user.id)), resetPwForceReply(getUserLang(user.id)));
     return;
   }
 
@@ -1078,6 +1131,34 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (getUserMode(user.id) === "full_info") {
     await handleFullInfoRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
+  if (isResetPwPromptReply(message)) {
+    rememberUserMode(user.id, "reset_pw");
+    await handleResetPwRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
+  if (getUserMode(user.id) === "reset_pw") {
+    await handleResetPwRequest(chatId, text, user, {
+      skipWait: skipBindWait,
+      waitMessage: bindWaitMessage,
+    });
+    return;
+  }
+
+  // Shaxsiy chatda to'g'ridan-to'g'ri email yuborilsa ham parol tiklashni
+  // boshlaymiz (force_reply'siz holatlar uchun qulaylik).
+  if (!isGroupChat(message.chat) && isValidEmailFormat(text)) {
+    rememberUserMode(user.id, "reset_pw");
+    await handleResetPwRequest(chatId, text, user, {
       skipWait: skipBindWait,
       waitMessage: bindWaitMessage,
     });
@@ -1384,32 +1465,27 @@ async function handleMyProfileRequest(chatId, user) {
 
   void safeSendChatAction(chatId, "typing");
 
-  // 1. Ulanmalar (bind) limiti
-  let bindRemaining = "N/A";
-  let bindTotal = 10;
+  // 1. Parolni tiklash (reset pw) qoldig'i
+  let resetPwRemaining = "N/A";
   try {
-    const bindLimit = await supabaseRpc("check_bind_limit_only", {
+    const resetPwQuota = await supabaseRpc("get_reset_pw_quota", {
       p_user_id: toPgBigint(user.id),
-      p_limit: 10,
     });
-    if (bindLimit && typeof bindLimit.remaining === "number") {
-      bindRemaining = bindLimit.remaining;
-      bindTotal = bindLimit.total_limit || 10;
+    if (resetPwQuota && typeof resetPwQuota.remaining === "number") {
+      resetPwRemaining = resetPwQuota.remaining;
     }
   } catch (err) {
-    console.error("[MY_PROFILE_BIND_ERROR]", err.message);
+    console.error("[MY_PROFILE_RESET_PW_ERROR]", err.message);
   }
 
   // 2. To'liq malumot (full info) qoldig'i
   let fullInfoRemaining = "N/A";
-  let fullInfoTotal = 3;
   try {
     const fullInfoQuota = await supabaseRpc("get_full_info_quota", {
       p_user_id: toPgBigint(user.id),
     });
     if (fullInfoQuota && typeof fullInfoQuota.remaining === "number") {
       fullInfoRemaining = fullInfoQuota.remaining;
-      fullInfoTotal = fullInfoQuota.remaining;
     }
   } catch (err) {
     console.error("[MY_PROFILE_FULLINFO_ERROR]", err.message);
@@ -1436,7 +1512,7 @@ async function handleMyProfileRequest(chatId, user) {
   // Action nomlarini tarjima qilish
   const actionLabels = {
     server_check: t("label_server_check", lang),
-    bind_info: t("label_bind_info", lang),
+    reset_pw: t("label_reset_pw", lang),
     full_info: t("label_full_info", lang),
     start: t("label_start", lang),
     feedback: t("label_feedback", lang),
@@ -1445,7 +1521,7 @@ async function handleMyProfileRequest(chatId, user) {
   const lines = [
     `👤 <b>${escapeHtml(displayName)}</b> — Mening profilim`,
     "",
-    `🔗 <b>Ulanmalar tekshirish:</b> ${bindRemaining}/${bindTotal} ta qoldi`,
+    `🔐 <b>Parolni tiklash:</b> ${resetPwRemaining} ta qoldi`,
     `📋 <b>To'liq malumot:</b> ${fullInfoRemaining} ta qoldi`,
     "",
     `📊 <b>Jami ishlatishlar:</b> ${totalActions} marta`,
@@ -2213,6 +2289,240 @@ async function handleLimitFullInfoCommand(chatId, user, input) {
   }
 }
 
+async function handleLimitResetPwCommand(chatId, user, input) {
+  const args = String(input || "").trim().split(/\s+/).filter(Boolean);
+  const targetUserId = (args[0] || "").replace(/^@/, "");
+  const amount = Number.parseInt(args[1], 10);
+
+  if (!/^\d{1,20}$/.test(targetUserId) || !Number.isInteger(amount) || amount === 0) {
+    await sendMessage(
+      chatId,
+      [
+        "❌ Format xato.",
+        "",
+        "To'g'ri ko'rinish:",
+        "<code>/limit_resetpw [tgid] [miqdor]</code>",
+        "",
+        "Musbat qiymat — qo'shish, manfiy — kamaytirish.",
+        "",
+        "Namuna (qo'shish): <code>/limit_resetpw 123456789 10</code>",
+        "Namuna (kamaytirish): <code>/limit_resetpw 123456789 -5</code>",
+      ].join("\n"),
+      mainKeyboard(user)
+    );
+    return;
+  }
+
+  if (!isSupabaseConfigured()) {
+    await sendMessage(chatId, "❌ Supabase sozlanmagan — limit berish imkoni yo'q.", mainKeyboard(user));
+    return;
+  }
+
+  try {
+    let result = null;
+    const isNegative = amount < 0;
+
+    if (isNegative) {
+      result = await supabaseRpc("consume_reset_pw_quota", {
+        p_user_id: toPgBigint(targetUserId),
+        p_action: "consume",
+        p_amount: Math.abs(amount),
+      });
+    } else {
+      result = await supabaseRpc("add_reset_pw_quota", {
+        p_user_id: toPgBigint(targetUserId),
+        p_amount: amount,
+      });
+    }
+
+    if (!result || (result.ok !== true && result.error)) {
+      throw new Error(result?.error || "limit o'zgartirishda xatolik");
+    }
+
+    const absAmount = Math.abs(amount);
+    const lines = [
+      isNegative ? `✅ <b>Limit kamaytirildi.</b>` : `✅ <b>Limit qo'shildi.</b>`,
+      "",
+      `👤 User ID: <code>${escapeHtml(targetUserId)}</code>`,
+      isNegative ? `➖ Kamaytirildi: <b>${absAmount}</b> ta` : `➕ Qo'shildi: <b>+${amount}</b> ta`,
+    ];
+
+    if (typeof result.remaining === "number") {
+      lines.push(`📦 Jami qoldiq: <b>${result.remaining}</b> ta`);
+    }
+
+    await sendMessage(chatId, lines.join("\n"), mainKeyboard(user));
+
+    const targetChatId = Number(targetUserId);
+    if (Number.isFinite(targetChatId) && targetChatId !== Number(user.id)) {
+      const targetLang = await loadUserLangFromSupabase(targetUserId).catch(() => DEFAULT_LANG);
+      let notifyText = "";
+
+      if (isNegative) {
+        notifyText = t("reset_pw_quota_reduced_user", targetLang, {
+          count: absAmount,
+          remaining: typeof result.remaining === "number" ? result.remaining : 0,
+        });
+      } else {
+        notifyText = t("reset_pw_quota_granted_user", targetLang, {
+          count: amount,
+          remaining: typeof result.remaining === "number" ? result.remaining : amount,
+        });
+      }
+
+      try {
+        await sendMessage(targetChatId, notifyText, null);
+      } catch (notifyError) {
+        console.error("[RESET_PW_QUOTA_NOTIFY_ERROR]", notifyError.message);
+      }
+    }
+  } catch (error) {
+    recordError("reset_pw_quota_grant_failed", error.message, {
+      targetUserId,
+      amount,
+    });
+
+    await sendMessage(
+      chatId,
+      `❌ Limit berishda xatolik:\n<code>${escapeHtml(error.message)}</code>`,
+      mainKeyboard(user)
+    );
+  }
+}
+
+async function handleResetPwRequest(chatId, input, user = {}, options = {}) {
+  const email = String(input || "").trim();
+  const replyMarkup =
+    Object.hasOwn(options, "replyMarkup") ? options.replyMarkup : mainKeyboard(user);
+  let waitMessage = options.waitMessage || null;
+
+  if (!isValidEmailFormat(email)) {
+    await sendMessage(chatId, getInvalidResetPwEmailText(getUserLang(user.id)), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
+    return;
+  }
+
+  const isAdminUser = isAdmin(user.id);
+
+  // Paket tizimi full_info bilan bir xil: admin bo'lmagan userlar qolgan paket
+  // hisobidan foydalanadi. Supabase sozlanmagan/ishlamasa — fail-closed blok.
+  let quotaData = null;
+  if (!isAdminUser) {
+    if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+      recordError("reset_pw_quota_unavailable", "Supabase sozlanmagan yoki vaqtincha bloklangan", {
+        userId: user.id,
+      });
+      await safeDeleteBindWaitMessage(chatId, waitMessage);
+      await sendMessage(
+        chatId,
+        t("reset_pw_service_unavailable", getUserLang(user.id), {
+          supportUsername: SUPPORT_USERNAME,
+        }),
+        replyMarkup
+      );
+      return;
+    }
+
+    try {
+      const quotaResult = await supabaseRpc("get_reset_pw_quota", {
+        p_user_id: toPgBigint(user.id),
+      });
+
+      if (!quotaResult || quotaResult.allowed !== true || !(quotaResult.remaining > 0)) {
+        await safeDeleteBindWaitMessage(chatId, waitMessage);
+        await sendMessage(
+          chatId,
+          getResetPwLimitReachedText(getUserLang(user.id), {
+            supportUsername: SUPPORT_USERNAME,
+          }),
+          replyMarkup
+        );
+        return;
+      }
+
+      quotaData = quotaResult;
+    } catch (error) {
+      console.error("[RESET_PW_QUOTA_CHECK_ERROR]", error);
+      recordError("reset_pw_quota_check_failed", error.message, { userId: user.id });
+      await safeDeleteBindWaitMessage(chatId, waitMessage);
+      await sendMessage(
+        chatId,
+        t("reset_pw_service_unavailable", getUserLang(user.id), {
+          supportUsername: SUPPORT_USERNAME,
+        }),
+        replyMarkup
+      );
+      return;
+    }
+  }
+
+  void safeSendChatAction(chatId, "typing");
+
+  if (!options.skipWait) {
+    const waitResponse = await safeSendMessage(chatId, getResetPwWaitText(getUserLang(user.id)), replyMarkup);
+    waitMessage = normalizeBindWaitMessage({
+      chatId,
+      messageId: waitResponse?.result?.message_id,
+    });
+  }
+
+  const resetResult = await lookupResetPassword(email);
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.RESET_PW);
+
+  if (!resetResult.ok) {
+    // Xatolik bo'lsa paket kamaymaydi — email yuborilmadi.
+    recordError("reset_pw_failed", resetResult.technicalReason || resetResult.reason, {
+      status: resetResult.status,
+    });
+
+    await sendMessage(chatId, getResetPwFailedText(resetResult.reason, getUserLang(user.id)), replyMarkup);
+    await safeDeleteBindWaitMessage(chatId, waitMessage);
+    return;
+  }
+
+  // Faqat email muvaffaqiyatli yuborilgandan keyin 1 birlik paketdan yechiladi.
+  let remainingAfter = null;
+  if (quotaData && !isAdminUser) {
+    try {
+      const consumeResult = await supabaseRpc("consume_reset_pw_quota", {
+        p_user_id: toPgBigint(user.id),
+        p_action: "consume",
+        p_amount: 1,
+      });
+
+      if (consumeResult && typeof consumeResult.remaining === "number") {
+        remainingAfter = consumeResult.remaining;
+      }
+    } catch (error) {
+      console.error("[RESET_PW_QUOTA_CONSUME_ERROR]", error);
+    }
+  }
+
+  const lang = getUserLang(user.id);
+  const resultEmail = resetResult.data?.email || email;
+
+  await sendMessage(
+    chatId,
+    getResetPwSuccessText(lang, { email: escapeHtml(resultEmail) }),
+    replyMarkup
+  );
+  await safeDeleteBindWaitMessage(chatId, waitMessage);
+
+  if (typeof remainingAfter === "number") {
+    await safeSendMessage(chatId, t("reset_pw_quota_remaining", lang, { remaining: remainingAfter }), mainKeyboard(user));
+  }
+
+  // Main group'ga faqat MUVAFFAQIYATLI so'rov haqida xabar boradi.
+  if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
+    const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
+    const notificationText = `#foydalanish\n${userMention} <b>${escapeHtml(resultEmail)}</b> uchun parolni tiklash xatini yubordi.`;
+    const inlineKeyboard = {
+      inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${user.id}` }]]
+    };
+    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+  }
+}
+
 function getFullInfoLimitReachedText(lang, params = {}) {
   lang = lang || DEFAULT_LANG;
   return t("full_info_limit_reached", lang, params);
@@ -2353,6 +2663,104 @@ function fullInfoProviderErrorReason(reason = "") {
   if (/not_found/i.test(reason)) return "full_info_provider_not_found";
   if (/down/i.test(reason)) return "full_info_provider_down";
   return "full_info_provider_generic";
+}
+
+// Moonton parolni tiklash: bir marta chaqiriladi (retry YO'Q). Sabab: endpoint
+// email yuborish kabi yon ta'sirga ega; 502/timeout bo'lsa qayta urinish
+// foydalanuvchiga bir nechta xat yuborib qo'yishi mumkin.
+async function lookupResetPassword(email) {
+  if (!FULL_INFO_API_KEY) {
+    return {
+      ok: false,
+      provider: "reset_pw",
+      reason: "reset_pw_api_not_configured",
+      technicalReason: "FULL_INFO_API_KEY env sozlanmagan",
+    };
+  }
+
+  try {
+    const url = `${FULL_INFO_API_URL.replace(/\/+$/, "")}/tools/reset-pw`;
+
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": FULL_INFO_API_KEY,
+      },
+      body: JSON.stringify({ email }),
+      timeoutMs: RESET_PW_TIMEOUT_MS,
+    });
+
+    const bodyText = await response.text();
+    const data = safeJsonParse(bodyText);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        provider: "reset_pw",
+        reason: getFriendlyResetPwReason({ status: response.status, data }),
+        technicalReason: `Reset PW API HTTP ${response.status}: ${clipText(
+          bodyText || response.statusText,
+          180
+        )}`,
+        status: response.status,
+        data,
+      };
+    }
+
+    if (!data || data.success !== true) {
+      return {
+        ok: false,
+        provider: "reset_pw",
+        reason: getFriendlyResetPwReason({ status: response.status, data }),
+        technicalReason: bodyText
+          ? clipText(bodyText, 180)
+          : "Parolni tiklash javobi bo'sh",
+        status: response.status,
+        data,
+      };
+    }
+
+    return {
+      ok: true,
+      provider: "reset_pw",
+      data,
+      raw: data,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "reset_pw",
+      reason: getFriendlyResetPwReason({ error }),
+      technicalReason: error.message || "Reset PW API ishlamadi",
+    };
+  }
+}
+
+function getFriendlyResetPwReason({ status, data, error } = {}) {
+  if (error) {
+    if (/abort|timeout/i.test(error.message || "")) {
+      return "reset_pw_timeout";
+    }
+    return "reset_pw_unavailable";
+  }
+
+  const rawMessage = String(data?.raw_message || data?.rawMessage || "");
+  const errorText = String(data?.error || data?.message || "");
+
+  if (/Error_FailedTooMuch/i.test(rawMessage) || /too many/i.test(errorText)) {
+    return "reset_pw_too_many";
+  }
+
+  if (/Error_NoAccount/i.test(rawMessage) || /invalid email/i.test(errorText)) {
+    return "reset_pw_no_account";
+  }
+
+  if (status === 401) return "reset_pw_auth_required";
+  if (status === 403) return "reset_pw_quota_exceeded";
+  if (status === 429) return "reset_pw_rate_limited";
+  if (status >= 500) return "reset_pw_provider_down";
+  return "reset_pw_generic";
 }
 
 function getInvalidFullInfoInputText(lang) {
@@ -4581,6 +4989,7 @@ function getCommandsText(user = {}) {
     t("cmd_check", lang),
     t("cmd_info", lang),
     t("cmd_full_info", lang),
+    t("cmd_reset_pw", lang),
     t("cmd_feedback", lang),
     t("cmd_language", lang),
   ];
@@ -4594,7 +5003,8 @@ function getCommandsText(user = {}) {
       t("cmd_errors", lang),
       t("cmd_emoji", lang),
       t("cmd_message", lang),
-      t("cmd_limit_fullinfo", lang)
+      t("cmd_limit_fullinfo", lang),
+      t("cmd_limit_resetpw", lang)
     );
   }
 
@@ -4614,6 +5024,7 @@ function buildBotCommands(lang) {
     { command: "check", description: stripHtmlTags(t("cmd_check", safeLang).replace(/^.*—\s*/, "")) },
     { command: "info", description: stripHtmlTags(t("cmd_info", safeLang).replace(/^.*—\s*/, "")) },
     { command: "fullinfo", description: stripHtmlTags(t("cmd_full_info", safeLang).replace(/^.*—\s*/, "")) },
+    { command: "resetpw", description: stripHtmlTags(t("cmd_reset_pw", safeLang).replace(/^.*—\s*/, "")) },
     { command: "feedback", description: stripHtmlTags(t("cmd_feedback", safeLang).replace(/^.*—\s*/, "")) },
     { command: "language", description: stripHtmlTags(t("cmd_language", safeLang).replace(/^.*—\s*/, "")) },
   ];
@@ -4685,6 +5096,42 @@ function getFullInfoPromptText(lang) {
 function getFullInfoWaitText(lang) {
   lang = lang || DEFAULT_LANG;
   return t("full_info_wait", lang);
+}
+
+function getResetPwPromptText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("reset_pw_prompt", lang);
+}
+
+function getResetPwWaitText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("reset_pw_wait", lang);
+}
+
+function getInvalidResetPwEmailText(lang) {
+  lang = lang || DEFAULT_LANG;
+  return t("reset_pw_invalid_email", lang);
+}
+
+function getResetPwSuccessText(lang, params = {}) {
+  lang = lang || DEFAULT_LANG;
+  return t("reset_pw_success", lang, params);
+}
+
+function getResetPwLimitReachedText(lang, params = {}) {
+  lang = lang || DEFAULT_LANG;
+  return t("reset_pw_limit_reached", lang, params);
+}
+
+function getResetPwFailedText(reason = "", lang) {
+  lang = lang || DEFAULT_LANG;
+  if (/no_account/i.test(reason)) return t("reset_pw_failed_no_account", lang);
+  if (/too_many|rate_limited/i.test(reason)) return t("reset_pw_failed_too_many", lang);
+  if (/auth_required|not_configured/i.test(reason)) return t("reset_pw_failed_auth", lang);
+  if (/quota_exceeded/i.test(reason)) return t("reset_pw_failed_quota", lang);
+  if (/timeout/i.test(reason)) return t("reset_pw_failed_timeout", lang);
+  if (/provider_down|unavailable/i.test(reason)) return t("reset_pw_failed_provider", lang);
+  return t("reset_pw_failed_generic", lang);
 }
 
 function getFullInfoFailedText(reason = "", lang) {
@@ -5315,7 +5762,8 @@ function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
   const keyboard = [
     [{ text: t("btn_check", lang) }],
-    [{ text: t("btn_full_info", lang) }, { text: t("btn_language", lang) }],
+    [{ text: t("btn_full_info", lang) }, { text: t("btn_reset_pw", lang) }],
+    [{ text: t("btn_language", lang) }],
   ];
 
   if (isAdmin(user.id)) {
@@ -5418,6 +5866,14 @@ function fullInfoForceReply(lang) {
     force_reply: true,
     selective: true,
     input_field_placeholder: t("placeholder_full_info", lang || DEFAULT_LANG),
+  };
+}
+
+function resetPwForceReply(lang) {
+  return {
+    force_reply: true,
+    selective: true,
+    input_field_placeholder: t("placeholder_reset_pw", lang || DEFAULT_LANG),
   };
 }
 
@@ -5724,6 +6180,32 @@ function stripFullInfoCommand(text) {
     .trim();
 }
 
+function isResetPwCommand(text) {
+  return (
+    isCommand(text, "resetpw") ||
+    isCommand(text, "reset_pw") ||
+    isCommand(text, "reset") ||
+    isCommand(text, "parol") ||
+    isCommand(text, "parolni_tiklash")
+  );
+}
+
+function stripResetPwCommand(text) {
+  return String(text || "")
+    .replace(/^\/(?:resetpw|reset_pw|reset|parol|parolni_tiklash)(?:@\w+)?/i, "")
+    .trim();
+}
+
+function isValidEmailFormat(value) {
+  const text = String(value || "").trim();
+
+  if (!text || text.length > 254 || /\s/.test(text)) {
+    return false;
+  }
+
+  return /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(text);
+}
+
 function stripCommand(text, command) {
   return String(text || "")
     .replace(new RegExp(`^\\/${command}(?:@\\w+)?`, "i"), "")
@@ -5990,6 +6472,15 @@ function isFullInfoPromptReply(message = {}) {
   const replyText = String(message.reply_to_message?.text || "");
 
   return /To'liq ma'lumot/i.test(replyText) && /Account ID/i.test(replyText);
+}
+
+function isResetPwPromptReply(message = {}) {
+  const replyText = String(message.reply_to_message?.text || "");
+
+  return (
+    /Moonton email/i.test(replyText) ||
+    /Moonton почт/i.test(replyText)
+  );
 }
 
 function getFeedbackMessageText(message = {}) {
@@ -7490,6 +7981,21 @@ module.exports.__private = {
   isFullInfoPromptReply,
   lookupMlbbFullInfo,
   handleLimitFullInfoCommand,
+  lookupResetPassword,
+  getFriendlyResetPwReason,
+  handleResetPwRequest,
+  handleLimitResetPwCommand,
+  getResetPwPromptText,
+  getResetPwWaitText,
+  getInvalidResetPwEmailText,
+  getResetPwSuccessText,
+  getResetPwLimitReachedText,
+  getResetPwFailedText,
+  resetPwForceReply,
+  isResetPwCommand,
+  stripResetPwCommand,
+  isResetPwPromptReply,
+  isValidEmailFormat,
   handleInlineQuery,
   answerInlineQuery,
   buildInlineMessageResult,
