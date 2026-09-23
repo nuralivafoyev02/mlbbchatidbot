@@ -4509,6 +4509,79 @@ test("membership check: telegram errors throw, real non-member answers false", a
   }
 });
 
+test("user access cache: stores member/admin and respects positive vs negative TTL", async () => {
+  const { getCachedUserAccess, cacheUserAccess } = handler.__private;
+  assert.equal(typeof getCachedUserAccess, "function");
+  assert.equal(typeof cacheUserAccess, "function");
+
+  const now = Date.now();
+
+  try {
+    cacheUserAccess(777001, { member: true, admin: false, at: now });
+    const cached = getCachedUserAccess(777001);
+    assert.ok(cached, "member entry should exist");
+    assert.equal(cached.member, true);
+    assert.equal(cached.admin, false);
+
+    // Positive TTL 30 daqiqa — hali yaroqli.
+    cacheUserAccess(777002, { member: true, admin: true, at: now - 29 * 60 * 1000 });
+    assert.ok(getCachedUserAccess(777002), "member 29 min old still valid");
+
+    // Positive TTL muddati o'tdi.
+    cacheUserAccess(777003, { member: true, admin: false, at: now - 31 * 60 * 1000 });
+    assert.equal(getCachedUserAccess(777003), null, "member 31 min old expired");
+
+    // Non-member negative TTL 1 daqiqa — hali yaroqli.
+    cacheUserAccess(777004, { member: false, admin: false, at: now - 59 * 1000 });
+    assert.ok(getCachedUserAccess(777004), "non-member 59s old still valid");
+
+    // Non-member negative TTL o'tdi.
+    cacheUserAccess(777005, { member: false, admin: false, at: now - 61 * 1000 });
+    assert.equal(getCachedUserAccess(777005), null, "non-member 61s old expired");
+
+    // Noma'lum user.
+    assert.equal(getCachedUserAccess(999999), null);
+  } finally {
+    for (const id of [777001, 777002, 777003, 777004, 777005, 999999]) {
+      handler.__private.cacheUserAccess(id, { member: false, admin: false, at: 0 });
+    }
+  }
+});
+
+test("group membership: non-member gets blocked in group, member and admin pass", async () => {
+  const {
+    cacheUserAccess,
+    getCachedUserAccess,
+    enforceMandatoryMembership,
+    isAdmin,
+  } = handler.__private;
+  const adminId = 5081175125; // process.env.ADMIN_IDS dan.
+  const memberId = 777101;
+  const strangerId = 777102;
+  const now = Date.now();
+
+  assert.equal(isAdmin(adminId), true, "sanity: admin id recognized");
+
+  try {
+    // Admin — cache'ga murojaatsiz ham o'tib ketadi.
+    assert.equal(await enforceMandatoryMembership("-100GROUP1", { id: adminId }, { silent: true }), true);
+    const adminAccess = getCachedUserAccess(adminId);
+    assert.ok(adminAccess && adminAccess.admin === true, "admin cached with admin flag");
+
+    // Obuna bo'lgan user — false/positive cache bilan o'tadi.
+    cacheUserAccess(memberId, { member: true, admin: false, at: now });
+    assert.equal(await enforceMandatoryMembership("-100GROUP1", { id: memberId }, { silent: true }), true);
+
+    // Negativ cache (non-member) — silent rejimda "not allowed".
+    cacheUserAccess(strangerId, { member: false, admin: false, at: now });
+    assert.equal(await enforceMandatoryMembership("-100GROUP1", { id: strangerId }, { silent: true }), false);
+  } finally {
+    for (const id of [adminId, memberId, strangerId]) {
+      handler.__private.cacheUserAccess(id, { member: false, admin: false, at: 0 });
+    }
+  }
+});
+
 test("reset pw lookup classifies no-account, too-many and auth provider errors", async () => {
   const originalFetch = global.fetch;
 

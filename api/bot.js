@@ -34,19 +34,19 @@ function setUserLang(userId, lang) {
 
 async function loadUserLangFromSupabase(userId) {
   if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
-    return DEFAULT_LANG;
+    return null;
   }
   try {
     const data = await supabaseRequest(
       `/bot_users?user_id=eq.${toPgBigint(userId)}&select=preferred_language&limit=1`
     );
     if (Array.isArray(data) && data[0]?.preferred_language) {
-      return SUPPORTED_LANGS.includes(data[0].preferred_language) ? data[0].preferred_language : DEFAULT_LANG;
+      return SUPPORTED_LANGS.includes(data[0].preferred_language) ? data[0].preferred_language : null;
     }
   } catch (error) {
     console.error("[LOAD_LANG_ERROR]", error.message);
   }
-  return DEFAULT_LANG;
+  return null;
 }
 
 function inferTranslationsLang(languageCode = "") {
@@ -468,10 +468,10 @@ async function checkUserMembership(chatId, userId) {
   }
 }
 
-const MEMBERSHIP_CACHE_TTL_MS = 5 * 60 * 1000;
+const MEMBERSHIP_CACHE_TTL_MS = 30 * 60 * 1000;
 const MEMBERSHIP_CACHE_NEGATIVE_TTL_MS = 60 * 1000;
 
-function getCachedMembership(userId) {
+function getCachedUserAccess(userId) {
   const key = String(userId || "");
   const entry = stats.membershipCache.get(key);
 
@@ -486,10 +486,10 @@ function getCachedMembership(userId) {
     return null;
   }
 
-  return entry.member;
+  return entry;
 }
 
-function cacheMembership(userId, member) {
+function cacheUserAccess(userId, { member, admin, at }) {
   const key = String(userId || "");
 
   if (!key) {
@@ -498,16 +498,41 @@ function cacheMembership(userId, member) {
 
   stats.membershipCache.set(key, {
     member: !!member,
-    at: Date.now(),
+    admin: !!admin,
+    at: at || Date.now(),
   });
-}async function enforceMandatoryMembership(chatId, user) {
-  if (isAdmin(user.id)) return true;
+}
 
-  const cached = getCachedMembership(user.id);
-  if (cached !== null) return cached;
+function prewarmUserAccess(user) {
+  if (!user?.id || isAdmin(user.id)) {
+    return true;
+  }
+
+  return enforceMandatoryMembership(null, user, { silent: true });
+}
+async function enforceMandatoryMembership(chatId, user, options = {}) {
+  const silent = options.silent === true;
+
+  if (isAdmin(user.id)) {
+    cacheUserAccess(user.id, { member: true, admin: true });
+    return true;
+  }
+
+  const cached = getCachedUserAccess(user.id);
+  if (cached) {
+    if (cached.member) {
+      return true;
+    }
+    if (silent) {
+      return false;
+    }
+  }
 
   const mandatoryChannel = await getMandatoryChannel();
-  if (!mandatoryChannel) return true;
+  if (!mandatoryChannel) {
+    cacheUserAccess(user.id, { member: true, admin: isAdmin(user.id) });
+    return true;
+  }
 
   let isMember = false;
   try {
@@ -518,8 +543,12 @@ function cacheMembership(userId, member) {
     return true;
   }
 
-  cacheMembership(user.id, isMember);
+  cacheUserAccess(user.id, { member: isMember, admin: isAdmin(user.id) });
   if (isMember) return true;
+
+  if (silent) {
+    return false;
+  }
 
   const text = `⚠️ <b>Botdan foydalanish uchun guruhga qo'shilishingiz majburiy!</b>\n\nIltimos, quyidagi guruhga qo'shiling va botdan to'liq foydalanish imkoniga ega bo'ling.`;
   const keyboard = {
@@ -548,16 +577,14 @@ async function handleMessage(message, updateMeta = {}) {
     ...updateMeta,
   });
 
-  // Load user's preferred language from cache or Supabase
-  if (user.id) {
-    let lang = getUserLang(user.id);
-    if (!stats.languageCache.has(String(user.id))) {
-      lang = await loadUserLangFromSupabase(user.id);
-      if (lang === DEFAULT_LANG && user.language_code) {
-        lang = inferTranslationsLang(user.language_code);
-      }
-      setUserLang(user.id, lang);
-    }
+  // Load user's preferred language from cache or Supabase.
+  // SQL NULL (preferred_language) means the user never chose a language;
+  // a stored value (including "uz") means an explicit choice that must win
+  // over the Telegram language_code.
+  if (user.id && !stats.languageCache.has(String(user.id))) {
+    const storedLang = await loadUserLangFromSupabase(user.id);
+    const lang = storedLang || inferTranslationsLang(user.language_code);
+    setUserLang(user.id, lang || DEFAULT_LANG);
   }
 
   if (!isGroupChat(message.chat)) {
@@ -700,6 +727,11 @@ async function handleMessage(message, updateMeta = {}) {
       return;
     }
 
+    // Guruhda botdan foydalanayotgan foydalanuvchi majburiy guruh/kanalga
+    // obuna bo'lganligi ham tekshiriladi — obuna bo'lmaguncha bot ishlatilmaydi.
+    const isAllowed = await enforceMandatoryMembership(chatId, user);
+    if (!isAllowed) return;
+
     if (isBindInfoCommand(addressedText) || isBindInfoCommand(addressing.input)) {
       const bindInput = stripBindInfoCommand(addressedText);
 
@@ -779,6 +811,11 @@ async function handleMessage(message, updateMeta = {}) {
     stats.starts += 1;
     trackFeatureUse(user, message.chat, FEATURE_ACTIONS.START, updateMeta);
     maybeRegisterBotCommands();
+
+    // Foydalanuvchi ma'lumotlarini oldindan cache'ga to'ldiramiz (admin/member
+    // holati) — keyingi so'rovlar Telegram API ga murojaat qilmay tez ishlaydi.
+    void prewarmUserAccess(user).catch(() => {});
+
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
     
     // Yangi foydalanuvchi bildirishnomasi — fonda (webhook kechiktirmasdan)
@@ -1300,7 +1337,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
       }
 
       if (isMember) {
-        cacheMembership(user.id, true);
+        cacheUserAccess(user.id, { member: true, admin: isAdmin(user.id) });
         await safeDeleteMessage(chatId, callbackQuery.message?.message_id);
         await telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text: "✅ A'zolik tasdiqlandi!" });
         await sendMessage(chatId, "✅ Guruhga a'zo bo'lganingiz tasdiqlandi. Botdan bemalol foydalanishingiz mumkin!", mainKeyboard(user));
@@ -1319,10 +1356,19 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
     return;
   }
 
-  if (callbackQuery.message && !isGroupChat(callbackQuery.message.chat)) {
-    const isAllowed = await enforceMandatoryMembership(chatId, user);
+  if (callbackQuery.message) {
+    const inGroup = isGroupChat(callbackQuery.message.chat);
+    const isAllowed = await enforceMandatoryMembership(chatId, user, { silent: inGroup });
     if (!isAllowed) {
-      await answerCallbackQuery(callbackQuery.id);
+      if (inGroup) {
+        await telegram("answerCallbackQuery", {
+          callback_query_id: callbackQuery.id,
+          text: "⚠️ Botdan foydalanish uchun majburiy guruh/kanalga a'zo bo'ling.",
+          show_alert: true,
+        });
+      } else {
+        await answerCallbackQuery(callbackQuery.id);
+      }
       return;
     }
   }
@@ -5217,11 +5263,21 @@ function getHelpText(user = {}) {
   return [
     t("help_title", lang),
     "",
-    t("help_section_server", lang),
+    t("help_intro", lang),
     "",
-    t("help_section_keyboard", lang),
+    t("help_section_check", lang),
     "",
-    t("help_section_limitations", lang),
+    t("help_section_full_info", lang),
+    "",
+    t("help_section_reset_pw", lang),
+    "",
+    t("help_section_profile", lang),
+    "",
+    t("help_section_language", lang),
+    "",
+    t("help_section_feedback", lang),
+    "",
+    t("help_section_notes", lang),
     "",
     getCommandsText(user),
     "",
@@ -5238,7 +5294,6 @@ function getCommandsText(user = {}) {
     t("cmd_help", lang),
     t("cmd_commands", lang),
     t("cmd_check", lang),
-    t("cmd_info", lang),
     t("cmd_full_info", lang),
     t("cmd_reset_pw", lang),
     t("cmd_feedback", lang),
@@ -5267,17 +5322,14 @@ function stripHtmlTags(str) {
 }
 
 function buildBotCommands(lang) {
-  const safeLang = SUPPORTED_LANGS.includes(lang) ? lang : DEFAULT_LANG;
   return [
-    { command: "start", description: stripHtmlTags(t("cmd_start", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "help", description: stripHtmlTags(t("cmd_help", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "commands", description: stripHtmlTags(t("cmd_commands", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "check", description: stripHtmlTags(t("cmd_check", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "info", description: stripHtmlTags(t("cmd_info", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "fullinfo", description: stripHtmlTags(t("cmd_full_info", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "resetpw", description: stripHtmlTags(t("cmd_reset_pw", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "feedback", description: stripHtmlTags(t("cmd_feedback", safeLang).replace(/^.*—\s*/, "")) },
-    { command: "language", description: stripHtmlTags(t("cmd_language", safeLang).replace(/^.*—\s*/, "")) },
+    { command: "start", description: "Botni qayta faollashtirish♻️" },
+    { command: "check", description: "Region nikname aniqlash🤓" },
+    { command: "fullinfo", description: "Akkaunt to\u02BBliq malumotini chiqarish🤓" },
+    { command: "resetpw", description: "Parolni tiklash🤓" },
+    { command: "language", description: "Til almashtirish🤓" },
+    { command: "feedback", description: "Fikr izoh yozish🌐" },
+    { command: "help", description: "Foydalanish yo\u02BBriqnomasi🤓" },
   ];
 }
 
@@ -8329,6 +8381,10 @@ module.exports.__private = {
   buildInlineMessageResult,
   buildInlineHintResult,
   checkUserMembership,
+  getCachedUserAccess,
+  cacheUserAccess,
+  prewarmUserAccess,
+  enforceMandatoryMembership,
   createTelegraphPage,
   getTelegraphAccessToken,
   mainKeyboard,
