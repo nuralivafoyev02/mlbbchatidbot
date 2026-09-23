@@ -505,7 +505,7 @@ function cacheUserAccess(userId, { member, admin, at }) {
 
 function prewarmUserAccess(user) {
   if (!user?.id || isAdmin(user.id)) {
-    return true;
+    return Promise.resolve(true);
   }
 
   return enforceMandatoryMembership(null, user, { silent: true });
@@ -1986,13 +1986,13 @@ async function handleMessageCommand(chatId, user, message) {
     return;
   }
 
-  cleanupPendingBroadcasts();
+  await cleanupPendingBroadcasts();
 
   const broadcastId = createBroadcastId();
   const confirmToken = createBroadcastToken();
   const recipientStats = await getBroadcastRecipientStats();
 
-  stats.pendingBroadcasts.set(broadcastId, {
+  await persistPendingBroadcast(broadcastId, {
     adminId: String(user.id),
     chatId: String(chatId),
     payload: broadcastPayload,
@@ -3384,7 +3384,7 @@ async function handleBroadcastConfirm(chatId, user, data, options = {}) {
   }
 
   const { broadcastId, token } = parseBroadcastCallback(data, "broadcast_confirm");
-  const pending = stats.pendingBroadcasts.get(broadcastId);
+  const pending = await loadPendingBroadcast(broadcastId);
 
   if (
     !pending ||
@@ -3398,7 +3398,7 @@ async function handleBroadcastConfirm(chatId, user, data, options = {}) {
   }
 
   pending.status = "confirmed";
-  stats.pendingBroadcasts.delete(broadcastId);
+  await deletePendingBroadcast(broadcastId);
   await sendMessage(chatId, "📣 <b>Xabar yuborish boshlandi.</b>", mainKeyboard(user));
 
   const broadcastQueue = options.env?.BROADCAST_QUEUE;
@@ -3439,10 +3439,10 @@ async function handleBroadcastCancel(chatId, user, data) {
   }
 
   const { broadcastId, token } = parseBroadcastCallback(data, "broadcast_cancel");
-  const pending = stats.pendingBroadcasts.get(broadcastId);
+  const pending = await loadPendingBroadcast(broadcastId);
 
   if (pending?.adminId === String(user.id) && pending.tokenHash === hashBroadcastToken(token)) {
-    stats.pendingBroadcasts.delete(broadcastId);
+    await deletePendingBroadcast(broadcastId);
   }
 
   await sendMessage(chatId, "Bekor qilindi.", mainKeyboard(user));
@@ -8250,13 +8250,122 @@ function parseBroadcastCallback(data, action) {
   };
 }
 
-function cleanupPendingBroadcasts() {
+const PENDING_BROADCAST_STORAGE_PREFIX = "broadcast_pending:";
+
+function pendingBroadcastStorageKey(broadcastId) {
+  return `${PENDING_BROADCAST_STORAGE_PREFIX}${broadcastId}`;
+}
+
+async function persistPendingBroadcast(broadcastId, pending) {
+  stats.pendingBroadcasts.set(broadcastId, pending);
+
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  try {
+    await supabaseRequest(`/bot_settings?on_conflict=key`, {
+      method: "POST",
+      prefer: "resolution=merge-duplicates",
+      body: {
+        key: pendingBroadcastStorageKey(broadcastId),
+        value: pending,
+      },
+    });
+  } catch (error) {
+    console.error("[PERSIST_PENDING_BROADCAST_ERROR]", error.message);
+  }
+}
+
+async function loadPendingBroadcast(broadcastId) {
+  const fromMemory = stats.pendingBroadcasts.get(broadcastId);
+
+  if (fromMemory) {
+    return fromMemory;
+  }
+
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return null;
+  }
+
+  try {
+    const data = await supabaseRequest(
+      `/bot_settings?key=eq.${encodeURIComponent(pendingBroadcastStorageKey(broadcastId))}&select=value`
+    );
+
+    if (Array.isArray(data) && data[0]?.value) {
+      const pending = data[0].value;
+
+      if (Date.now() - Number(pending.createdAt || 0) > BROADCAST_TTL_MS) {
+        await deletePendingBroadcast(broadcastId);
+        return null;
+      }
+
+      stats.pendingBroadcasts.set(broadcastId, pending);
+      return pending;
+    }
+  } catch (error) {
+    console.error("[LOAD_PENDING_BROADCAST_ERROR]", error.message);
+  }
+
+  return null;
+}
+
+async function deletePendingBroadcast(broadcastId) {
+  stats.pendingBroadcasts.delete(broadcastId);
+
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  try {
+    await supabaseRequest(
+      `/bot_settings?key=eq.${encodeURIComponent(pendingBroadcastStorageKey(broadcastId))}`,
+      { method: "DELETE" }
+    );
+  } catch (error) {
+    console.error("[DELETE_PENDING_BROADCAST_ERROR]", error.message);
+  }
+}
+
+async function cleanupPendingBroadcasts() {
   const now = Date.now();
 
   for (const [broadcastId, pending] of stats.pendingBroadcasts.entries()) {
     if (now - pending.createdAt > BROADCAST_TTL_MS) {
       stats.pendingBroadcasts.delete(broadcastId);
     }
+  }
+
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  try {
+    const data = await supabaseRequest(
+      `/bot_settings?key=like.${PENDING_BROADCAST_STORAGE_PREFIX}*&select=key,value`
+    );
+
+    if (Array.isArray(data)) {
+      const stale = [];
+
+      for (const row of data) {
+        const createdAt = Number(row.value?.createdAt || 0);
+        if (row.key && createdAt && now - createdAt > BROADCAST_TTL_MS) {
+          stale.push(row.key);
+        }
+      }
+
+      await Promise.allSettled(
+        stale.map((key) =>
+          supabaseRequest(`/bot_settings?key=eq.${encodeURIComponent(key)}`, {
+            method: "DELETE",
+          })
+        )
+      );
+    }
+  } catch (error) {
+    console.error("[CLEANUP_PENDING_BROADCAST_ERROR]", error.message);
   }
 }
 
@@ -8385,6 +8494,9 @@ module.exports.__private = {
   cacheUserAccess,
   prewarmUserAccess,
   enforceMandatoryMembership,
+  persistPendingBroadcast,
+  loadPendingBroadcast,
+  deletePendingBroadcast,
   createTelegraphPage,
   getTelegraphAccessToken,
   mainKeyboard,

@@ -2905,6 +2905,180 @@ test("broadcast confirm dispatches the broadcast to BROADCAST_QUEUE", async () =
 });
 
 
+test("broadcast confirm recovers pending from Supabase when in-memory state is lost", async () => {
+  const modulePath = require.resolve("../api/bot.js");
+  const originalFetch = global.fetch;
+  const originalStats = global.__MLBB_BOT_STATS__;
+  const originalEnv = {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_IDS: process.env.ADMIN_IDS,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  const telegramCalls = [];
+  const supabaseStore = new Map();
+  const queued = [];
+
+  global.fetch = async (url, options = {}) => {
+    const urlText = String(url);
+    const method = String(options.method || "GET").toUpperCase();
+
+    if (urlText.includes("supabase.co/rest/v1/bot_settings")) {
+      const parsed = new URL(urlText);
+      const body = options.body ? JSON.parse(options.body) : null;
+      const storedKey = body?.key;
+
+      if (method === "POST") {
+        if (storedKey) {
+          supabaseStore.set(storedKey, body.value);
+        }
+        if (body?.key?.startsWith("broadcast_pending:")) {
+          return new Response(JSON.stringify([]), {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          });
+        }
+      }
+
+      if (method === "DELETE") {
+        const keyMatch = String(parsed.search || "").match(/key=eq\.([^&]+)/);
+        if (keyMatch) {
+          supabaseStore.delete(decodeURIComponent(keyMatch[1]));
+        }
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      const keyMatch = String(parsed.search || "").match(/key=eq\.([^&]+)/);
+      if (keyMatch) {
+        const value = supabaseStore.get(decodeURIComponent(keyMatch[1]));
+        return new Response(JSON.stringify(value ? [{ value }] : []), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (urlText.includes("supabase.co")) {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const payload = options.body ? JSON.parse(options.body) : null;
+    telegramCalls.push({ url: urlText, method, payload });
+
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
+    process.env.ADMIN_IDS = "5081175125";
+    process.env.SUPABASE_URL = "https://testproject.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_test-role-key";
+    delete process.env.SUPABASE_SERVICE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[modulePath];
+
+    const freshHandler = require("../api/bot.js");
+
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5001,
+          message: {
+            chat: { id: 5081175125, type: "private" },
+            from: { id: 5081175125 },
+            text: "/message Durable broadcast test",
+          },
+        },
+      },
+      createRes()
+    );
+
+    const confirmButton = telegramCalls.find(
+      (call) => call.payload?.reply_markup?.inline_keyboard
+    );
+    assert.ok(confirmButton, "confirm message should be sent");
+    const callbackData =
+      confirmButton.payload.reply_markup.inline_keyboard[0][0].callback_data;
+
+    assert.ok(
+      [...supabaseStore.keys()].some((key) => key.startsWith("broadcast_pending:")),
+      "pending broadcast should be persisted to Supabase"
+    );
+
+    // In-memory holat yo'qolganini simulyatsiya qilamiz (isolate qayta ishga tushgandek).
+    global.__MLBB_BOT_STATS__.pendingBroadcasts.clear();
+    telegramCalls.length = 0;
+
+    await freshHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 5002,
+          callback_query: {
+            id: "callback-durable",
+            data: callbackData,
+            from: { id: 5081175125 },
+            message: { chat: { id: 5081175125, type: "private" } },
+          },
+        },
+      },
+      createRes(),
+      {
+        BROADCAST_QUEUE: {
+          send: async (job) => {
+            queued.push(job);
+          },
+        },
+      }
+    );
+
+    assert.equal(queued.length, 1, "broadcast should be enqueued after recovery");
+    assert.equal(queued[0].payload.text, "Durable broadcast test");
+    assert.equal(queued[0].adminChatId, "5081175125");
+
+    const expiredTexts = telegramCalls.filter(
+      (call) => /eskirgan yoki topilmadi/.test(call.payload?.text || "")
+    );
+    assert.equal(expiredTexts.length, 0, "should NOT print expired error");
+  } finally {
+    global.fetch = originalFetch;
+
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    global.__MLBB_BOT_STATS__ = originalStats;
+    delete require.cache[modulePath];
+    require("../api/bot.js");
+  }
+});
+
 test("bind info wait message is deleted after zite lookup finishes", async () => {
   const modulePath = require.resolve("../api/bot.js");
   const originalFetch = global.fetch;
