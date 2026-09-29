@@ -15,7 +15,30 @@ const botHandler = require("../api/bot.js");
 
 const broadcastCoreUrl = pathToFileURL(require.resolve("../broadcast-core.mjs")).href;
 const runnerUrl = pathToFileURL(require.resolve("../async-runner.mjs")).href;
+const runtimeUrl = pathToFileURL(require.resolve("../worker-runtime.mjs")).href;
 const workerUrl = pathToFileURL(require.resolve("../worker.mjs")).href;
+
+// Rejim do'konini RAM'da emas, "Durable Object"da saqlaydigan soxta store.
+function durableModeStore() {
+  const modes = new Map();
+
+  return {
+    durable: true,
+    async get(userId) {
+      return modes.get(String(userId)) || null;
+    },
+    async set(userId, mode) {
+      if (mode) {
+        modes.set(String(userId), mode);
+      } else {
+        modes.delete(String(userId));
+      }
+    },
+    async clear(userId) {
+      modes.delete(String(userId));
+    },
+  };
+}
 
 function noSleep() {
   return Promise.resolve();
@@ -665,6 +688,193 @@ test("broadcast confirm dispatches to the Async Runner before the queue", async 
     assert.match(runner.submitted[0].url, /\/broadcast$/);
     assert.equal(runner.submitted[0].body.adminChatId, "7041");
     assert.equal(runner.submitted[0].body.payload.text, "Salom hammaga");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("async runner: /mode stores the user mode and reads it back", async () => {
+  const { AsyncRunner } = await import(`${runnerUrl}?test=${Date.now()}-mode`);
+  const state = createFakeState("mode:7088");
+  const runner = new AsyncRunner(state, {});
+
+  const empty = await runner.fetch(new Request("https://async-runner.internal/mode?userId=7088"));
+  assert.equal((await empty.json()).mode, null, "bosh rejim null bo'lishi kerak");
+
+  const written = await runner.fetch(
+    new Request("https://async-runner.internal/mode", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: "7088", mode: "profile_add" }),
+    })
+  );
+  assert.equal((await written.json()).mode, "profile_add");
+
+  const read = await runner.fetch(new Request("https://async-runner.internal/mode?userId=7088"));
+  assert.equal((await read.json()).mode, "profile_add", "rejim DO storage'da saqlanishi kerak");
+
+  // Boshqa user'ning rejimi aralashib ketmasligi kerak.
+  const other = await runner.fetch(new Request("https://async-runner.internal/mode?userId=9999"));
+  assert.equal((await other.json()).mode, null, "rejim faqat o'z user'iga tegishli");
+
+  await runner.fetch(new Request("https://async-runner.internal/mode?userId=7088", { method: "DELETE" }));
+  const cleared = await runner.fetch(new Request("https://async-runner.internal/mode?userId=7088"));
+  assert.equal((await cleared.json()).mode, null, "rejim tozalanishi kerak");
+});
+
+test("user mode survives a fresh isolate (RAM cache bo'sh holatda)", async () => {
+  const state = createFakeState("mode:7088");
+  const { AsyncRunner } = await import(`${runnerUrl}?test=${Date.now()}-mode-iso`);
+  const runner = new AsyncRunner(state, {});
+
+  const env = {
+    ASYNC_RUNNER: {
+      idFromName(name) {
+        return { name };
+      },
+      get() {
+        return runner;
+      },
+    },
+  };
+
+  // Birinchi "isolate" — RAM cache to'ldi.
+  const first = await import(`${runtimeUrl}?test=${Date.now()}-a`);
+  const storeA = first.createUserModeStore(env);
+  await storeA.set("7088", "profile_add");
+
+  // Ikkinchi "isolate" — yangi modul nusxasi, RAM cache bo'sh.
+  const second = await import(`${runtimeUrl}?test=${Date.now()}-b`);
+  const storeB = second.createUserModeStore(env);
+
+  assert.equal(await storeB.get("7088"), "profile_add", "rejim yangi isolate'da ham o'qilishi kerak");
+  assert.equal(await storeB.get("9999"), null, "boshqa user uchun rejim bo'lmasligi kerak");
+
+  await storeB.clear("7088");
+  assert.equal(await storeB.get("7088"), null, "tozalash ishlashi kerak");
+});
+
+test("profile: plain id+server message is accepted without a reply", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body || "{}") });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 77 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    // 1) "Akkaunt qo'shish" tugmasi bosiladi — rejim DO'ga yoziladi.
+    await botHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 7101,
+          callback_query: {
+            id: "cb-7101",
+            from: { id: 7088, first_name: "Joe" },
+            message: {
+              chat: { id: 7088, type: "private" },
+              message_id: 50,
+              text: "profil",
+            },
+            data: "profile_add",
+          },
+        },
+      },
+      createRes(),
+      {},
+      null,
+      { userModeStore: durableModeStore() }
+    );
+
+    // 2) Reply QILMASDAN oddiy xabar — qabul qilinishi kerak.
+    calls.length = 0;
+    await botHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 7102,
+          message: {
+            chat: { id: 7088, type: "private" },
+            message_id: 51,
+            date: 1,
+            from: { id: 7088, first_name: "Joe" },
+            text: "1006613098 13019",
+          },
+        },
+      },
+      createRes(),
+      {},
+      null,
+      { userModeStore: durableModeStore() }
+    );
+
+    const sent = calls.find((c) => c.payload.text !== undefined);
+    assert.ok(sent, "javob yuborilishi kerak edi");
+    assert.match(
+      sent.payload.text,
+      /formati noto|Supabase|24|25|qo'sh|ro'yxatda/i,
+      "hesobni qo'shishga urinish yoki aniq format xatosi kutilgan edi"
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("profile: replying to the add-account prompt works without a stored mode", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options) => {
+    calls.push({ url: String(url), payload: JSON.parse(options.body || "{}") });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 78 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await botHandler(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 7103,
+          message: {
+            chat: { id: 7090, type: "private" },
+            message_id: 52,
+            date: 1,
+            from: { id: 7090, first_name: "Ann" },
+            text: "1006613098 13019",
+            reply_to_message: {
+              message_id: 40,
+              text: "<b>User ID va Zone/Server ID</b> yuboring:\n<code>123456 (5000)</code>",
+            },
+          },
+        },
+      },
+      createRes(),
+      {},
+      null,
+      { userModeStore: null }
+    );
+
+    const sent = calls.find((c) => c.payload.text !== undefined);
+    assert.ok(sent, "reply asosida javob yuborilishi kerak edi");
+    assert.match(
+      sent.payload.text,
+      /formati noto|Supabase|24|25|qo'sh|ro'yxatda/i,
+      "rejim RAM'da yo'q bo'lsa ham reply aniqlanishi kerak edi"
+    );
   } finally {
     global.fetch = originalFetch;
   }

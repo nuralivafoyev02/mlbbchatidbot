@@ -291,6 +291,9 @@ if (!global.__MLBB_BOT_SETTINGS__) {
 
 const stats = global.__MLBB_BOT_STATS__;
 const botSettings = global.__MLBB_BOT_SETTINGS__;
+
+// So'nggi so'rovning rejim do'koni. Vercel'da null (faqat RAM ishlaydi).
+let activeUserModeStore = null;
 stats.users ||= new Set();
 stats.broadcastChats ||= new Set();
 stats.pendingBroadcasts ||= new Map();
@@ -323,8 +326,10 @@ if (!(stats.languageCache instanceof Map)) {
 BROADCAST_USER_IDS.forEach((chatId) => stats.broadcastChats.add(chatId));
 BROADCAST_USER_IDS.forEach((chatId) => rememberKnownPrivateChat(chatId));
 
-module.exports = async function handler(req, res, env = {}, ctx = null) {
+module.exports = async function handler(req, res, env = {}, ctx = null, extra = {}) {
   let update = null;
+
+  activeUserModeStore = extra.userModeStore || null;
 
   try {
     if (!TELEGRAM_BOT_TOKEN) {
@@ -595,12 +600,18 @@ async function handleMessage(message, updateMeta = {}) {
   }
 
   // "Akkaunt qo'shish" rejimi — foydalanuvchi User ID + Zone ID yuboradi.
-  if (!isGroupChat(message.chat) && getUserMode(user.id) === "profile_add" && text) {
-    if (/^[/!.]/.test(text) || isCommandLike(text)) {
-      rememberUserMode(user.id, null);
-    } else {
+  // Reply qilish shart emas: oddiy xabar ham qabul qilinadi.
+  if (!isGroupChat(message.chat) && text) {
+    const userMode = await resolveUserMode(user.id);
+    const isProfileAdd = userMode === "profile_add" || isProfileAddPromptReply(message);
+
+    if (isProfileAdd && !/^[/!.]/.test(text) && !isCommandLike(text)) {
       await handleProfileAddAccount(chatId, user, text);
       return;
+    }
+
+    if (isProfileAdd && (/^[/!.]/.test(text) || isCommandLike(text))) {
+      clearUserMode(user.id);
     }
   }
 
@@ -1112,7 +1123,7 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (getUserMode(user.id) === "mandatory_setup") {
     if (!isAdmin(user.id)) return;
-    rememberUserMode(user.id, null);
+    clearUserMode(user.id);
     try {
       const res = await telegram("getChat", { chat_id: text });
       const chat = res.result;
@@ -1509,13 +1520,13 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
   }
 
   if (data === "profile_add_cancel") {
-    rememberUserMode(user.id, null);
+    clearUserMode(user.id);
     await handleMyProfileRequest(chatId, user, callbackQuery.message?.message_id);
     return;
   }
 
   if (data === "profile_menu") {
-    rememberUserMode(user.id, null);
+    clearUserMode(user.id);
     await handleMyProfileRequest(chatId, user, callbackQuery.message?.message_id);
     return;
   }
@@ -1777,7 +1788,7 @@ async function handleProfileAddAccount(chatId, user, text, messageId = null) {
       }),
       mainKeyboard(user)
     );
-    rememberUserMode(user.id, null);
+    clearUserMode(user.id);
     await handleMyProfileRequest(chatId, user);
   } catch (err) {
     console.error("[ADD_USER_ACCOUNT_ERROR]", err);
@@ -6808,16 +6819,57 @@ function rememberUserMode(userId, mode) {
   }
 
   stats.userModes.set(String(userId), mode);
+  void activeUserModeStore?.set?.(userId, mode);
 }
 
 function getUserMode(userId) {
   return stats.userModes.get(String(userId || "")) || "";
 }
 
+// Rejim isolate RAM'ida yo'q bo'lsa (yangi Worker isolate'i), Durable Object'dan
+// qayta o'qiymiz — aks holda "Akkaunt qo'shish"dan keyingi xabar tushib qoladi.
+async function resolveUserMode(userId) {
+  const cached = getUserMode(userId);
+
+  if (cached) {
+    return cached;
+  }
+
+  if (!userId || !activeUserModeStore?.get) {
+    return "";
+  }
+
+  try {
+    const mode = await activeUserModeStore.get(userId);
+
+    if (mode) {
+      stats.userModes.set(String(userId), mode);
+      return mode;
+    }
+  } catch (error) {
+    console.error("[USER_MODE_RESOLVE_ERROR]", error);
+  }
+
+  return "";
+}
+
+function clearUserMode(userId) {
+  stats.userModes.delete(String(userId || ""));
+  void activeUserModeStore?.clear?.(userId);
+}
+
 function isFeedbackPromptReply(message = {}) {
   const replyText = String(message.reply_to_message?.text || "");
 
   return /Fikr va izohlar/i.test(replyText);
+}
+
+// Rejim RAM'da yo'q bo'lsa ham, bot yuborgan "Akkaunt qo'shish" xabariga
+// reply qilingan xabar aniqlandiriladi — stateless ishlaydi.
+function isProfileAddPromptReply(message = {}) {
+  const replyText = String(message.reply_to_message?.text || "");
+
+  return /User ID/i.test(replyText) && /Zone\s*\/?\s*Server ID/i.test(replyText);
 }
 
 function isBindInfoPromptReply(message = {}) {

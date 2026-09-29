@@ -7,29 +7,33 @@ import {
   runBroadcastSlice,
 } from "./broadcast-core.mjs";
 import { createInternalRequest, jsonResponse, runVercelHandler } from "./worker-runtime.mjs";
+import {
+  BIND_RUNNER_NAME_PREFIX,
+  BIND_SHARD_COUNT,
+  BIND_TASK_TTL_MS,
+  BROADCAST_RUNNER_NAME,
+  getBindRunnerName,
+  getModeRunnerName,
+  MODE_RUNNER_NAME_PREFIX,
+  MODE_TTL_MS,
+} from "./runner-routing.mjs";
 
-const BIND_SHARD_COUNT = 20;
 const BIND_TASK_KEY = "bind:tasks";
 const BROADCAST_JOB_KEY = "broadcast:job";
-const BIND_TASK_TTL_MS = 10 * 60 * 1000;
 const BROADCAST_JOB_TTL_MS = 60 * 60 * 1000;
 const BIND_REARM_DELAY_MS = 50;
 const MAX_BIND_TASKS_PER_OBJECT = 20;
 const MAX_BROADCAST_JOB_BYTES = 1_500_000;
+const MODE_KEY = "mode:user";
 
-export const BIND_RUNNER_NAME_PREFIX = "bind";
-export const BROADCAST_RUNNER_NAME = "broadcast";
-
-export function getBindRunnerName(chatId) {
-  const raw = String(chatId || "");
-  let hash = 0;
-
-  for (let index = 0; index < raw.length; index += 1) {
-    hash = (hash * 31 + raw.charCodeAt(index)) >>> 0;
-  }
-
-  return `${BIND_RUNNER_NAME_PREFIX}:${hash % BIND_SHARD_COUNT}`;
-}
+export {
+  BIND_RUNNER_NAME_PREFIX,
+  BROADCAST_RUNNER_NAME,
+  getBindRunnerName,
+  getModeRunnerName,
+  MODE_RUNNER_NAME_PREFIX,
+  MODE_TTL_MS,
+};
 
 function trimBroadcastJobToStorageLimit(job) {
   let candidate = job;
@@ -61,24 +65,43 @@ export class AsyncRunner {
       return "broadcast";
     }
 
+    if (name.startsWith(MODE_RUNNER_NAME_PREFIX)) {
+      return "mode";
+    }
+
     return "bind";
   }
 
-  async fetch(request) {
-    const url = new URL(request.url);
+  // DO stub'ga `stub.fetch("https://...")` deb chaqirish mumkin — shuning uchun
+  // string ham, Request ham qabul qilinadi.
+  async fetch(request, init) {
+    const req = typeof request === "string" ? new Request(request, init) : request;
+    const url = new URL(req.url);
 
-    if (request.method === "GET") {
+    if (req.method === "GET") {
+      if (url.pathname === "/mode") {
+        return this.handleModeGet(url);
+      }
+
       return this.handleStatus();
     }
 
-    if (request.method !== "POST") {
+    if (req.method === "DELETE") {
+      if (url.pathname === "/mode") {
+        return this.handleModeSet({ userId: url.searchParams.get("userId"), mode: null });
+      }
+
+      return jsonResponse({ ok: false, error: "Unknown route" }, 404);
+    }
+
+    if (req.method !== "POST") {
       return jsonResponse({ ok: false, error: "Method not allowed" }, 405);
     }
 
     let body = {};
 
     try {
-      body = await request.json();
+      body = await req.json();
     } catch {
       body = {};
     }
@@ -91,7 +114,48 @@ export class AsyncRunner {
       return this.handleBindSubmit(body);
     }
 
+    if (url.pathname === "/mode") {
+      return this.handleModeSet(body);
+    }
+
     return jsonResponse({ ok: false, error: "Unknown route" }, 404);
+  }
+
+  async handleModeGet(url) {
+    if (this.kind !== "mode") {
+      return jsonResponse({ ok: false, error: "Not a mode runner" }, 400);
+    }
+
+    const userId = String(url.searchParams.get("userId") || "");
+    const stored = await this.state.storage.get(MODE_KEY);
+
+    if (!stored || stored.userId !== userId || Date.now() - Number(stored.at || 0) > MODE_TTL_MS) {
+      return jsonResponse({ ok: true, mode: null });
+    }
+
+    return jsonResponse({ ok: true, mode: stored.mode || null });
+  }
+
+  async handleModeSet(body = {}) {
+    if (this.kind !== "mode") {
+      return jsonResponse({ ok: false, error: "Not a mode runner" }, 400);
+    }
+
+    const userId = String(body?.userId || "");
+    const mode = body?.mode ? String(body.mode).slice(0, 32) : null;
+
+    if (!userId) {
+      return jsonResponse({ ok: false, error: "userId required" }, 400);
+    }
+
+    if (!mode) {
+      await this.state.storage.delete(MODE_KEY);
+      return jsonResponse({ ok: true, mode: null });
+    }
+
+    await this.state.storage.put(MODE_KEY, { userId, mode, at: Date.now() });
+
+    return jsonResponse({ ok: true, mode });
   }
 
   async handleStatus() {
@@ -219,6 +283,10 @@ export class AsyncRunner {
     try {
       if (this.kind === "broadcast") {
         await this.drainBroadcast();
+        return;
+      }
+
+      if (this.kind === "mode") {
         return;
       }
 
