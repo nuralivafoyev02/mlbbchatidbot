@@ -1,21 +1,38 @@
 import handler, { enrichPremiumEmojis } from "./api/bot.js";
+import {
+  getBroadcastTuning,
+  mergeBroadcastJob,
+  normalizeBroadcastJob,
+  runBroadcastSlice,
+} from "./broadcast-core.mjs";
+import { AsyncRunner, getBindRunnerName } from "./async-runner.mjs";
+import {
+  createInternalRequest,
+  createVercelRequest,
+  getChatId,
+  getTelegramTimeoutMs,
+  isAuthorizedWebhook,
+  jsonResponse,
+  parseRequestBody,
+  runVercelHandler,
+  safeJson,
+} from "./worker-runtime.mjs";
 
-const JSON_HEADERS = {
-  "content-type": "application/json; charset=utf-8",
-};
 const BIND_INFO_COMMAND_RE = /^\/(?:info|bind|ulanish|ulamalar|ulanmalar)(?:@\w+)?(?:\s|$)/i;
 const BROADCAST_QUEUE_NAME = "mlbbchatidbot-broadcast";
-const BROADCAST_CONSUMER_CHUNK_SIZE = 10;
-const BROADCAST_CHUNK_DELAY_MS = 250;
+const RUNNER_BASE_URL = "https://async-runner.internal";
+const QUEUE_MESSAGE_WARN_BYTES = 100_000;
+
+export { AsyncRunner };
 
 export default {
   async fetch(request, env, ctx) {
     const body = await parseRequestBody(request);
     const req = createVercelRequest(request, body);
 
-    if (shouldQueueBindInfoUpdate(body) && isAuthorizedWebhook(request, env)) {
+    if (shouldDeferBindInfoUpdate(body) && isAuthorizedWebhook(request, env)) {
       const waitMessage = await sendBindInfoWaitMessage(body, env);
-      await queueBindInfoUpdate(body, env, ctx, waitMessage);
+      await dispatchBindInfoUpdate(body, env, ctx, waitMessage);
 
       return jsonResponse({
         ok: true,
@@ -31,12 +48,12 @@ export default {
       for (const message of batch.messages) {
         try {
           await processBroadcastMessage(message.body, env);
-          if (typeof message.ack === "function") {
-            message.ack();
-          }
         } catch (error) {
           console.error("[QUEUE_BROADCAST_ERROR]", error);
-          // ack qilinmaydi — platform max_retries bo'yicha qayta yuboradi
+        }
+
+        if (typeof message.ack === "function") {
+          message.ack();
         }
       }
 
@@ -45,15 +62,13 @@ export default {
 
     for (const message of batch.messages) {
       try {
-        await runVercelHandler(createInternalRequest(message.body, env));
-        if (typeof message.ack === "function") {
-          message.ack();
-        }
+        await runVercelHandler(createInternalRequest(message.body, env), env);
       } catch (error) {
         console.error("[QUEUE_BIND_INFO_ERROR]", error);
-        if (typeof message.ack === "function") {
-          message.ack();
-        }
+      }
+
+      if (typeof message.ack === "function") {
+        message.ack();
       }
     }
   },
@@ -67,37 +82,19 @@ export default {
   },
 };
 
-async function runVercelHandler(req, env = {}, ctx = null) {
-  const res = createVercelResponse();
-
-  await handler(req, res, env, ctx);
-
-  return res.toResponse();
-}
-
 async function processBroadcastMessage(body = {}, env = {}) {
-  const {
-    chatIds,
-    payload,
-    adminChatId,
-    total,
-    sent = 0,
-    blocked = 0,
-    inactive = 0,
-    initiate = 0,
-    errors = 0,
-  } = body || {};
+  const job = normalizeBroadcastJob(body);
 
-  if (!payload) {
+  if (!job.payload) {
     return;
   }
 
-  if (!Array.isArray(chatIds) || chatIds.length === 0) {
+  if (job.chatIds.length === 0) {
     const recipients = await handler.getBroadcastChatIds();
 
     if (!recipients.length) {
       console.error("[QUEUE_BROADCAST_EMPTY_RECIPIENTS]");
-      await sendBroadcastReportSafe(adminChatId, {
+      await sendBroadcastReportSafe(job.adminChatId, {
         total: 0,
         sent: 0,
         blocked: 0,
@@ -108,73 +105,60 @@ async function processBroadcastMessage(body = {}, env = {}) {
       return;
     }
 
-    await processBroadcastChunk(recipients, payload, env, {
-      adminChatId,
-      total: recipients.length,
-      sent,
-      blocked,
-      inactive,
-      initiate,
-      errors,
-    });
-    return;
+    job.chatIds = recipients;
+    job.total = recipients.length;
   }
 
-  await processBroadcastChunk(chatIds, payload, env, {
-    adminChatId,
-    total,
-    sent,
-    blocked,
-    inactive,
-    initiate,
-    errors,
+  const tune = getBroadcastTuning(env);
+  const slice = await runBroadcastSlice({
+    env,
+    job,
+    tune,
+    deadlineAt: Date.now() + tune.runBudgetMs,
+    cooldownUntil: job.cooldownUntil,
   });
-}
+  const nextJob = mergeBroadcastJob(job, slice);
 
-async function processBroadcastChunk(chatIds, payload, env, meta = {}) {
-  const chunk = chatIds.slice(0, BROADCAST_CONSUMER_CHUNK_SIZE);
-
-  const results = await Promise.allSettled(
-    chunk.map((chatId) => sendBroadcastWithRetry(chatId, payload))
-  );
-
-  const counts = { sent: 0, blocked: 0, inactive: 0, initiate: 0, errors: 0 };
-
-  results.forEach((result) => {
-    const category = result.status === "fulfilled" ? result.value?.category : "error";
-    counts[counts[category] != null ? category : "errors"] += 1;
-  });
-
-  const next = {
-    sent: Number(meta.sent || 0) + counts.sent,
-    blocked: Number(meta.blocked || 0) + counts.blocked,
-    inactive: Number(meta.inactive || 0) + counts.inactive,
-    initiate: Number(meta.initiate || 0) + counts.initiate,
-    errors: Number(meta.errors || 0) + counts.errors,
-  };
-
-  const remaining = chatIds.slice(chunk.length);
-
-  if (remaining.length > 0 && env?.BROADCAST_QUEUE?.send) {
+  if (!slice.finished && env?.BROADCAST_QUEUE?.send) {
     try {
-      await env.BROADCAST_QUEUE.send({
-        chatIds: remaining,
-        payload,
-        adminChatId: meta.adminChatId,
-        total: meta.total,
-        ...next,
-      });
+      await env.BROADCAST_QUEUE.send(toQueueMessage(nextJob));
+      return;
     } catch (error) {
       console.error("[QUEUE_BROADCAST_CONTINUE_ERROR]", error);
     }
-  } else if (meta.adminChatId) {
-    await sendBroadcastReportSafe(meta.adminChatId, {
-      total: Number(meta.total) || chatIds.length,
-      ...next,
-    });
   }
 
-  await sleep(BROADCAST_CHUNK_DELAY_MS);
+  await sendBroadcastReportSafe(nextJob.adminChatId, {
+    total: nextJob.total,
+    sent: nextJob.sent,
+    blocked: nextJob.blocked,
+    inactive: nextJob.inactive,
+    initiate: nextJob.initiate,
+    errors: nextJob.errors,
+  });
+}
+
+function toQueueMessage(job) {
+  const message = {
+    chatIds: job.chatIds,
+    payload: job.payload,
+    adminChatId: job.adminChatId,
+    total: job.total,
+    sent: job.sent,
+    blocked: job.blocked,
+    inactive: job.inactive,
+    initiate: job.initiate,
+    errors: job.errors,
+    rateLimited: job.rateLimited,
+    cooldownUntil: job.cooldownUntil,
+  };
+  const size = JSON.stringify(message).length;
+
+  if (size > QUEUE_MESSAGE_WARN_BYTES) {
+    console.error("[QUEUE_BROADCAST_MESSAGE_LARGE]", { bytes: size, remaining: job.chatIds.length });
+  }
+
+  return message;
 }
 
 async function sendBroadcastReportSafe(adminChatId, result) {
@@ -189,114 +173,7 @@ async function sendBroadcastReportSafe(adminChatId, result) {
   }
 }
 
-async function sendBroadcastWithRetry(chatId, payload) {
-  try {
-    await handler.sendBroadcastPayload(chatId, payload);
-    return { ok: true, category: "sent" };
-  } catch (error) {
-    const category = handler.categorizeBroadcastSendError(error);
-
-    if (category === "error") {
-      // O'tkinchi xatolik (masalan 429 rate limit) bo'lsa bir marta qayta urinamiz
-      await sleep(1000);
-      try {
-        await handler.sendBroadcastPayload(chatId, payload);
-        return { ok: true, category: "sent" };
-      } catch (retryError) {
-        return { ok: false, category: handler.categorizeBroadcastSendError(retryError) };
-      }
-    }
-
-    return { ok: false, category };
-  }
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function createVercelRequest(request, body) {
-  const url = new URL(request.url);
-
-  return {
-    method: request.method,
-    headers: Object.fromEntries(request.headers.entries()),
-    query: Object.fromEntries(url.searchParams.entries()),
-    body,
-  };
-}
-
-function createVercelResponse() {
-  return {
-    statusCode: 200,
-    headers: { ...JSON_HEADERS },
-    body: "",
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    setHeader(name, value) {
-      this.headers[String(name).toLowerCase()] = String(value);
-      return this;
-    },
-    json(payload) {
-      this.headers["content-type"] = JSON_HEADERS["content-type"];
-      this.body = JSON.stringify(payload);
-      return this;
-    },
-    send(payload) {
-      this.body = typeof payload === "string" ? payload : JSON.stringify(payload);
-      return this;
-    },
-    end(payload = "") {
-      if (payload) {
-        this.send(payload);
-      }
-
-      return this;
-    },
-    toResponse() {
-      return new Response(this.body, {
-        status: this.statusCode,
-        headers: this.headers,
-      });
-    },
-  };
-}
-
-async function parseRequestBody(request) {
-  if (request.method === "GET" || request.method === "HEAD") {
-    return {};
-  }
-
-  const text = await request.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function createInternalRequest(body, env) {
-  return {
-    method: "POST",
-    headers: {
-      "x-telegram-bot-api-secret-token": String(env?.TELEGRAM_WEBHOOK_SECRET || ""),
-    },
-    query: {},
-    body: {
-      ...body,
-      __skip_bind_wait: true,
-    },
-  };
-}
-
-function shouldQueueBindInfoUpdate(update) {
+function shouldDeferBindInfoUpdate(update) {
   const message =
     update?.message ||
     update?.edited_message ||
@@ -316,14 +193,16 @@ function shouldQueueBindInfoUpdate(update) {
     return false;
   }
 
-  if (BIND_INFO_COMMAND_RE.test(text) && hasMlbbIdPair(text)) {
+  if (
+    BIND_INFO_COMMAND_RE.test(text) && hasMlbbIdPair(text)
+  ) {
     return true;
   }
 
   return isBindInfoPromptReply(message) && hasMlbbIdPair(text);
 }
 
-async function queueBindInfoUpdate(update, env, ctx, waitMessage = null) {
+function buildQueuedBindInfoUpdate(update, waitMessage = null) {
   const queuedUpdate = {
     ...update,
     __skip_bind_wait: true,
@@ -336,12 +215,56 @@ async function queueBindInfoUpdate(update, env, ctx, waitMessage = null) {
     };
   }
 
-  if (env?.BIND_INFO_QUEUE?.send) {
-    await env.BIND_INFO_QUEUE.send(queuedUpdate);
-    return;
+  return queuedUpdate;
+}
+
+function getBindRunnerStub(env, update) {
+  const namespace = env?.ASYNC_RUNNER;
+
+  if (!namespace || typeof namespace.idFromName !== "function") {
+    return null;
   }
 
-  ctx.waitUntil(runVercelHandler(createInternalRequest(queuedUpdate, env)));
+  try {
+    return namespace.get(namespace.idFromName(getBindRunnerName(getChatId(update))));
+  } catch (error) {
+    console.error("[BIND_RUNNER_ID_ERROR]", error);
+    return null;
+  }
+}
+
+async function dispatchBindInfoUpdate(update, env, ctx, waitMessage = null) {
+  const queuedUpdate = buildQueuedBindInfoUpdate(update, waitMessage);
+  const stub = getBindRunnerStub(env, update);
+
+  if (stub) {
+    try {
+      const response = await stub.fetch(`${RUNNER_BASE_URL}/bind`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ update: queuedUpdate }),
+      });
+
+      if (response.ok) {
+        return;
+      }
+
+      throw new Error(`AsyncRunner rejected bind task: ${response.status}`);
+    } catch (error) {
+      console.error("[BIND_RUNNER_SUBMIT_ERROR]", error);
+    }
+  }
+
+  if (env?.BIND_INFO_QUEUE?.send) {
+    try {
+      await env.BIND_INFO_QUEUE.send(queuedUpdate);
+      return;
+    } catch (error) {
+      console.error("[BIND_INFO_QUEUE_SUBMIT_ERROR]", error);
+    }
+  }
+
+  ctx?.waitUntil?.(runVercelHandler(createInternalRequest(queuedUpdate, env), env, ctx));
 }
 
 async function sendBindInfoWaitMessage(update, env) {
@@ -398,72 +321,4 @@ function isBindInfoPromptReply(message = {}) {
 
 function hasMlbbIdPair(text) {
   return /\d{4,20}\D+\d{1,10}/.test(String(text || ""));
-}
-
-async function safeJson(response) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function getTelegramTimeoutMs(env) {
-  const value = Number(env?.TELEGRAM_TIMEOUT_MS);
-
-  if (!Number.isFinite(value)) {
-    return 5000;
-  }
-
-  return Math.min(10000, Math.max(800, value));
-}
-
-function getChatId(update) {
-  return (
-    update?.message?.chat?.id ||
-    update?.edited_message?.chat?.id ||
-    update?.channel_post?.chat?.id ||
-    update?.edited_channel_post?.chat?.id ||
-    null
-  );
-}
-
-function isAuthorizedWebhook(request, env) {
-  const expected = String(env?.TELEGRAM_WEBHOOK_SECRET || "").trim();
-
-  if (!expected) {
-    return true;
-  }
-
-  const url = new URL(request.url);
-  const provided =
-    request.headers.get("x-telegram-bot-api-secret-token") ||
-    url.searchParams.get("secret") ||
-    "";
-
-  return timingSafeEqual(provided, expected);
-}
-
-function timingSafeEqual(leftValue, rightValue) {
-  const left = new TextEncoder().encode(String(leftValue || ""));
-  const right = new TextEncoder().encode(String(rightValue || ""));
-
-  if (!left.length || left.length !== right.length) {
-    return false;
-  }
-
-  let mismatch = 0;
-
-  for (let index = 0; index < left.length; index += 1) {
-    mismatch |= left[index] ^ right[index];
-  }
-
-  return mismatch === 0;
-}
-
-function jsonResponse(payload, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: JSON_HEADERS,
-  });
 }

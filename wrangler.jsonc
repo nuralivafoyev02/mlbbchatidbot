@@ -11,6 +11,20 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ASYNC_RUNNER",
+        "class_name": "AsyncRunner"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AsyncRunner"]
+    }
+  ],
   "queues": {
     "producers": [
       {
@@ -56,6 +70,9 @@
     "FULL_INFO_API": "https://api.jebray.com",
     "FULL_INFO_TIMEOUT_MS": "30000",
     "FULL_INFO_RETRIES": "2",
-    "TELEGRAPH_TIMEOUT_MS": "10000"
+    "TELEGRAPH_TIMEOUT_MS": "10000",
+    "BROADCAST_RATE_PER_SEC": "25",
+    "BROADCAST_BATCH_SIZE": "25",
+    "BROADCAST_MAX_SENDS_PER_RUN": "40"
   }
 }

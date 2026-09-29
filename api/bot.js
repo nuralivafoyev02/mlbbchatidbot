@@ -86,6 +86,8 @@ const MAIN_GROUP_ID =
     : cleanEnv(process.env.MAIN_GROUP_ID);
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
+const ASYNC_RUNNER_BASE_URL = "https://async-runner.internal";
+const BROADCAST_RUNNER_NAME = "broadcast";
 const BUTTON_LANGUAGE = "🌐 Til almashtirish";
 const BUTTON_CHECK = "🔎 Server aniqlash";
 const BUTTON_BIND_INFO = "🔗 Ulanmalar";
@@ -3401,14 +3403,42 @@ async function handleBroadcastConfirm(chatId, user, data, options = {}) {
   await deletePendingBroadcast(broadcastId);
   await sendMessage(chatId, "📣 <b>Xabar yuborish boshlandi.</b>", mainKeyboard(user));
 
+  const broadcastBody = {
+    id: broadcastId,
+    payload: pending.payload,
+    adminChatId: String(chatId),
+  };
+  const broadcastRunner = getAsyncRunnerStub(options.env, BROADCAST_RUNNER_NAME);
+
+  if (broadcastRunner) {
+    try {
+      const response = await broadcastRunner.fetch(`${ASYNC_RUNNER_BASE_URL}/broadcast`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(broadcastBody),
+      });
+
+      if (response.ok) {
+        await sendMessage(
+          chatId,
+          getBroadcastQueuedText(pending.recipientCount, getUserLang(user.id)),
+          mainKeyboard(user)
+        );
+        return;
+      }
+
+      throw new Error(`AsyncRunner broadcast start failed: ${response.status}`);
+    } catch (error) {
+      console.error("[BROADCAST_RUNNER_SUBMIT_ERROR]", error);
+      recordError("broadcast_runner_failed", error.message);
+    }
+  }
+
   const broadcastQueue = options.env?.BROADCAST_QUEUE;
 
   if (broadcastQueue && typeof broadcastQueue.send === "function") {
     try {
-      await broadcastQueue.send({
-        payload: pending.payload,
-        adminChatId: String(chatId),
-      });
+      await broadcastQueue.send(broadcastBody);
       await sendMessage(
         chatId,
         getBroadcastQueuedText(pending.recipientCount, getUserLang(user.id)),
@@ -3430,6 +3460,21 @@ async function handleBroadcastConfirm(chatId, user, data, options = {}) {
     getBroadcastResultText(result),
     mainKeyboard(user)
   );
+}
+
+function getAsyncRunnerStub(env, name) {
+  const namespace = env?.ASYNC_RUNNER;
+
+  if (!namespace || typeof namespace.idFromName !== "function") {
+    return null;
+  }
+
+  try {
+    return namespace.get(namespace.idFromName(name));
+  } catch (error) {
+    console.error("[ASYNC_RUNNER_ID_ERROR]", error);
+    return null;
+  }
 }
 
 async function handleBroadcastCancel(chatId, user, data) {
