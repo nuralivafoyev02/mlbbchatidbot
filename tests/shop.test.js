@@ -447,3 +447,66 @@ test("shop: admin panel API requires login and manages firstmails", async () => 
     delete require.cache[modulePath];
   }
 });
+
+test("shop: buy request goes only to the shop owner (@Ksava_org)", async () => {
+  const originalFetch = global.fetch;
+  const fake = createFakeBotSettings();
+  const telegramCalls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const href = String(url);
+
+    if (href.startsWith("https://api.telegram.org/")) {
+      telegramCalls.push({ method: href.split("/").pop(), payload: JSON.parse(options.body || "{}") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+    }
+
+    const path = href.slice("https://testproject.supabase.co/rest/v1".length);
+    let data;
+    if (path.startsWith("/bot_users") && /username=ilike\.Ksava_org/.test(path)) {
+      data = [{ user_id: 6100000001, chat_id: 6100000001, username: "Ksava_org" }];
+    } else if (path.startsWith("/rpc/")) {
+      data = null;
+    } else {
+      data = fake.handle(path, options);
+    }
+    return new Response(data === null ? "" : JSON.stringify(data), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const bot = loadBotWithSupabase();
+    const store = shop.createFirstmailStore(async (path, options) => fake.handle(path, options));
+    const item = (await store.create({ email: "owner.test@firstmail.ltd", price: "5000" })).item;
+
+    await bot(
+      {
+        method: "POST",
+        headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+        query: {},
+        body: {
+          update_id: 9301,
+          callback_query: {
+            id: "cb-owner",
+            data: `shop_fm_buy:${item.id}`,
+            from: { id: 7700300, first_name: "Buyer" },
+            message: { message_id: 77, chat: { id: 7700300, type: "private" } },
+          },
+        },
+      },
+      createRes()
+    );
+
+    const notices = telegramCalls.filter((c) => c.method === "sendMessage" && /#dokon_sorov/.test(c.payload.text || ""));
+    assert.deepEqual(notices.map((c) => String(c.payload.chat_id)), ["6100000001"]);
+    assert.match(notices[0].payload.text, /owner\.test@firstmail\.ltd/);
+  } finally {
+    global.fetch = originalFetch;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[require.resolve("../api/bot.js")];
+  }
+});

@@ -1903,6 +1903,96 @@ function getShopBuyAdminText(user, item) {
   ].join("\n");
 }
 
+// Xarid so'rovi faqat do'kon egasiga (SUPPORT_USERNAME, default @Ksava_org)
+// boradi. Bot API username orqali shaxsiy chatga yoza olmaydi — shu sabab
+// raqamli ID kerak: SHOP_NOTIFY_CHAT_ID env, aks holda bot_users jadvalidan
+// username bo'yicha topiladi (u botga /start bosgan bo'lishi kerak).
+let shopNotifyChatIdCache = null;
+
+async function getShopNotifyChatId() {
+  const fromEnv = String(process.env.SHOP_NOTIFY_CHAT_ID || "").trim();
+
+  if (/^-?\d{1,20}$/.test(fromEnv)) {
+    return fromEnv;
+  }
+
+  if (shopNotifyChatIdCache) {
+    return shopNotifyChatIdCache;
+  }
+
+  if (!SUPPORT_USERNAME || !isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const rows = await supabaseRequest(
+      `/bot_users?username=ilike.${encodeURIComponent(SUPPORT_USERNAME)}&select=user_id,chat_id,username&limit=5`
+    );
+    const match = (Array.isArray(rows) ? rows : []).find(
+      (row) => String(row.username || "").toLowerCase() === SUPPORT_USERNAME.toLowerCase()
+    );
+    const chatId = match ? String(match.chat_id || match.user_id || "") : "";
+
+    if (/^-?\d{1,20}$/.test(chatId)) {
+      shopNotifyChatIdCache = chatId;
+      return chatId;
+    }
+  } catch (error) {
+    console.error("[SHOP_NOTIFY_LOOKUP_ERROR]", error);
+  }
+
+  return null;
+}
+
+async function sendShopNotify(chatId, text, buyerId) {
+  const writeButton = { inline_keyboard: [[{ text: "💬 Xaridorga yozish", url: `tg://user?id=${buyerId}` }]] };
+
+  try {
+    await sendMessage(chatId, text, writeButton);
+    return true;
+  } catch (error) {
+    // tg://user tugmasi xaridorning maxfiylik sozlamasi sabab rad etilishi mumkin.
+    console.error("[SHOP_NOTIFY_SEND_ERROR]", chatId, error.message);
+  }
+
+  try {
+    await sendMessage(chatId, text, null);
+    return true;
+  } catch (error) {
+    console.error("[SHOP_NOTIFY_SEND_ERROR]", chatId, error.message);
+    recordError("shop_buy_notify_failed", error.message, { chatId });
+    return false;
+  }
+}
+
+async function notifyShopBuyRequest(user, item) {
+  const text = getShopBuyAdminText(user, item);
+  const ownerChatId = await getShopNotifyChatId();
+
+  if (ownerChatId && (await sendShopNotify(ownerChatId, text, user.id))) {
+    return true;
+  }
+
+  // Egasini topib/yozib bo'lmasa so'rov yo'qolmasin — zaxira sifatida adminlarga.
+  recordError(
+    "shop_buy_notify_owner_unreachable",
+    ownerChatId
+      ? `@${SUPPORT_USERNAME} ga yuborib bo'lmadi`
+      : `@${SUPPORT_USERNAME} bot_users da topilmadi (botga /start bosmagan) — SHOP_NOTIFY_CHAT_ID qo'ying`,
+    { itemId: item.id }
+  );
+
+  let delivered = false;
+
+  for (const adminId of ADMIN_IDS || []) {
+    if (await sendShopNotify(adminId, text, user.id)) {
+      delivered = true;
+    }
+  }
+
+  return delivered;
+}
+
 async function handleShopFirstmailBuy(chatId, user, id, messageId = null) {
   const lang = getUserLang(user.id);
   const item = await getAvailableShopFirstmail(id);
@@ -1912,22 +2002,7 @@ async function handleShopFirstmailBuy(chatId, user, id, messageId = null) {
     return;
   }
 
-  const adminIds = await getAdminIds();
-  const adminText = getShopBuyAdminText(user, item);
-  const writeButton = { inline_keyboard: [[{ text: "💬 Xaridorga yozish", url: `tg://user?id=${user.id}` }]] };
-
-  await Promise.all(
-    (Array.isArray(adminIds) ? adminIds : [])
-      .filter((adminId) => String(adminId) !== String(user.id))
-      .map(async (adminId) => {
-        // tg://user tugmasi xaridorning maxfiylik sozlamasi sabab rad etilishi
-        // mumkin — u holda xabar tugmasiz qayta yuboriladi.
-        const sent = await safeSendMessage(adminId, adminText, writeButton);
-        if (!sent) {
-          await safeSendMessage(adminId, adminText, null);
-        }
-      })
-  );
+  await notifyShopBuyRequest(user, item);
 
   const contactUrl = getShopContactUrl();
   const rows = [];
