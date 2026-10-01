@@ -1377,6 +1377,422 @@
       color: var(--accent3);
       flex-shrink: 0
     }
+
+    /* ===================== Do'kon (Shop) ===================== */
+    .shop-cat {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(236, 72, 153, 0.08));
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      cursor: pointer;
+      transition: transform .15s, border-color .15s;
+      margin-bottom: 10px
+    }
+
+    .shop-cat:active {
+      transform: scale(0.98);
+      border-color: var(--accent)
+    }
+
+    .shop-cat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--pink));
+      box-shadow: 0 6px 18px rgba(99, 102, 241, 0.35);
+      flex-shrink: 0
+    }
+
+    .shop-cat-body {
+      flex: 1;
+      min-width: 0
+    }
+
+    .shop-cat-title {
+      font-size: 16px;
+      font-weight: 700
+    }
+
+    .shop-cat-meta {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 3px
+    }
+
+    .shop-cat-arrow {
+      color: var(--text2);
+      font-size: 18px
+    }
+
+    .shop-back {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 8px;
+      flex-shrink: 0
+    }
+
+    .shop-title-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px
+    }
+
+    .shop-title-row h2 {
+      font-size: 18px;
+      font-weight: 700;
+      flex: 1
+    }
+
+    .shop-counters {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px
+    }
+
+    .shop-counter {
+      padding: 10px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s
+    }
+
+    .shop-counter.active {
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.12)
+    }
+
+    .shop-counter b {
+      display: block;
+      font-size: 18px;
+      font-weight: 800
+    }
+
+    .shop-counter span {
+      font-size: 11px;
+      color: var(--text2)
+    }
+
+    .shop-counter.green b {
+      color: var(--green)
+    }
+
+    .shop-counter.red b {
+      color: var(--red)
+    }
+
+    .fm-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: transform .15s, border-color .15s
+    }
+
+    .fm-item:active {
+      transform: scale(0.98);
+      border-color: var(--accent)
+    }
+
+    .fm-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent3);
+      font-size: 16px;
+      flex-shrink: 0
+    }
+
+    .fm-body {
+      flex: 1;
+      min-width: 0
+    }
+
+    .fm-email {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .fm-meta {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .fm-price {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green);
+      flex-shrink: 0;
+      text-align: right
+    }
+
+    .fm-status {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: .4px
+    }
+
+    .fm-status.available {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green)
+    }
+
+    .fm-status.sold {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--red)
+    }
+
+    .fm-item.sold {
+      opacity: .6
+    }
+
+    .fm-item.sold .fm-email,
+    .fm-item.sold .fm-price {
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+      text-decoration-color: rgba(239, 68, 68, 0.8)
+    }
+
+    .fm-item.sold .fm-avatar {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--red)
+    }
+
+    .shop-fab {
+      position: fixed;
+      left: 18px;
+      bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+      z-index: 60;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--pink));
+      color: #fff;
+      font-size: 34px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5);
+      opacity: 0;
+      transform: scale(0.4) rotate(-90deg);
+      pointer-events: none;
+      transition: opacity .25s, transform .25s
+    }
+
+    .shop-fab.visible {
+      opacity: 1;
+      transform: scale(1) rotate(0);
+      pointer-events: auto
+    }
+
+    .shop-fab:active {
+      transform: scale(0.9)
+    }
+
+    .fm-detail-email {
+      font-size: 16px;
+      font-weight: 700;
+      word-break: break-all
+    }
+
+    .fm-detail-email.sold {
+      text-decoration: line-through;
+      text-decoration-color: rgba(239, 68, 68, 0.8);
+      opacity: .75
+    }
+
+    .fm-detail-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13px
+    }
+
+    .fm-detail-row:last-child {
+      border-bottom: none
+    }
+
+    .fm-detail-row i {
+      color: var(--text2);
+      width: 18px;
+      text-align: center
+    }
+
+    .fm-detail-label {
+      color: var(--text2);
+      min-width: 70px
+    }
+
+    .fm-detail-value {
+      flex: 1;
+      min-width: 0;
+      word-break: break-all;
+      font-weight: 500
+    }
+
+    .fm-copy {
+      border: none;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text2);
+      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      flex-shrink: 0
+    }
+
+    .fm-copy:active {
+      transform: scale(0.92)
+    }
+
+    .fm-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 18px
+    }
+
+    .fm-action {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 14px 6px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .1s, background .2s
+    }
+
+    .fm-action i {
+      font-size: 20px
+    }
+
+    .fm-action:active {
+      transform: scale(0.95)
+    }
+
+    .fm-action:disabled {
+      opacity: .5
+    }
+
+    .fm-action.sold {
+      background: rgba(16, 185, 129, 0.14);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: var(--green)
+    }
+
+    .fm-action.edit {
+      background: rgba(99, 102, 241, 0.14);
+      border-color: rgba(99, 102, 241, 0.3);
+      color: var(--accent3)
+    }
+
+    .fm-action.delete {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.28);
+      color: var(--red)
+    }
+
+    .fm-action.delete.confirm {
+      background: var(--red);
+      color: #fff
+    }
+
+    .fm-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px
+    }
+
+    .modal-field textarea {
+      width: 100%;
+      min-height: 130px;
+      padding: 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 13px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      outline: none;
+      resize: vertical
+    }
+
+    .modal-field textarea:focus {
+      border-color: var(--accent)
+    }
+
+    .pw-wrap {
+      position: relative
+    }
+
+    .pw-wrap input {
+      padding-right: 44px !important
+    }
+
+    .pw-toggle {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      color: var(--text2);
+      font-size: 16px;
+      width: 34px;
+      height: 34px;
+      cursor: pointer
+    }
   </style>
 </head>
 
@@ -1619,6 +2035,48 @@
         </div>
       </div>
 
+      <!-- Shop Section -->
+      <div class="section" id="secShop">
+        <!-- Do'kon bosh sahifasi -->
+        <div id="shopHome">
+          <div class="section-header">
+            <h2><i class="bi bi-shop"></i> Do'kon</h2>
+          </div>
+          <div class="shop-cat" onclick="openFirstmail()">
+            <div class="shop-cat-icon"><i class="bi bi-envelope-at"></i></div>
+            <div class="shop-cat-body">
+              <div class="shop-cat-title">Firstmail</div>
+              <div class="shop-cat-meta" id="shopFmMeta">Yuklanmoqda...</div>
+            </div>
+            <i class="bi bi-chevron-right shop-cat-arrow"></i>
+          </div>
+          <div class="hint" style="font-size:11px;color:var(--text2);margin-top:6px;padding:0 4px">
+            Bu yerga qo'shilgan pochtalar botdagi <b>🛒 Do'kon → 📧 Firstmail sotib olish</b> bo'limida ko'rinadi.
+            «Sotildi» deb belgilanganlari botda ustidan chizilgan holda turadi.
+          </div>
+        </div>
+
+        <!-- Firstmail ro'yxati -->
+        <div id="shopFirstmail" style="display:none">
+          <div class="shop-title-row">
+            <button class="shop-back" onclick="closeFirstmail()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
+            <h2><i class="bi bi-envelope-at"></i> Firstmail</h2>
+            <button class="refresh-btn" style="margin:0" onclick="loadFirstmails()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+          <div class="search-bar">
+            <span class="search-icon"><i class="bi bi-search"></i></span>
+            <input type="text" id="fmSearch" placeholder="Qidirish: email, narx, izoh..." oninput="renderFirstmails()">
+          </div>
+          <div class="shop-counters" id="fmCounters">
+            <div class="shop-counter active" data-filter="all" onclick="setFmFilter('all')"><b id="fmCountAll">0</b><span>Hammasi</span></div>
+            <div class="shop-counter green" data-filter="available" onclick="setFmFilter('available')"><b id="fmCountAvailable">0</b><span>Sotuvda</span></div>
+            <div class="shop-counter red" data-filter="sold" onclick="setFmFilter('sold')"><b id="fmCountSold">0</b><span>Sotilgan</span></div>
+          </div>
+          <div id="fmList"></div>
+          <div style="height:70px"></div>
+        </div>
+      </div>
+
       <!-- Settings Section -->
       <div class="section" id="secSettings">
         <div class="section-header">
@@ -1704,6 +2162,7 @@
     <div class="nav">
       <div class="nav-item active" onclick="switchTab('Dashboard')"><i class="bi bi-speedometer2"></i>Asosiy</div>
       <div class="nav-item" onclick="switchTab('Users')"><i class="bi bi-people"></i>Userlar</div>
+      <div class="nav-item" onclick="switchTab('Shop')"><i class="bi bi-shop"></i>Do'kon</div>
       <div class="nav-item" onclick="switchTab('Settings')"><i class="bi bi-gear"></i>Sozlamalar</div>
     </div>
   </div>
@@ -1747,6 +2206,71 @@
       </div>
     </div>
   </div>
+
+  <!-- Firstmail: amallar oynasi -->
+  <div class="modal-overlay" id="fmActionModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div id="fmActionEmail" class="fm-detail-email"></div>
+      <div id="fmActionStatus" style="margin:6px 0 12px"></div>
+      <div class="card" style="margin-bottom:0;padding:6px 14px" id="fmActionInfo"></div>
+      <div class="fm-actions">
+        <button class="fm-action sold" id="fmBtnSold" onclick="toggleFmSold()"><i class="bi bi-check2-circle"></i><span>Sotildi</span></button>
+        <button class="fm-action edit" id="fmBtnEdit" onclick="editCurrentFm()"><i class="bi bi-pencil-square"></i><span>Tahrirlash</span></button>
+        <button class="fm-action delete" id="fmBtnDelete" onclick="deleteCurrentFm()"><i class="bi bi-trash3"></i><span>O'chirish</span></button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeFmAction()">Yopish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firstmail: qo'shish / tahrirlash oynasi -->
+  <div class="modal-overlay" id="fmFormModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="fmFormTitle">Firstmail qo'shish</h2>
+      <div class="fm-tabs" id="fmFormTabs">
+        <button class="active-tab" data-mode="single" onclick="setFmFormMode('single')">Bitta</button>
+        <button class="inactive-tab" data-mode="bulk" onclick="setFmFormMode('bulk')">Bir nechta</button>
+      </div>
+      <div id="fmSingleFields">
+        <div class="modal-field">
+          <label>Email</label>
+          <input type="email" id="fmEmail" placeholder="example@firstmail.ltd" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="modal-field">
+          <label>Parol</label>
+          <div class="pw-wrap">
+            <input type="password" id="fmPassword" placeholder="Pochta paroli" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+            <button class="pw-toggle" type="button" onclick="toggleFmPassword()"><i class="bi bi-eye" id="fmPwIcon"></i></button>
+          </div>
+        </div>
+      </div>
+      <div id="fmBulkFields" style="display:none">
+        <div class="modal-field">
+          <label>Pochtalar ro'yxati</label>
+          <textarea id="fmBulk" placeholder="email1@firstmail.ltd:parol1&#10;email2@firstmail.ltd:parol2" spellcheck="false"></textarea>
+          <div class="hint">Har qatorda bitta: <b>email:parol</b> (yoki probel, | bilan). Narx va izoh hammasiga qo'llanadi.</div>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label>Narx (so'm)</label>
+        <input type="text" id="fmPrice" inputmode="numeric" placeholder="Masalan: 15000">
+      </div>
+      <div class="modal-field">
+        <label>Izoh (ixtiyoriy)</label>
+        <input type="text" id="fmNote" placeholder="Masalan: yangi ochilgan, 2FA yo'q">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeFmForm()">Bekor qilish</button>
+        <button class="btn-save" id="fmSaveBtn" onclick="saveFm()"><i class="bi bi-floppy"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firstmail qo'shish tugmasi -->
+  <button class="shop-fab" id="shopFab" onclick="openFmForm()" aria-label="Firstmail qo'shish"><span style="margin-top:-3px;font-weight:300">+</span></button>
 
   <!-- Scroll to top -->
   <button class="scroll-top" id="scrollTop" onclick="scrollToTop()"><i class="bi bi-arrow-up"></i></button>
@@ -1882,12 +2406,14 @@
         currentTab = name;
         document.querySelectorAll(".section").forEach(function (s) { s.classList.remove("active"); });
         document.getElementById("sec" + name).classList.add("active");
-        var tabs = ["Dashboard", "Users", "Settings"];
+        var tabs = ["Dashboard", "Users", "Shop", "Settings"];
         document.querySelectorAll(".nav-item").forEach(function (item, i) {
           item.classList.toggle("active", tabs[i] === name);
         });
         if (name === "Users" && allUsers.length === 0) loadUsers();
         if (name === "Settings") { loadSettings(); loadMandatorySettings(); }
+        if (name === "Shop") { if (fmView === "list") loadFirstmails(); else loadShopSummary(); }
+        updateShopFab();
       }
       window.switchTab = switchTab;
 
@@ -2619,6 +3145,432 @@
         });
       }
       window.removeAdmin = removeAdmin;
+
+      /* -----------------------------------------------------------------------
+         Do'kon → Firstmail
+      ----------------------------------------------------------------------- */
+      var fmItems = [];
+      var fmCounts = { total: 0, available: 0, sold: 0 };
+      var fmFilter = "all";
+      var fmView = "home";
+      var fmLoading = false;
+      var currentFm = null;
+      var fmFormMode = "single";
+      var fmEditingId = null;
+      var fmDeleteArmed = false;
+      var fmDeleteTimer = null;
+
+      function updateShopFab() {
+        var fab = document.getElementById("shopFab");
+        if (!fab) return;
+        fab.classList.toggle("visible", currentTab === "Shop" && fmView === "list");
+      }
+
+      function updateShopMeta() {
+        var meta = document.getElementById("shopFmMeta");
+        if (!meta) return;
+        meta.innerHTML = '<span style="color:var(--green)">● ' + fmCounts.available + " sotuvda</span> · " +
+          '<span style="color:var(--red)">● ' + fmCounts.sold + " sotilgan</span>";
+      }
+
+      function updateFmCounters() {
+        document.getElementById("fmCountAll").textContent = fmCounts.total;
+        document.getElementById("fmCountAvailable").textContent = fmCounts.available;
+        document.getElementById("fmCountSold").textContent = fmCounts.sold;
+      }
+
+      function recountFm() {
+        var sold = fmItems.filter(function (i) { return i.status === "sold"; }).length;
+        fmCounts = { total: fmItems.length, available: fmItems.length - sold, sold: sold };
+        updateShopMeta();
+        updateFmCounters();
+      }
+
+      function sortFmItems() {
+        function ts(v) { var n = Date.parse(v || ""); return isNaN(n) ? 0 : n; }
+        fmItems.sort(function (a, b) {
+          if (a.status !== b.status) return a.status === "available" ? -1 : 1;
+          if (a.status === "sold") return ts(b.sold_at) - ts(a.sold_at);
+          return ts(b.created_at) - ts(a.created_at);
+        });
+      }
+
+      function buildFmSkeleton() {
+        var row = '<div class="fm-item" style="cursor:default"><div class="skeleton" style="width:36px;height:36px;border-radius:10px;margin:0"></div>' +
+          '<div style="flex:1"><div class="skeleton skeleton-line w60" style="height:13px;margin-bottom:6px"></div>' +
+          '<div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div></div>' +
+          '<div class="skeleton skeleton-line" style="width:56px;height:14px;margin:0"></div></div>';
+        return row + row + row + row;
+      }
+
+      function loadShopSummary() {
+        api("shop_fm_list", {}).then(function (result) {
+          if (result.ok && result.data) {
+            fmItems = result.data.items || [];
+            recountFm();
+          } else {
+            document.getElementById("shopFmMeta").textContent = "Ma'lumotni yuklab bo'lmadi";
+          }
+        }).catch(function () {
+          document.getElementById("shopFmMeta").textContent = "Server bilan bog'lanishda xatolik";
+        });
+      }
+
+      function loadFirstmails() {
+        if (fmLoading) return;
+        fmLoading = true;
+        if (!fmItems.length) document.getElementById("fmList").innerHTML = buildFmSkeleton();
+        api("shop_fm_list", {}).then(function (result) {
+          fmLoading = false;
+          if (!result.ok || !result.data) {
+            document.getElementById("fmList").innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-wifi-off"></i></div><div class="empty-text">' + esc(result.message || "Yuklab bo'lmadi") + "</div></div>";
+            return;
+          }
+          fmItems = result.data.items || [];
+          recountFm();
+          renderFirstmails();
+        }).catch(function () {
+          fmLoading = false;
+          document.getElementById("fmList").innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-wifi-off"></i></div><div class="empty-text">Server bilan bog\'lanishda xatolik</div></div>';
+        });
+      }
+      window.loadFirstmails = loadFirstmails;
+
+      function openFirstmail() {
+        fmView = "list";
+        document.getElementById("shopHome").style.display = "none";
+        document.getElementById("shopFirstmail").style.display = "block";
+        updateShopFab();
+        if (fmItems.length) renderFirstmails();
+        loadFirstmails();
+      }
+      window.openFirstmail = openFirstmail;
+
+      function closeFirstmail() {
+        fmView = "home";
+        document.getElementById("shopFirstmail").style.display = "none";
+        document.getElementById("shopHome").style.display = "block";
+        updateShopFab();
+        updateShopMeta();
+      }
+      window.closeFirstmail = closeFirstmail;
+
+      function setFmFilter(filter) {
+        fmFilter = filter;
+        document.querySelectorAll("#fmCounters .shop-counter").forEach(function (el) {
+          el.classList.toggle("active", el.getAttribute("data-filter") === filter);
+        });
+        renderFirstmails();
+      }
+      window.setFmFilter = setFmFilter;
+
+      function getVisibleFirstmails() {
+        var q = document.getElementById("fmSearch").value.trim().toLowerCase();
+        return fmItems.filter(function (item) {
+          if (fmFilter !== "all" && item.status !== fmFilter) return false;
+          if (!q) return true;
+          return [item.email, item.price, item.note].some(function (v) {
+            return String(v || "").toLowerCase().indexOf(q) !== -1;
+          });
+        });
+      }
+
+      function formatPrice(price) {
+        var v = String(price || "").trim();
+        if (!v) return "";
+        if (/^\d+$/.test(v)) return v.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " so'm";
+        return v;
+      }
+
+      function renderFirstmails() {
+        var list = document.getElementById("fmList");
+        var items = getVisibleFirstmails();
+        if (!items.length) {
+          var q = document.getElementById("fmSearch").value.trim();
+          var text = q ? "Qidiruv bo'yicha hech narsa topilmadi" : (fmItems.length ? "Bu bo'limda pochta yo'q" : "Hali pochta qo'shilmagan.<br>Pastdagi <b>+</b> tugmasini bosing.");
+          list.innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-envelope-x"></i></div><div class="empty-text">' + text + "</div></div>";
+          return;
+        }
+        list.innerHTML = items.map(function (item) {
+          var sold = item.status === "sold";
+          var metaParts = [];
+          if (sold) metaParts.push("Sotildi " + (item.sold_at ? timeAgo(item.sold_at) : ""));
+          else if (item.created_at) metaParts.push("Qo'shildi " + timeAgo(item.created_at));
+          if (item.note) metaParts.push(item.note);
+          return '<div class="fm-item' + (sold ? " sold" : "") + '" data-fid="' + esc(item.id) + '">' +
+            '<div class="fm-avatar"><i class="bi ' + (sold ? "bi-bag-check" : "bi-envelope") + '"></i></div>' +
+            '<div class="fm-body"><div class="fm-email">' + esc(item.email) + '</div>' +
+            '<div class="fm-meta">' + esc(metaParts.join(" · ")) + "</div></div>" +
+            '<div style="text-align:right;flex-shrink:0"><div class="fm-price">' + esc(formatPrice(item.price) || "—") + "</div>" +
+            '<span class="fm-status ' + (sold ? "sold" : "available") + '">' + (sold ? "Sotilgan" : "Sotuvda") + "</span></div></div>";
+        }).join("");
+        list.querySelectorAll(".fm-item").forEach(function (el) {
+          el.addEventListener("click", function () { openFmAction(el.getAttribute("data-fid")); });
+        });
+      }
+      window.renderFirstmails = renderFirstmails;
+
+      function findFm(id) {
+        for (var i = 0; i < fmItems.length; i++) if (fmItems[i].id === id) return fmItems[i];
+        return null;
+      }
+
+      function replaceFm(item) {
+        for (var i = 0; i < fmItems.length; i++) {
+          if (fmItems[i].id === item.id) { fmItems[i] = item; return; }
+        }
+        fmItems.push(item);
+      }
+
+      function resetDeleteButton() {
+        fmDeleteArmed = false;
+        clearTimeout(fmDeleteTimer);
+        var btn = document.getElementById("fmBtnDelete");
+        btn.classList.remove("confirm");
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-trash3"></i><span>O\'chirish</span>';
+      }
+
+      function detailRow(icon, label, value, copyValue) {
+        return '<div class="fm-detail-row"><i class="bi ' + icon + '"></i><span class="fm-detail-label">' + label + '</span>' +
+          '<span class="fm-detail-value">' + value + "</span>" +
+          (copyValue ? '<button class="fm-copy" data-copy="' + esc(copyValue) + '"><i class="bi bi-copy"></i></button>' : "") + "</div>";
+      }
+
+      function openFmAction(id) {
+        var item = findFm(id);
+        if (!item) return;
+        currentFm = item;
+        var sold = item.status === "sold";
+        var emailEl = document.getElementById("fmActionEmail");
+        emailEl.textContent = item.email;
+        emailEl.className = "fm-detail-email" + (sold ? " sold" : "");
+        document.getElementById("fmActionStatus").innerHTML = '<span class="fm-status ' + (sold ? "sold" : "available") + '">' + (sold ? "Sotilgan" : "Sotuvda") + "</span>";
+
+        var info = "";
+        info += detailRow("bi-envelope", "Email", esc(item.email), item.email);
+        info += detailRow("bi-key", "Parol", item.password ? '<span style="font-family:ui-monospace,Menlo,monospace">' + esc(item.password) + "</span>" : '<span style="color:var(--text2)">kiritilmagan</span>', item.password || "");
+        info += detailRow("bi-cash-coin", "Narx", esc(formatPrice(item.price) || "kelishiladi"));
+        if (item.note) info += detailRow("bi-sticky", "Izoh", esc(item.note));
+        if (item.created_at) info += detailRow("bi-calendar-plus", "Qo'shilgan", esc(formatDate(item.created_at)));
+        if (sold && item.sold_at) info += detailRow("bi-bag-check", "Sotilgan", esc(formatDate(item.sold_at)));
+        var infoEl = document.getElementById("fmActionInfo");
+        infoEl.innerHTML = info;
+        infoEl.querySelectorAll(".fm-copy").forEach(function (b) {
+          b.addEventListener("click", function () { copyText(b.getAttribute("data-copy")); });
+        });
+
+        var soldBtn = document.getElementById("fmBtnSold");
+        soldBtn.disabled = false;
+        soldBtn.innerHTML = sold
+          ? '<i class="bi bi-arrow-counterclockwise"></i><span>Sotuvga qaytarish</span>'
+          : '<i class="bi bi-check2-circle"></i><span>Sotildi</span>';
+        resetDeleteButton();
+        document.getElementById("fmActionModal").classList.add("open");
+      }
+
+      function closeFmAction() {
+        document.getElementById("fmActionModal").classList.remove("open");
+        resetDeleteButton();
+        currentFm = null;
+      }
+      window.closeFmAction = closeFmAction;
+
+      function toggleFmSold() {
+        if (!currentFm) return;
+        var item = currentFm;
+        var makeSold = item.status !== "sold";
+        var btn = document.getElementById("fmBtnSold");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:20px;height:20px"></span><span>Saqlanmoqda</span>';
+        api("shop_fm_set_sold", { id: item.id, sold: makeSold }).then(function (result) {
+          if (result.ok && result.data && result.data.item) {
+            replaceFm(result.data.item);
+            sortFmItems();
+            recountFm();
+            renderFirstmails();
+            closeFmAction();
+            showToast(makeSold ? "✅ Sotildi deb belgilandi" : "✅ Sotuvga qaytarildi", "success");
+          } else {
+            btn.disabled = false;
+            openFmAction(item.id);
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+          }
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.toggleFmSold = toggleFmSold;
+
+      function editCurrentFm() {
+        if (!currentFm) return;
+        var item = currentFm;
+        closeFmAction();
+        openFmForm(item);
+      }
+      window.editCurrentFm = editCurrentFm;
+
+      function deleteCurrentFm() {
+        if (!currentFm) return;
+        var btn = document.getElementById("fmBtnDelete");
+        if (!fmDeleteArmed) {
+          fmDeleteArmed = true;
+          btn.classList.add("confirm");
+          btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i><span>Tasdiqlang</span>';
+          fmDeleteTimer = setTimeout(resetDeleteButton, 3500);
+          return;
+        }
+        clearTimeout(fmDeleteTimer);
+        var id = currentFm.id;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:20px;height:20px;border-top-color:#fff"></span><span>O\'chirilmoqda</span>';
+        api("shop_fm_delete", { id: id }).then(function (result) {
+          if (result.ok) {
+            fmItems = fmItems.filter(function (i) { return i.id !== id; });
+            recountFm();
+            renderFirstmails();
+            closeFmAction();
+            showToast("✅ Pochta o'chirildi", "success");
+          } else {
+            resetDeleteButton();
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+          }
+        }).catch(function () {
+          resetDeleteButton();
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.deleteCurrentFm = deleteCurrentFm;
+
+      function setFmFormMode(mode) {
+        fmFormMode = mode;
+        document.querySelectorAll("#fmFormTabs button").forEach(function (b) {
+          b.className = b.getAttribute("data-mode") === mode ? "active-tab" : "inactive-tab";
+        });
+        document.getElementById("fmSingleFields").style.display = mode === "single" ? "block" : "none";
+        document.getElementById("fmBulkFields").style.display = mode === "bulk" ? "block" : "none";
+      }
+      window.setFmFormMode = setFmFormMode;
+
+      function openFmForm(item) {
+        fmEditingId = item && item.id ? item.id : null;
+        document.getElementById("fmFormTitle").textContent = fmEditingId ? "Pochtani tahrirlash" : "Firstmail qo'shish";
+        document.getElementById("fmFormTabs").style.display = fmEditingId ? "none" : "flex";
+        setFmFormMode("single");
+        document.getElementById("fmEmail").value = fmEditingId ? item.email : "";
+        document.getElementById("fmPassword").value = fmEditingId ? (item.password || "") : "";
+        document.getElementById("fmPassword").type = "password";
+        document.getElementById("fmPwIcon").className = "bi bi-eye";
+        document.getElementById("fmPrice").value = fmEditingId ? (item.price || "") : "";
+        document.getElementById("fmNote").value = fmEditingId ? (item.note || "") : "";
+        document.getElementById("fmBulk").value = "";
+        document.getElementById("fmFormModal").classList.add("open");
+        setTimeout(function () { document.getElementById("fmEmail").focus(); }, 320);
+      }
+      window.openFmForm = openFmForm;
+
+      function closeFmForm() {
+        document.getElementById("fmFormModal").classList.remove("open");
+        fmEditingId = null;
+      }
+      window.closeFmForm = closeFmForm;
+
+      function toggleFmPassword() {
+        var input = document.getElementById("fmPassword");
+        var show = input.type === "password";
+        input.type = show ? "text" : "password";
+        document.getElementById("fmPwIcon").className = show ? "bi bi-eye-slash" : "bi bi-eye";
+      }
+      window.toggleFmPassword = toggleFmPassword;
+
+      // "email:parol" ko'rinishida yopishtirilsa — avtomatik ajratamiz.
+      document.getElementById("fmEmail").addEventListener("input", function (e) {
+        var v = e.target.value;
+        var m = v.match(/^\s*([^\s:|;]+@[^\s:|;]+)\s*[:|;]\s*(.+)$/);
+        if (m) {
+          e.target.value = m[1];
+          document.getElementById("fmPassword").value = m[2].trim();
+        }
+      });
+
+      function saveFm() {
+        var btn = document.getElementById("fmSaveBtn");
+        var price = document.getElementById("fmPrice").value.trim();
+        var note = document.getElementById("fmNote").value.trim();
+        var body, action;
+
+        if (fmEditingId) {
+          action = "shop_fm_update";
+          body = { id: fmEditingId, email: document.getElementById("fmEmail").value.trim(), password: document.getElementById("fmPassword").value, price: price, note: note };
+          if (!body.email) { showToast("⚠️ Email kiriting", "warning"); return; }
+        } else if (fmFormMode === "bulk") {
+          action = "shop_fm_create";
+          body = { bulk: document.getElementById("fmBulk").value, price: price, note: note };
+          if (!body.bulk.trim()) { showToast("⚠️ Ro'yxatni kiriting", "warning"); return; }
+        } else {
+          action = "shop_fm_create";
+          body = { email: document.getElementById("fmEmail").value.trim(), password: document.getElementById("fmPassword").value, price: price, note: note };
+          if (!body.email) { showToast("⚠️ Email kiriting", "warning"); return; }
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spinner"></span>Saqlanmoqda...';
+        api(action, body).then(function (result) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-floppy"></i> Saqlash';
+          if (!result.ok) {
+            showToast("❌ " + (result.message || result.error || "Xatolik"), "error");
+            return;
+          }
+          if (fmEditingId) {
+            replaceFm(result.data.item);
+            showToast("✅ O'zgarishlar saqlandi", "success");
+          } else {
+            (result.data.items || []).forEach(replaceFm);
+            var msg = "✅ " + result.data.created + " ta pochta qo'shildi";
+            if (result.data.skipped) msg += " (" + result.data.skipped + " ta o'tkazib yuborildi)";
+            showToast(msg, result.data.created ? "success" : "warning");
+          }
+          sortFmItems();
+          recountFm();
+          renderFirstmails();
+          closeFmForm();
+        }).catch(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-floppy"></i> Saqlash';
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.saveFm = saveFm;
+
+      function copyText(text) {
+        function done() { showToast("📋 Nusxalandi", "success"); }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text); done(); });
+        } else {
+          fallbackCopy(text);
+          done();
+        }
+      }
+
+      function fallbackCopy(text) {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+        document.body.removeChild(ta);
+      }
+
+      document.getElementById("fmActionModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) closeFmAction();
+      });
+      document.getElementById("fmFormModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) closeFmForm();
+      });
 
       /* -----------------------------------------------------------------------
          Helpers

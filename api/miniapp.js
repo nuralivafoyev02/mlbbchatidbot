@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const shop = require("./_shop.js");
 
 // ---------------------------------------------------------------------------
 // Config (same pattern as api/admin.js)
@@ -118,6 +119,16 @@ module.exports = async function handler(req, res) {
           return handleSetMandatory(req, res, body);
         case "update_mandatory":
           return handleUpdateMandatory(req, res, body);
+        case "shop_fm_list":
+          return handleShopFmList(req, res, body);
+        case "shop_fm_create":
+          return handleShopFmCreate(req, res, body);
+        case "shop_fm_update":
+          return handleShopFmUpdate(req, res, body);
+        case "shop_fm_set_sold":
+          return handleShopFmSetSold(req, res, body);
+        case "shop_fm_delete":
+          return handleShopFmDelete(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -901,6 +912,142 @@ async function handleUpdateMandatory(req, res, body) {
   // Enabled = true — mavjud guruhni saqlab qo'yamiz
   const channel = await getMandatoryChannelFromSupabase();
   return json(res, 200, { ok: true, data: { enabled: true, group: channel || null } });
+}
+
+// ---------------------------------------------------------------------------
+// Do'kon → Firstmail (bot_settings: shop_fm:<id>)
+// ---------------------------------------------------------------------------
+const SHOP_ERROR_TEXTS = {
+  email_required: "Email kiritilmagan",
+  email_invalid: "Email noto'g'ri formatda",
+  email_exists: "Bu email allaqachon qo'shilgan",
+  not_found: "Pochta topilmadi",
+  bulk_empty: "Hech bir to'g'ri qator topilmadi",
+};
+
+function shopErrorResponse(res, error, status = 400) {
+  return json(res, status, { ok: false, error, message: SHOP_ERROR_TEXTS[error] || error });
+}
+
+function getShopStore() {
+  return shop.createFirstmailStore((reqPath, options) => supabaseRequest(reqPath, options));
+}
+
+function summarizeFirstmails(items) {
+  const sold = items.filter((item) => item.status === shop.SHOP_FM_STATUS_SOLD).length;
+  return { total: items.length, available: items.length - sold, sold };
+}
+
+async function handleShopFmList(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const items = await getShopStore().list();
+    const filtered = shop.filterFirstmails(items, body.query);
+    return json(res, 200, { ok: true, data: { items: filtered, counts: summarizeFirstmails(items) } });
+  } catch (e) {
+    console.error("[SHOP_FM_LIST]", e.message);
+    return json(res, 500, { ok: false, error: "shop_list_failed", message: "Ro'yxatni yuklab bo'lmadi" });
+  }
+}
+
+async function handleShopFmCreate(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const store = getShopStore();
+
+    if (typeof body.bulk === "string" && body.bulk.trim()) {
+      const parsed = shop.parseBulkFirstmails(body.bulk);
+
+      if (!parsed.items.length) {
+        return shopErrorResponse(res, "bulk_empty");
+      }
+
+      const result = await store.createMany(parsed.items, { price: body.price, note: body.note });
+      return json(res, 200, {
+        ok: true,
+        data: {
+          created: result.created.length,
+          skipped: result.skipped.length + parsed.invalid.length,
+          items: result.created,
+        },
+      });
+    }
+
+    const result = await store.create({
+      email: body.email,
+      password: body.password,
+      price: body.price,
+      note: body.note,
+    });
+
+    if (!result.ok) {
+      return shopErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true, data: { created: 1, skipped: 0, items: [result.item] } });
+  } catch (e) {
+    console.error("[SHOP_FM_CREATE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_create_failed", message: "Saqlashda xatolik" });
+  }
+}
+
+async function handleShopFmUpdate(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const patch = {};
+    ["email", "password", "price", "note"].forEach((field) => {
+      if (body[field] !== undefined) patch[field] = body[field];
+    });
+
+    const result = await getShopStore().update(String(body.id || ""), patch);
+
+    if (!result.ok) {
+      return shopErrorResponse(res, result.error, result.error === "not_found" ? 404 : 400);
+    }
+
+    return json(res, 200, { ok: true, data: { item: result.item } });
+  } catch (e) {
+    console.error("[SHOP_FM_UPDATE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_update_failed", message: "Saqlashda xatolik" });
+  }
+}
+
+async function handleShopFmSetSold(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const sold = !(body.sold === false || body.sold === "false");
+    const result = await getShopStore().setSold(String(body.id || ""), sold);
+
+    if (!result.ok) {
+      return shopErrorResponse(res, result.error, 404);
+    }
+
+    return json(res, 200, { ok: true, data: { item: result.item } });
+  } catch (e) {
+    console.error("[SHOP_FM_SET_SOLD]", e.message);
+    return json(res, 500, { ok: false, error: "shop_update_failed", message: "Saqlashda xatolik" });
+  }
+}
+
+async function handleShopFmDelete(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getShopStore().remove(String(body.id || ""));
+
+    if (!result.ok) {
+      return shopErrorResponse(res, result.error, 404);
+    }
+
+    return json(res, 200, { ok: true });
+  } catch (e) {
+    console.error("[SHOP_FM_DELETE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
+  }
 }
 
 // ---------------------------------------------------------------------------

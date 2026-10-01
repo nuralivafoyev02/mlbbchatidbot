@@ -14,7 +14,9 @@ function t(key, lang, params = {}) {
   let text = translations[safeLang]?.[key] || translations[DEFAULT_LANG]?.[key] || key;
 
   for (const [param, value] of Object.entries(params)) {
-    text = text.replace(new RegExp(`\{${param}\}`, "g"), String(value ?? ""));
+    // Funksiya-replacer: qiymatdagi "$1", "$&" kabi belgilar maxsus ma'no olmasin.
+    const replacement = String(value ?? "");
+    text = text.replace(new RegExp(`\{${param}\}`, "g"), () => replacement);
   }
 
   return text;
@@ -132,6 +134,7 @@ function getDailyReportActionLabel(action, lang) {
   return key ? t(key, lang || DEFAULT_LANG) : escapeHtml(String(action || ""));
 }
 const EMOJIS = require("./emojis.json");
+const shop = require("./_shop.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze(EMOJIS.bindProviders || {});
@@ -812,6 +815,12 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isFeedbackSubmissionMessage(message, user)) {
     await handleFeedbackSubmission(chatId, user, message);
+    return;
+  }
+
+  // Do'kon: tugmalari va "shop" rejimi. Rejimda oddiy matn (ID + server)
+  // tekshiruvga yuborilmaydi — boshqa funksiyalar o'chiq turadi.
+  if (text && (await handleShopMessage(chatId, user, text))) {
     return;
   }
 
@@ -1546,6 +1555,11 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
     await handleProfileViewersRequest(chatId, user, callbackQuery.message?.message_id);
     return;
   }
+
+  if (data.startsWith("shop_")) {
+    await handleShopCallback(chatId, user, data, callbackQuery.message?.message_id);
+    return;
+  }
 }
 
 async function handleMyProfileRequest(chatId, user, messageId = null) {
@@ -1628,6 +1642,330 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
   };
 
   await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), replyMarkup);
+}
+
+// ---------------------------------------------------------------------------
+// 🛒 Do'kon (shop)
+// ---------------------------------------------------------------------------
+const SHOP_MODE = "shop";
+const SHOP_FM_PAGE_SIZE = 8;
+
+// Asosiy klaviatura tugmalari: shop rejimida bosilsa, user do'kondan chiqib
+// o'sha funksiyaga o'tadi (eski klaviatura qolib ketgan holatlar uchun).
+const SHOP_EXIT_BUTTON_KEYS = [
+  "btn_check",
+  "btn_check_again",
+  "btn_bind_info",
+  "btn_full_info",
+  "btn_reset_pw",
+  "btn_language",
+  "btn_stats",
+  "btn_users",
+  "btn_my_profile",
+  "btn_menu",
+  "btn_help",
+  "btn_commands",
+  "btn_feedback",
+];
+
+function shopKeyboard(user = {}) {
+  const lang = getUserLang(user.id);
+
+  return {
+    keyboard: [
+      [{ text: t("btn_shop_firstmail", lang) }],
+      [{ text: t("btn_shop_back", lang) }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+let firstmailStore = null;
+
+function getFirstmailStore() {
+  if (!firstmailStore) {
+    firstmailStore = shop.createFirstmailStore((path, options) => supabaseRequest(path, options));
+  }
+
+  return firstmailStore;
+}
+
+async function handleShopMessage(chatId, user, text) {
+  if (isTranslatedKeyboardButton(text, "btn_shop")) {
+    await handleShopOpen(chatId, user);
+    return true;
+  }
+
+  if (isTranslatedKeyboardButton(text, "btn_shop_firstmail")) {
+    rememberUserMode(user.id, SHOP_MODE);
+    await handleShopFirstmailList(chatId, user, 0);
+    return true;
+  }
+
+  if (isTranslatedKeyboardButton(text, "btn_shop_back")) {
+    clearUserMode(user.id);
+    await sendMessage(chatId, t("shop_left", getUserLang(user.id)), mainKeyboard(user));
+    return true;
+  }
+
+  const mode = await resolveUserMode(user.id);
+
+  if (mode !== SHOP_MODE) {
+    return false;
+  }
+
+  // Buyruqlar (/start, /check, ...) va asosiy menyu tugmalari — aniq niyat:
+  // do'kondan chiqamiz va xabarni odatdagidek ishlashga qo'yamiz.
+  if (isCommandLike(text) || SHOP_EXIT_BUTTON_KEYS.some((key) => isTranslatedKeyboardButton(text, key))) {
+    clearUserMode(user.id);
+    return false;
+  }
+
+  await sendMessage(chatId, t("shop_mode_blocked", getUserLang(user.id)), shopKeyboard(user));
+  return true;
+}
+
+async function handleShopOpen(chatId, user) {
+  rememberUserMode(user.id, SHOP_MODE);
+  await sendMessage(chatId, t("shop_welcome", getUserLang(user.id)), shopKeyboard(user));
+}
+
+async function loadShopFirstmails() {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return null;
+  }
+
+  try {
+    return await getFirstmailStore().list();
+  } catch (error) {
+    console.error("[SHOP_FM_LIST_ERROR]", error);
+    recordError("shop_fm_list_failed", error.message);
+    return null;
+  }
+}
+
+function getShopPriceText(item, lang) {
+  return shop.formatShopPrice(item?.price, lang === "uz" ? "so'm" : lang === "ru" ? "сум" : "UZS") ||
+    t("shop_fm_price_none", lang);
+}
+
+function buildShopFirstmailListView(items, page, lang) {
+  const all = Array.isArray(items) ? items : [];
+  const availableCount = all.filter((item) => item.status === shop.SHOP_FM_STATUS_AVAILABLE).length;
+  const soldCount = all.length - availableCount;
+  const pages = Math.max(1, Math.ceil(all.length / SHOP_FM_PAGE_SIZE));
+  const safePage = Math.min(Math.max(0, Number(page) || 0), pages - 1);
+  const pageItems = all.slice(safePage * SHOP_FM_PAGE_SIZE, (safePage + 1) * SHOP_FM_PAGE_SIZE);
+  const lines = [
+    t("shop_fm_title", lang),
+    "",
+    t("shop_fm_summary", lang, { available: availableCount, sold: soldCount }),
+    "",
+  ];
+  const rows = [];
+
+  if (all.length === 0) {
+    lines.push(t("shop_fm_empty", lang));
+  } else {
+    pageItems.forEach((item, offset) => {
+      const index = safePage * SHOP_FM_PAGE_SIZE + offset + 1;
+      const email = escapeHtml(shop.maskShopEmail(item.email));
+
+      if (item.status === shop.SHOP_FM_STATUS_SOLD) {
+        lines.push(t("shop_fm_item_sold", lang, { index, email }));
+        return;
+      }
+
+      lines.push(t("shop_fm_item", lang, { index, email, price: escapeHtml(getShopPriceText(item, lang)) }));
+      rows.push([{
+        text: `${index}. ${shop.maskShopEmail(item.email)} · ${getShopPriceText(item, lang)}`.slice(0, 60),
+        callback_data: `shop_fm:${item.id}`,
+      }]);
+    });
+
+    lines.push("", availableCount > 0 ? t("shop_fm_hint", lang) : t("shop_fm_all_sold", lang));
+
+    if (pages > 1) {
+      lines.push(t("shop_fm_page", lang, { page: safePage + 1, pages }));
+    }
+  }
+
+  const nav = [];
+
+  if (safePage > 0) {
+    nav.push({ text: t("shop_fm_prev_btn", lang), callback_data: `shop_fm_list:${safePage - 1}` });
+  }
+
+  if (safePage + 1 < pages) {
+    nav.push({ text: t("shop_fm_next_btn", lang), callback_data: `shop_fm_list:${safePage + 1}` });
+  }
+
+  if (nav.length) {
+    rows.push(nav);
+  }
+
+  rows.push([{ text: t("shop_fm_refresh_btn", lang), callback_data: `shop_fm_list:${safePage}` }]);
+
+  return {
+    text: lines.join("\n"),
+    replyMarkup: { inline_keyboard: rows },
+    page: safePage,
+    pages,
+  };
+}
+
+async function handleShopFirstmailList(chatId, user, page = 0, messageId = null) {
+  const lang = getUserLang(user.id);
+  void safeSendChatAction(chatId, "typing");
+
+  const items = await loadShopFirstmails();
+
+  if (!items) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_unavailable", lang), messageId ? null : shopKeyboard(user));
+    return;
+  }
+
+  const view = buildShopFirstmailListView(items, page, lang);
+  await sendOrEditAdminMessage(chatId, messageId, view.text, view.replyMarkup);
+}
+
+function buildShopFirstmailDetail(item, lang) {
+  const note = item.note ? t("shop_fm_note_line", lang, { note: escapeHtml(item.note) }) : "";
+
+  return {
+    text: t("shop_fm_detail", lang, {
+      email: escapeHtml(shop.maskShopEmail(item.email)),
+      price: escapeHtml(getShopPriceText(item, lang)),
+      note,
+    }),
+    replyMarkup: {
+      inline_keyboard: [
+        [{ text: t("shop_fm_buy_btn", lang), callback_data: `shop_fm_buy:${item.id}` }],
+        [{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }],
+      ],
+    },
+  };
+}
+
+function shopNotAvailableMarkup(lang) {
+  return { inline_keyboard: [[{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }]] };
+}
+
+async function getAvailableShopFirstmail(id) {
+  if (!shop.isValidShopItemId(id) || !isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const item = await getFirstmailStore().get(id);
+    return item && item.status === shop.SHOP_FM_STATUS_AVAILABLE ? item : null;
+  } catch (error) {
+    console.error("[SHOP_FM_GET_ERROR]", error);
+    recordError("shop_fm_get_failed", error.message, { id });
+    return null;
+  }
+}
+
+async function handleShopFirstmailDetail(chatId, user, id, messageId = null) {
+  const lang = getUserLang(user.id);
+  const item = await getAvailableShopFirstmail(id);
+
+  if (!item) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_not_available", lang), shopNotAvailableMarkup(lang));
+    return;
+  }
+
+  const view = buildShopFirstmailDetail(item, lang);
+  await sendOrEditAdminMessage(chatId, messageId, view.text, view.replyMarkup);
+}
+
+function getShopContactUrl() {
+  return SUPPORT_USERNAME ? `https://t.me/${SUPPORT_USERNAME}` : null;
+}
+
+function getShopBuyAdminText(user, item) {
+  const buyer = user.username
+    ? `@${escapeHtml(user.username)}`
+    : `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+
+  return [
+    "#dokon_sorov",
+    "",
+    "🛒 <b>Yangi xarid so'rovi — Firstmail</b>",
+    "",
+    `👤 Xaridor: ${buyer} (<code>${escapeHtml(String(user.id || ""))}</code>)`,
+    `✉️ Pochta: <code>${escapeHtml(item.email)}</code>`,
+    `💰 Narx: <b>${escapeHtml(getShopPriceText(item, "uz"))}</b>`,
+    `🆔 Mahsulot ID: <code>${escapeHtml(item.id)}</code>`,
+    "",
+    "Sotilgach admin paneldagi <b>Do'kon → Firstmail</b> bo'limida «Sotildi» tugmasini bosing.",
+  ].join("\n");
+}
+
+async function handleShopFirstmailBuy(chatId, user, id, messageId = null) {
+  const lang = getUserLang(user.id);
+  const item = await getAvailableShopFirstmail(id);
+
+  if (!item) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_not_available", lang), shopNotAvailableMarkup(lang));
+    return;
+  }
+
+  const adminIds = await getAdminIds();
+  const adminText = getShopBuyAdminText(user, item);
+  const writeButton = { inline_keyboard: [[{ text: "💬 Xaridorga yozish", url: `tg://user?id=${user.id}` }]] };
+
+  await Promise.all(
+    (Array.isArray(adminIds) ? adminIds : [])
+      .filter((adminId) => String(adminId) !== String(user.id))
+      .map(async (adminId) => {
+        // tg://user tugmasi xaridorning maxfiylik sozlamasi sabab rad etilishi
+        // mumkin — u holda xabar tugmasiz qayta yuboriladi.
+        const sent = await safeSendMessage(adminId, adminText, writeButton);
+        if (!sent) {
+          await safeSendMessage(adminId, adminText, null);
+        }
+      })
+  );
+
+  const contactUrl = getShopContactUrl();
+  const rows = [];
+
+  if (contactUrl) {
+    rows.push([{ text: t("shop_fm_contact_btn", lang), url: contactUrl }]);
+  }
+
+  rows.push([{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }]);
+
+  await sendOrEditAdminMessage(
+    chatId,
+    messageId,
+    t("shop_fm_buy_sent", lang, {
+      email: escapeHtml(shop.maskShopEmail(item.email)),
+      price: escapeHtml(getShopPriceText(item, lang)),
+    }),
+    { inline_keyboard: rows }
+  );
+}
+
+async function handleShopCallback(chatId, user, data, messageId = null) {
+  // Inline tugma bosilishi ham do'kon ichida ekanini bildiradi.
+  rememberUserMode(user.id, SHOP_MODE);
+
+  if (data.startsWith("shop_fm_list:")) {
+    await handleShopFirstmailList(chatId, user, parsePageFromCallback(data, "shop_fm_list"), messageId);
+    return;
+  }
+
+  if (data.startsWith("shop_fm_buy:")) {
+    await handleShopFirstmailBuy(chatId, user, data.slice("shop_fm_buy:".length), messageId);
+    return;
+  }
+
+  if (data.startsWith("shop_fm:")) {
+    await handleShopFirstmailDetail(chatId, user, data.slice("shop_fm:".length), messageId);
+  }
 }
 
 const ACCOUNT_MAX_COUNT = 5;
@@ -6132,7 +6470,7 @@ function mainKeyboard(user = {}) {
   const keyboard = [
     [{ text: t("btn_check", lang) }],
     [{ text: t("btn_full_info", lang) }, { text: t("btn_reset_pw", lang) }],
-    [{ text: t("btn_language", lang) }],
+    [{ text: t("btn_shop", lang) }, { text: t("btn_language", lang) }],
   ];
 
   if (isAdmin(user.id)) {
@@ -8620,6 +8958,11 @@ module.exports.__private = {
   handleMyProfileRequest,
   handleProfileAddAccount,
   handleProfileViewersRequest,
+  handleShopMessage,
+  handleShopCallback,
+  buildShopFirstmailListView,
+  buildShopFirstmailDetail,
+  shopKeyboard,
   getAccountOwnerNotifyActionLabel,
   ACCOUNT_MAX_COUNT,
   t,

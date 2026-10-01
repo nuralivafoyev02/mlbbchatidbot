@@ -14,6 +14,7 @@ import {
   BROADCAST_RUNNER_NAME,
   getBindRunnerName,
   getModeRunnerName,
+  getModeTtlMs,
   MODE_RUNNER_NAME_PREFIX,
   MODE_TTL_MS,
 } from "./runner-routing.mjs";
@@ -129,7 +130,7 @@ export class AsyncRunner {
     const userId = String(url.searchParams.get("userId") || "");
     const stored = await this.state.storage.get(MODE_KEY);
 
-    if (!stored || stored.userId !== userId || Date.now() - Number(stored.at || 0) > MODE_TTL_MS) {
+    if (!stored || stored.userId !== userId || Date.now() - Number(stored.at || 0) > getModeTtlMs(stored.mode)) {
       return jsonResponse({ ok: true, mode: null });
     }
 

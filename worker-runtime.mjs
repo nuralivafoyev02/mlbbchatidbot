@@ -1,5 +1,5 @@
 import botHandler from "./api/bot.js";
-import { getModeRunnerName, MODE_TTL_MS } from "./runner-routing.mjs";
+import { getModeRunnerName, getModeTtlMs } from "./runner-routing.mjs";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -17,7 +17,7 @@ function readCachedMode(userId) {
     return null;
   }
 
-  if (Date.now() - entry.at > MODE_TTL_MS) {
+  if (Date.now() - entry.at > getModeTtlMs(entry.mode)) {
     modeCache.delete(String(userId));
     return null;
   }
