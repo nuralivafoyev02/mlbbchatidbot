@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // 🎮 Mening akkauntim — foydalanuvchining shaxsiy Telegram Mini App'i.
 //
-// GET  → account.html (Mini App)
+// GET  → account-miniapp.html (Mini App)
 // POST → { action, initData, ... } JSON API
 //
 // Autentifikatsiya: Telegram WebApp initData imzosi (TELEGRAM_BOT_TOKEN).
@@ -285,7 +285,7 @@ async function loadPreferredLanguage(config, user) {
 // ---------------------------------------------------------------------------
 function serveApp(res) {
   try {
-    const html = fs.readFileSync(path.join(__dirname, "account.html"), "utf8");
+    const html = fs.readFileSync(path.join(__dirname, "account-miniapp.html"), "utf8");
     return res
       .status(200)
       .setHeader("Content-Type", "text/html; charset=utf-8")
@@ -293,7 +293,7 @@ function serveApp(res) {
       .send(html);
   } catch (error) {
     console.error("[ACCOUNT_APP_HTML]", error?.message);
-    return res.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").send("account.html topilmadi");
+    return res.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").send("account-miniapp.html topilmadi");
   }
 }
 
