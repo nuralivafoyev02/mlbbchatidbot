@@ -105,6 +105,8 @@ const BUTTON_CHECK_AGAIN = "🔍 Yana tekshirish";
 const BUTTON_MANDATORY_SETUP = "⚙️ Majburiylikni sozlash";
 const BUTTON_ADMIN_PANEL = "🎛️ Admin Panel";
 const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/miniapp`;
+// Foydalanuvchining shaxsiy Mini App'i ("🎮 Mening akkauntim") — api/account.js.
+const ACCOUNT_MINIAPP_URL = cleanEnv(process.env.ACCOUNT_MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/account`;
 const BOT_LOGO_URL =
   cleanEnv(process.env.BOT_LOGO_URL) ||
   `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/logo.jpg`;
@@ -120,6 +122,7 @@ const FEATURE_ACTIONS = Object.freeze({
   FULL_INFO: "full_info",
   RESET_PW: "reset_pw",
   FEEDBACK: "feedback",
+  ML_LINK: "ml_link",
 });
 const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   start: "label_start",
@@ -128,6 +131,7 @@ const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   full_info: "label_full_info",
   reset_pw: "label_reset_pw",
   feedback: "label_feedback",
+  ml_link: "label_ml_link",
 });
 function getDailyReportActionLabel(action, lang) {
   const key = DAILY_REPORT_ACTION_KEYS[action];
@@ -135,6 +139,7 @@ function getDailyReportActionLabel(action, lang) {
 }
 const EMOJIS = require("./emojis.json");
 const shop = require("./_shop.js");
+const arena = require("./_mlbb-arena.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze(EMOJIS.bindProviders || {});
@@ -226,6 +231,14 @@ const INLINE_BIND_LOOKUP_TIMEOUT_MS = parseBoundedNumber(
 );
 const FULL_INFO_API_URL = cleanEnv(process.env.FULL_INFO_API) || "https://api.jebray.com";
 const FULL_INFO_API_KEY = cleanEnv(process.env.FULL_INFO_API_KEY);
+// Mobile Legends akkauntini ulash — Rone Arena API (send-vc / login / user/*).
+const MLBB_ARENA_API_URL = cleanEnv(process.env.MLBB_ARENA_API_URL) || arena.DEFAULT_ARENA_API_URL;
+const MLBB_ARENA_TIMEOUT_MS = parseBoundedNumber(
+  process.env.MLBB_ARENA_TIMEOUT_MS,
+  12000,
+  1000,
+  60000
+);
 const FULL_INFO_TIMEOUT_MS = parseBoundedNumber(
   process.env.FULL_INFO_TIMEOUT_MS,
   30000,
@@ -614,6 +627,17 @@ async function handleMessage(message, updateMeta = {}) {
     }
 
     if (isProfileAdd && (/^[/!.]/.test(text) || isCommandLike(text))) {
+      clearUserMode(user.id);
+    }
+
+    // "Mobile Legends'ga ulash" — o'yin pochtasiga kelgan kod kutilmoqda.
+    // Faqat raqamli xabar kod deb olinadi; boshqa matn/tugma rejimni yopadi.
+    const mlCodeState = parseMlCodeMode(userMode);
+    if (mlCodeState) {
+      if (/^[\d\s-]+$/.test(text)) {
+        await handleMlCodeInput(chatId, user, text, mlCodeState);
+        return;
+      }
       clearUserMode(user.id);
     }
   }
@@ -1556,6 +1580,27 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
     return;
   }
 
+  if (data === "ml_link_menu") {
+    await handleMlLinkMenu(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data.startsWith("ml_link:")) {
+    await handleMlLinkStart(chatId, user, data.slice("ml_link:".length), callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "ml_link_no") {
+    await handleMlLinkDecline(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
+  if (data === "ml_link_cancel") {
+    clearUserMode(user.id);
+    await handleMyProfileRequest(chatId, user, callbackQuery.message?.message_id);
+    return;
+  }
+
   if (data.startsWith("shop_")) {
     await handleShopCallback(chatId, user, data, callbackQuery.message?.message_id);
     return;
@@ -1617,11 +1662,14 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
     lines.push(t("profile_accounts_empty", lang));
   } else {
     accounts.forEach(function (acc, index) {
-      lines.push(t("profile_account_item", lang, {
+      const item = t("profile_account_item", lang, {
         index: index + 1,
         accountId: acc.account_id,
         zoneId: acc.zone_id,
-      }));
+      });
+      lines.push(acc.ml_linked
+        ? `${item} ${t("ml_linked_badge", lang, { nickname: escapeHtml(acc.ml_nickname || "") }).trim()}`
+        : item);
     });
   }
 
@@ -1631,17 +1679,31 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
     t("profile_full_info", lang, { remaining: fullInfoRemaining })
   );
 
-  const replyMarkup = {
-    inline_keyboard: [
-      [{ text: t("profile_add_account_btn", lang), callback_data: "profile_add" }],
-      [
-        { text: t("profile_unlink_account_btn", lang), callback_data: "profile_unlink" },
-        { text: t("profile_viewers_btn", lang), callback_data: "profile_viewers" },
-      ],
-    ],
-  };
+  await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), buildMyProfileKeyboard(lang, accounts, chatId));
+}
 
-  await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), replyMarkup);
+function buildMyProfileKeyboard(lang, accounts = [], chatId = null) {
+  const rows = [];
+  const hasLinked = accounts.some((acc) => acc.ml_linked);
+  const hasUnlinked = accounts.some((acc) => !acc.ml_linked);
+
+  // web_app inline tugmasi faqat shaxsiy chatda ishlaydi.
+  if (hasLinked && Number(chatId) > 0) {
+    rows.push([{ text: t("ml_my_account_btn", lang), web_app: { url: ACCOUNT_MINIAPP_URL } }]);
+  }
+
+  rows.push([{ text: t("profile_add_account_btn", lang), callback_data: "profile_add" }]);
+
+  if (hasUnlinked) {
+    rows.push([{ text: t("ml_link_btn", lang), callback_data: "ml_link_menu" }]);
+  }
+
+  rows.push([
+    { text: t("profile_unlink_account_btn", lang), callback_data: "profile_unlink" },
+    { text: t("profile_viewers_btn", lang), callback_data: "profile_viewers" },
+  ]);
+
+  return { inline_keyboard: rows };
 }
 
 // ---------------------------------------------------------------------------
@@ -2118,6 +2180,11 @@ async function handleProfileUnlinkConfirm(chatId, user, accountId, messageId = n
     return;
   }
 
+  // Ulangan o'yin sessiyasi bo'lsa — avval Arena'dan chiqamiz (best-effort).
+  if (target.ml_linked) {
+    await logoutMlLinkSilently(user.id, target.id);
+  }
+
   try {
     const result = await supabaseRpc("remove_user_account", {
       p_user_id: toPgBigint(user.id),
@@ -2190,7 +2257,13 @@ async function handleProfileAddAccount(chatId, user, text, messageId = null) {
       mainKeyboard(user)
     );
     clearUserMode(user.id);
-    await handleMyProfileRequest(chatId, user);
+
+    // Akkaunt qo'shildi — endi uni o'yin bilan ulashni taklif qilamiz.
+    if (/^\d+$/.test(String(result.id ?? ""))) {
+      await sendMessage(chatId, getMlLinkAskText(lang, parsed.accountId, parsed.zoneId), buildMlLinkAskKeyboard(lang, result.id));
+    } else {
+      await handleMyProfileRequest(chatId, user);
+    }
   } catch (err) {
     console.error("[ADD_USER_ACCOUNT_ERROR]", err);
     recordError("add_user_account_failed", err.message, {
@@ -2243,6 +2316,372 @@ async function handleProfileViewersRequest(chatId, user, messageId = null) {
   }
 
   await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), buildProfileViewersKeyboard(lang));
+}
+
+// ---------------------------------------------------------------------------
+// 🎮 Mobile Legends akkauntini ulash (Rone Arena API)
+//
+// Oqim: profilga akkaunt qo'shilgach "Mobile Legendsga ham ulaysizmi?" →
+// Ha → send-vc (o'yin ichidagi pochtaga kod) → user kodni yuboradi → login →
+// JWT shifrlanib user_accounts.ml_token ga yoziladi → "🎮 Mening akkauntim"
+// (api/account.js Mini App) ochiladi.
+//
+// Kod kutish holati DO rejimida saqlanadi: "mlc:<rowId>:<urinish>:<sentAt36>"
+// (rejim 32 belgigacha). Urinishlar soni cheklangan — 4 xonali kodni
+// tanlab topib bo'lmasin; qayta yuborishda cooldown — boshqa odamning
+// o'yin pochtasini spam qilib bo'lmasin.
+// ---------------------------------------------------------------------------
+const ML_CODE_MODE_PREFIX = "mlc:";
+const ML_CODE_MAX_ATTEMPTS = 5;
+const ML_CODE_TTL_MS = 5 * 60 * 1000;
+const ML_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
+const ML_HIGHLIGHT_KEYS = Object.freeze(["hk", "ma", "ms", "mtd", "mdt", "mg"]);
+
+function getArenaClient() {
+  return arena.createArenaClient({ baseUrl: MLBB_ARENA_API_URL, timeoutMs: MLBB_ARENA_TIMEOUT_MS });
+}
+
+function getMlLinkSecret() {
+  return arena.resolveLinkSecret(process.env);
+}
+
+function buildMlCodeMode(rowId, attempts, sentAtMs) {
+  return `${ML_CODE_MODE_PREFIX}${rowId}:${attempts}:${Math.floor(sentAtMs / 1000).toString(36)}`;
+}
+
+function parseMlCodeMode(mode) {
+  const match = /^mlc:(\d{1,19}):(\d{1,2}):([0-9a-z]{1,10})$/.exec(String(mode || ""));
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    rowId: match[1],
+    attempts: Number(match[2]),
+    sentAt: parseInt(match[3], 36) * 1000,
+  };
+}
+
+async function fetchUserAccounts(userId) {
+  try {
+    const result = await supabaseRpc("list_user_accounts", { p_user_id: toPgBigint(userId) });
+    return Array.isArray(result) ? result : [];
+  } catch (err) {
+    console.error("[ML_LINK_ACCOUNTS_ERROR]", err.message);
+    return [];
+  }
+}
+
+function formatMlNumber(value, digits = 0) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "—";
+  }
+
+  const [whole, fraction] = number.toFixed(digits).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return fraction ? `${grouped}.${fraction}` : grouped;
+}
+
+function getMlLinkAskText(lang, accountId, zoneId) {
+  return t("ml_link_ask", lang, { accountId: escapeHtml(accountId), zoneId: escapeHtml(zoneId) });
+}
+
+function buildMlLinkAskKeyboard(lang, rowId) {
+  return {
+    inline_keyboard: [[
+      { text: t("ml_link_yes_btn", lang), callback_data: `ml_link:${rowId}` },
+      { text: t("ml_link_no_btn", lang), callback_data: "ml_link_no" },
+    ]],
+  };
+}
+
+function buildMlCodePromptKeyboard(lang, rowId) {
+  return {
+    inline_keyboard: [
+      [{ text: t("ml_code_resend_btn", lang), callback_data: `ml_link:${rowId}` }],
+      [{ text: t("profile_add_cancel", lang), callback_data: "ml_link_cancel" }],
+    ],
+  };
+}
+
+function buildMlLinkedKeyboard(lang, chatId) {
+  const rows = [];
+
+  if (Number(chatId) > 0) {
+    rows.push([{ text: t("ml_my_account_btn", lang), web_app: { url: ACCOUNT_MINIAPP_URL } }]);
+  }
+
+  rows.push([{ text: t("profile_back_btn", lang), callback_data: "my_profile" }]);
+  return { inline_keyboard: rows };
+}
+
+function getMlArenaErrorText(lang, error) {
+  const key = {
+    send_failed: "ml_link_send_failed",
+    rate_limit: "ml_link_rate_limited",
+    invalid_input: "ml_link_send_failed",
+  }[error?.reason] || "ml_link_service_down";
+  return t(key, lang);
+}
+
+async function handleMlLinkMenu(chatId, user, messageId = null) {
+  const lang = getUserLang(user.id);
+  const accounts = await fetchUserAccounts(user.id);
+  const unlinked = accounts.filter((acc) => !acc.ml_linked);
+
+  if (!unlinked.length) {
+    await sendOrEditAdminMessage(chatId, messageId, t(accounts.length ? "ml_link_menu_all_linked" : "profile_accounts_empty", lang), {
+      inline_keyboard: [[{ text: t("profile_back_btn", lang), callback_data: "my_profile" }]],
+    });
+    return;
+  }
+
+  const rows = unlinked.map((acc) => [{
+    text: `🎮 ${acc.account_id} (${acc.zone_id})`,
+    callback_data: `ml_link:${acc.id}`,
+  }]);
+  rows.push([{ text: t("profile_back_btn", lang), callback_data: "my_profile" }]);
+
+  await sendOrEditAdminMessage(chatId, messageId, t("ml_link_menu_title", lang), { inline_keyboard: rows });
+}
+
+async function handleMlLinkDecline(chatId, user, messageId = null) {
+  const lang = getUserLang(user.id);
+  await sendOrEditAdminMessage(chatId, messageId, t("ml_link_declined", lang), {
+    inline_keyboard: [[{ text: t("profile_back_btn", lang), callback_data: "my_profile" }]],
+  });
+}
+
+async function handleMlLinkStart(chatId, user, rowIdRaw, messageId = null) {
+  const lang = getUserLang(user.id);
+  const rowId = String(rowIdRaw || "").trim();
+  const backKeyboard = { inline_keyboard: [[{ text: t("profile_back_btn", lang), callback_data: "my_profile" }]] };
+
+  if (!/^\d{1,19}$/.test(rowId)) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_not_found", lang), backKeyboard);
+    return;
+  }
+
+  const accounts = await fetchUserAccounts(user.id);
+  const account = listUserAccountById(accounts, rowId);
+
+  if (!account) {
+    await sendOrEditAdminMessage(chatId, messageId, t("profile_unlink_not_found", lang), backKeyboard);
+    return;
+  }
+
+  if (account.ml_linked) {
+    clearUserMode(user.id);
+    await sendOrEditAdminMessage(chatId, messageId, t("ml_link_already", lang, {
+      accountId: escapeHtml(account.account_id),
+      zoneId: escapeHtml(account.zone_id),
+    }), buildMlLinkedKeyboard(lang, chatId));
+    return;
+  }
+
+  // Qayta yuborish cooldown'i (bir xil akkaunt uchun).
+  const pending = parseMlCodeMode(await resolveUserMode(user.id));
+  const sinceLastSend = pending && pending.rowId === rowId ? Date.now() - pending.sentAt : Infinity;
+
+  if (sinceLastSend < ML_CODE_RESEND_COOLDOWN_MS) {
+    const seconds = Math.ceil((ML_CODE_RESEND_COOLDOWN_MS - sinceLastSend) / 1000);
+    await sendOrEditAdminMessage(
+      chatId,
+      messageId,
+      `${t("ml_code_prompt", lang, { accountId: escapeHtml(account.account_id), zoneId: escapeHtml(account.zone_id) })}\n\n${t("ml_code_resend_wait", lang, { seconds })}`,
+      buildMlCodePromptKeyboard(lang, rowId)
+    );
+    return;
+  }
+
+  void safeSendChatAction(chatId, "typing");
+
+  try {
+    await getArenaClient().sendVerificationCode(account.account_id, account.zone_id);
+  } catch (error) {
+    console.error("[ML_LINK_SEND_VC_ERROR]", error.message);
+    recordError("ml_link_send_vc_failed", error.message, { reason: error.reason, accountId: account.account_id });
+    await sendOrEditAdminMessage(chatId, messageId, getMlArenaErrorText(lang, error), {
+      inline_keyboard: [
+        [{ text: t("ml_code_retry_btn", lang), callback_data: `ml_link:${rowId}` }],
+        [{ text: t("profile_back_btn", lang), callback_data: "my_profile" }],
+      ],
+    });
+    return;
+  }
+
+  rememberUserMode(user.id, buildMlCodeMode(rowId, 0, Date.now()));
+  await sendOrEditAdminMessage(
+    chatId,
+    messageId,
+    t("ml_code_prompt", lang, { accountId: escapeHtml(account.account_id), zoneId: escapeHtml(account.zone_id) }),
+    buildMlCodePromptKeyboard(lang, rowId)
+  );
+}
+
+async function handleMlCodeInput(chatId, user, text, state) {
+  const lang = getUserLang(user.id);
+  const code = String(text || "").replace(/[\s-]/g, "");
+  const resendKeyboard = {
+    inline_keyboard: [
+      [{ text: t("ml_code_resend_btn", lang), callback_data: `ml_link:${state.rowId}` }],
+      [{ text: t("profile_add_cancel", lang), callback_data: "ml_link_cancel" }],
+    ],
+  };
+
+  if (Date.now() - state.sentAt > ML_CODE_TTL_MS) {
+    clearUserMode(user.id);
+    await sendMessage(chatId, t("ml_code_expired", lang), resendKeyboard);
+    return;
+  }
+
+  if (!arena.isValidVerificationCode(code)) {
+    await sendMessage(chatId, t("ml_code_invalid_format", lang), buildMlCodePromptKeyboard(lang, state.rowId));
+    return;
+  }
+
+  const accounts = await fetchUserAccounts(user.id);
+  const account = listUserAccountById(accounts, state.rowId);
+
+  if (!account) {
+    clearUserMode(user.id);
+    await sendMessage(chatId, t("profile_unlink_not_found", lang), mainKeyboard(user));
+    return;
+  }
+
+  void safeSendChatAction(chatId, "typing");
+
+  let session;
+  try {
+    session = await getArenaClient().login(account.account_id, account.zone_id, code);
+  } catch (error) {
+    if (error?.reason === "invalid_code") {
+      const attempts = state.attempts + 1;
+
+      if (attempts >= ML_CODE_MAX_ATTEMPTS) {
+        clearUserMode(user.id);
+        await sendMessage(chatId, t("ml_code_too_many", lang), resendKeyboard);
+        return;
+      }
+
+      rememberUserMode(user.id, buildMlCodeMode(state.rowId, attempts, state.sentAt));
+      await sendMessage(chatId, t("ml_code_wrong", lang, { left: ML_CODE_MAX_ATTEMPTS - attempts }), buildMlCodePromptKeyboard(lang, state.rowId));
+      return;
+    }
+
+    console.error("[ML_LINK_LOGIN_ERROR]", error?.message);
+    recordError("ml_link_login_failed", error?.message, { reason: error?.reason, accountId: account.account_id });
+    await sendMessage(chatId, getMlArenaErrorText(lang, error), buildMlCodePromptKeyboard(lang, state.rowId));
+    return;
+  }
+
+  const client = getArenaClient();
+  const [infoResult, statsResult] = await Promise.allSettled([
+    client.getInfo(session.jwt, lang),
+    client.getStats(session.jwt, lang),
+  ]);
+  const info = infoResult.status === "fulfilled" ? infoResult.value || {} : {};
+  const statsData = statsResult.status === "fulfilled" ? statsResult.value || {} : {};
+
+  let saved = false;
+  try {
+    const result = await supabaseRpc("set_user_account_ml_link", {
+      p_user_id: toPgBigint(user.id),
+      p_row_id: toPgBigint(account.id),
+      p_token: arena.sealArenaToken(session.jwt, getMlLinkSecret()),
+      p_nickname: cleanTextValue(info.name, 64),
+    });
+    saved = Boolean(result && result.ok === true);
+  } catch (err) {
+    console.error("[ML_LINK_SAVE_ERROR]", err.message);
+    recordError("ml_link_save_failed", err.message, { accountId: account.account_id });
+  }
+
+  clearUserMode(user.id);
+
+  if (!saved) {
+    void client.logout(session.jwt).catch(() => {});
+    await sendMessage(chatId, t("ml_link_save_failed", lang), mainKeyboard(user));
+    return;
+  }
+
+  trackFeatureUse(user, { id: chatId }, FEATURE_ACTIONS.ML_LINK);
+  await sendMessage(
+    chatId,
+    getMlAccountSummaryText(lang, { accountId: account.account_id, zoneId: account.zone_id, info, stats: statsData }),
+    buildMlLinkedKeyboard(lang, chatId)
+  );
+}
+
+function getMlAccountSummaryText(lang, { accountId, zoneId, info = {}, stats: data = {} } = {}) {
+  const lines = [t("ml_link_success_title", lang), ""];
+  const push = (key, params) => lines.push(t(key, lang, params));
+
+  if (info.name) push("ml_summary_name", { value: escapeHtml(info.name) });
+  push("ml_summary_id", { accountId: escapeHtml(accountId), zoneId: escapeHtml(zoneId) });
+  if (Number.isFinite(Number(info.level)) && info.level !== null) push("ml_summary_level", { value: formatMlNumber(info.level) });
+
+  const rank = arena.formatRankLevel(info.rank_level);
+  if (rank) push("ml_summary_rank", { value: rank.label });
+  const highest = arena.formatRankLevel(info.history_rank_level);
+  if (highest) push("ml_summary_highest_rank", { value: highest.label });
+  if (info.reg_country) push("ml_summary_country", { value: escapeHtml(String(info.reg_country).toUpperCase()) });
+
+  const total = Number(data.tc);
+  if (Number.isFinite(total) && data.tc !== null && data.tc !== undefined) {
+    const wins = Number(data.wc) || 0;
+    lines.push("", t("ml_summary_stats_title", lang));
+    push("ml_summary_matches", {
+      total: formatMlNumber(total),
+      wins: formatMlNumber(wins),
+      winrate: total > 0 ? formatMlNumber((wins / total) * 100, 1) : "0",
+    });
+    if (data.mvpc !== undefined && data.mvpc !== null) push("ml_summary_mvp", { value: formatMlNumber(data.mvpc) });
+    if (data.as !== undefined && data.as !== null) push("ml_summary_avg_score", { value: formatMlNumber(Number(data.as) / 100, 2) });
+    if (data.wsc !== undefined && data.wsc !== null) push("ml_summary_streak", { value: formatMlNumber(data.wsc) });
+    if (data.gt !== undefined && data.gt !== null) push("ml_summary_play_time", { value: formatMlNumber(data.gt, 1) });
+  }
+
+  const highlights = ML_HIGHLIGHT_KEYS
+    .map((key) => {
+      const item = data[key];
+      const hero = item?.hid_e?.n;
+
+      if (!item || !hero || item.v === undefined || item.v === null) {
+        return null;
+      }
+
+      const value = key === "ms" ? formatMlNumber(Number(item.v) / 100, 2) : formatMlNumber(item.v);
+      return t(`ml_hl_${key}`, lang, { hero: escapeHtml(hero), value });
+    })
+    .filter(Boolean);
+
+  if (highlights.length) {
+    lines.push("", t("ml_summary_highlights_title", lang), ...highlights);
+  }
+
+  lines.push("", t("ml_summary_footer", lang));
+  return lines.join("\n");
+}
+
+// Akkaunt profildan uzilganda Arena sessiyasini ham yopamiz (xato bo'lsa — jim).
+async function logoutMlLinkSilently(userId, rowId) {
+  try {
+    const link = await supabaseRpc("get_user_account_ml_link", {
+      p_user_id: toPgBigint(userId),
+      p_row_id: toPgBigint(rowId),
+    });
+    const token = arena.openArenaToken(link?.ml_token, getMlLinkSecret());
+
+    if (token) {
+      await getArenaClient().logout(token);
+    }
+  } catch (err) {
+    console.error("[ML_LINK_LOGOUT_ERROR]", err.message);
+  }
 }
 
 async function handleLanguageCommand(chatId, user) {
@@ -8928,6 +9367,10 @@ module.exports.sendBroadcastReport = sendBroadcastReport;
 module.exports.getBroadcastChatIds = getBroadcastChatIds;
 module.exports.enrichPremiumEmojis = enrichPremiumEmojis;
 module.exports.__private = {
+  buildMlCodeMode,
+  buildMyProfileKeyboard,
+  getMlAccountSummaryText,
+  parseMlCodeMode,
   buildBengkelBindInfoRequest,
   buildBindInfoRequest,
   broadcastMessage,

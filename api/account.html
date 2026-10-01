@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Mening akkauntim</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg2: #121a2f;
+      --card: rgba(255, 255, 255, 0.05);
+      --card-strong: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e6ebf5;
+      --text2: #93a0b8;
+      --accent: #6d6af8;
+      --accent2: #9b6bff;
+      --green: #19c37d;
+      --red: #f0506e;
+      --gold: #f5b83d;
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      min-height: 100%;
+      overflow-x: hidden;
+    }
+
+    body { padding: 12px 16px calc(84px + env(safe-area-inset-bottom)); }
+
+    button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+    img { display: block; }
+
+    .muted { color: var(--text2); }
+    .hidden { display: none !important; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .grow { flex: 1; min-width: 0; }
+    .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text2);
+      margin: 18px 2px 10px;
+    }
+
+    /* Account switcher */
+    .switcher { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; scrollbar-width: none; }
+    .switcher::-webkit-scrollbar { display: none; }
+    .chip {
+      flex: none;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .chip.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; color: #fff; }
+
+    /* Hero card */
+    .hero-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      padding: 18px;
+      margin-bottom: 12px;
+      background: linear-gradient(140deg, rgba(109, 106, 248, .35), rgba(155, 107, 255, .18) 55%, rgba(25, 195, 125, .12));
+      border: 1px solid rgba(255, 255, 255, .1);
+    }
+    .avatar {
+      width: 68px; height: 68px; border-radius: 18px; object-fit: cover; flex: none;
+      background: var(--card-strong); border: 2px solid rgba(255, 255, 255, .2);
+    }
+    .hero-name { font-size: 20px; font-weight: 800; line-height: 1.2; word-break: break-word; }
+    .hero-id { font-size: 13px; color: var(--text2); margin-top: 4px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .badge {
+      font-size: 12px; font-weight: 600; padding: 5px 9px; border-radius: 10px;
+      background: rgba(0, 0, 0, .25); border: 1px solid rgba(255, 255, 255, .1);
+    }
+
+    /* Stats grid */
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .stat { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 10px; }
+    .stat-value { font-size: 18px; font-weight: 800; }
+    .stat-label { font-size: 11px; color: var(--text2); margin-top: 4px; }
+    .stat .bi { display: block; font-size: 16px; color: var(--accent2); margin-bottom: 6px; }
+    .badge .bi { margin-right: 4px; }
+    .badge .bi-star-fill, .badge .bi-trophy-fill { color: var(--gold); }
+    .section-title .bi { margin-right: 6px; }
+    .item-title .bi { margin-right: 6px; color: var(--accent2); }
+    .team-title .bi { color: var(--gold); margin-left: 4px; }
+    .btn .bi { margin-right: 8px; }
+    .winrate-bar { height: 8px; border-radius: 99px; background: rgba(240, 80, 110, .35); overflow: hidden; margin-top: 10px; }
+    .winrate-bar > div { height: 100%; background: linear-gradient(90deg, var(--green), #6ee7b7); }
+
+    /* Lists */
+    .list-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 14px;
+      background: var(--card); border: 1px solid var(--border); margin-bottom: 8px; width: 100%; text-align: left;
+    }
+    .hero-img { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; background: var(--card-strong); flex: none; }
+    .hero-img.sm { width: 34px; height: 34px; border-radius: 10px; }
+    .item-title { font-weight: 700; }
+    .item-sub { font-size: 12px; color: var(--text2); margin-top: 3px; }
+    .result { width: 4px; align-self: stretch; border-radius: 4px; flex: none; }
+    .result.win { background: var(--green); }
+    .result.loss { background: var(--red); }
+    .tag { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 8px; }
+    .tag.win { background: rgba(25, 195, 125, .15); color: var(--green); }
+    .tag.loss { background: rgba(240, 80, 110, .15); color: var(--red); }
+    .tag.mvp { background: rgba(245, 184, 61, .18); color: var(--gold); }
+    .right { text-align: right; flex: none; }
+    .kda { font-weight: 800; font-size: 15px; }
+
+    select {
+      width: 100%; padding: 11px 12px; border-radius: 12px; font: inherit; color: var(--text);
+      background: var(--card); border: 1px solid var(--border); margin-bottom: 12px; appearance: none;
+    }
+
+    .btn {
+      display: block; width: 100%; padding: 13px; border-radius: 14px; font-weight: 700; text-align: center;
+      background: var(--card-strong); border: 1px solid var(--border);
+    }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; color: #fff; }
+    .btn.danger { background: rgba(240, 80, 110, .14); border-color: rgba(240, 80, 110, .35); color: var(--red); }
+    .btn + .btn { margin-top: 8px; }
+
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .switch { position: relative; width: 50px; height: 30px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch span {
+      position: absolute; inset: 0; border-radius: 99px; background: var(--card-strong); transition: .2s;
+      border: 1px solid var(--border);
+    }
+    .switch span::after {
+      content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; border-radius: 50%;
+      background: #fff; transition: .2s;
+    }
+    .switch input:checked + span { background: var(--green); }
+    .switch input:checked + span::after { transform: translateX(20px); }
+
+    /* Bottom nav */
+    .nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+      background: rgba(11, 16, 32, .92); backdrop-filter: blur(14px); border-top: 1px solid var(--border);
+    }
+    .nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; color: var(--text2); }
+    .nav button .bi { font-size: 21px; line-height: 1; }
+    .nav button.active { color: var(--text); font-weight: 700; }
+
+    /* Sheet */
+    .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 30; }
+    .sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: 88vh; overflow-y: auto;
+      background: var(--bg2); border-radius: 22px 22px 0 0; border-top: 1px solid var(--border);
+      padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+    }
+    .sheet-handle { width: 40px; height: 5px; border-radius: 99px; background: var(--border); margin: 0 auto 12px; }
+    .team-title { font-weight: 800; margin: 14px 0 8px; display: flex; justify-content: space-between; }
+    .items { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
+    .items img { width: 20px; height: 20px; border-radius: 5px; background: var(--card-strong); }
+
+    .state { text-align: center; padding: 48px 12px; }
+    .state .big {
+      width: 76px; height: 76px; margin: 0 auto 16px; border-radius: 24px; display: grid; place-items: center;
+      font-size: 34px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    }
+    .state .big.warn { background: linear-gradient(135deg, #f59e0b, #f0506e); }
+    .state h2 { font-size: 18px; margin-bottom: 8px; }
+    .state p { color: var(--text2); line-height: 1.5; margin-bottom: 18px; }
+
+    .skeleton { border-radius: 14px; height: 64px; margin-bottom: 8px; background: linear-gradient(90deg, var(--card) 25%, var(--card-strong) 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    .notice {
+      display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 14px; margin-bottom: 12px;
+      background: rgba(245, 184, 61, .08); border: 1px solid rgba(245, 184, 61, .28); color: var(--text);
+    }
+    .notice .bi { color: var(--gold); font-size: 20px; flex: none; margin-top: 1px; }
+    .notice p { font-size: 13px; color: var(--text2); line-height: 1.45; margin-top: 3px; }
+
+    .toast {
+      position: fixed; left: 16px; right: 16px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 40;
+      padding: 12px 14px; border-radius: 14px; background: #1e2740; border: 1px solid var(--border); font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <nav class="nav hidden" id="nav"></nav>
+  <div id="sheetRoot"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var tg = window.Telegram && window.Telegram.WebApp;
+      var API_URL = location.pathname;
+
+      var I18N = {
+        uz: {
+          title: "Mening akkauntim", tab_profile: "Profil", tab_matches: "O'yinlar", tab_heroes: "Qahramonlar",
+          tab_friends: "Do'stlar", tab_settings: "Sozlama", loading: "Yuklanmoqda...",
+          not_telegram_title: "Telegram orqali oching", not_telegram_text: "Bu sahifa faqat bot ichidagi \"Mening akkauntim\" tugmasi orqali ishlaydi.",
+          no_link_title: "Akkaunt ulanmagan", no_link_text: "Botda Mening profilim → Mobile Legends'ga ulash orqali akkauntingizni ulang.",
+          expired_title: "Sessiya tugagan", expired_text: "Mobile Legends sessiyasi yaroqsiz bo'lib qoldi. Chiqib, bot orqali qayta ulang.",
+          error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
+          open_bot: "Botga qaytish", level: "Daraja", rank: "Rank", highest: "Eng yuqori", country: "Davlat",
+          matches: "O'yinlar", wins: "G'alaba", winrate: "Winrate", mvp: "MVP", avg_score: "O'rtacha ball",
+          streak: "G'alaba seriyasi", play_time: "O'yin vaqti", hours: "soat", records: "Rekordlar", overview: "Umumiy statistika",
+          hl_hk: "Eng ko'p o'ldirish", hl_ma: "Eng ko'p assist", hl_ms: "Eng yuqori ball", hl_mtd: "Eng ko'p zarar",
+          hl_mdt: "Eng ko'p qabul qilingan zarar", hl_mg: "Eng ko'p oltin", season: "Sezon", load_more: "Ko'proq",
+          empty: "Ma'lumot yo'q", win: "G'alaba", loss: "Mag'lubiyat", score: "Ball", duration: "Davomiyligi",
+          team_a: "1-jamoa", team_b: "2-jamoa", damage: "Zarar", teamfight: "Jang ulushi", hero_level: "Qahramon darajasi",
+          power: "Kuch", hidden_friend: "Yashirin profil", together: "Birga", lvl: "Daraja",
+          privacy_title: "Profil ko'rinishi", privacy_text: "Do'stlaringiz profilingizni ko'ra oladi", account: "Akkaunt",
+          linked_at: "Ulangan sana", logout: "Akkauntdan chiqish", logout_confirm: "Mobile Legends akkauntidan chiqasizmi? Keyin bot orqali qayta ulash mumkin.",
+          logged_out: "Akkauntdan chiqildi", saved: "Saqlandi", lanes: ["", "EXP", "Mid", "Roam", "Jungle", "Gold"],
+          close: "Yopish", hero_matches: "O'yinlari",
+          unavailable_title: "Vaqtincha mavjud emas", unavailable_text: "Moonton bu ma'lumotni (statistika, o'yinlar, qahramonlar, do'stlar) hozircha o'chirib qo'ygan. Qayta yoqilishi bilan shu yerda avtomatik ko'rinadi."
+        },
+        ru: {
+          title: "Мой аккаунт", tab_profile: "Профиль", tab_matches: "Матчи", tab_heroes: "Герои",
+          tab_friends: "Друзья", tab_settings: "Настройки", loading: "Загрузка...",
+          not_telegram_title: "Откройте через Telegram", not_telegram_text: "Эта страница работает только через кнопку \"Мой аккаунт\" в боте.",
+          no_link_title: "Аккаунт не привязан", no_link_text: "Привяжите аккаунт в боте: Мой профиль → Привязать к Mobile Legends.",
+          expired_title: "Сессия истекла", expired_text: "Сессия Mobile Legends недействительна. Выйдите и привяжите заново через бота.",
+          error_title: "Ошибка", error_text: "Не удалось получить данные. Попробуйте чуть позже.", retry: "Повторить",
+          open_bot: "Вернуться в бот", level: "Уровень", rank: "Ранг", highest: "Высший", country: "Страна",
+          matches: "Матчи", wins: "Победы", winrate: "Винрейт", mvp: "MVP", avg_score: "Средний балл",
+          streak: "Серия побед", play_time: "Время в игре", hours: "ч", records: "Рекорды", overview: "Общая статистика",
+          hl_hk: "Больше всего убийств", hl_ma: "Больше всего помощи", hl_ms: "Высший балл", hl_mtd: "Больше всего урона",
+          hl_mdt: "Больше всего полученного урона", hl_mg: "Больше всего золота", season: "Сезон", load_more: "Ещё",
+          empty: "Нет данных", win: "Победа", loss: "Поражение", score: "Балл", duration: "Длительность",
+          team_a: "Команда 1", team_b: "Команда 2", damage: "Урон", teamfight: "Участие", hero_level: "Уровень героя",
+          power: "Сила", hidden_friend: "Скрытый профиль", together: "Вместе", lvl: "Ур.",
+          privacy_title: "Видимость профиля", privacy_text: "Друзья могут видеть ваш профиль", account: "Аккаунт",
+          linked_at: "Дата привязки", logout: "Выйти из аккаунта", logout_confirm: "Выйти из аккаунта Mobile Legends? Позже можно привязать снова через бота.",
+          logged_out: "Вы вышли из аккаунта", saved: "Сохранено", lanes: ["", "EXP", "Mid", "Roam", "Jungle", "Gold"],
+          close: "Закрыть", hero_matches: "Матчи",
+          unavailable_title: "Временно недоступно", unavailable_text: "Moonton временно отключил эти данные (статистика, матчи, герои, друзья). Как только их включат, они автоматически появятся здесь."
+        },
+        en: {
+          title: "My account", tab_profile: "Profile", tab_matches: "Matches", tab_heroes: "Heroes",
+          tab_friends: "Friends", tab_settings: "Settings", loading: "Loading...",
+          not_telegram_title: "Open in Telegram", not_telegram_text: "This page only works via the \"My account\" button in the bot.",
+          no_link_title: "No linked account", no_link_text: "Link your account in the bot: My profile → Link to Mobile Legends.",
+          expired_title: "Session expired", expired_text: "Your Mobile Legends session is no longer valid. Log out and link again via the bot.",
+          error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
+          open_bot: "Back to bot", level: "Level", rank: "Rank", highest: "Highest", country: "Country",
+          matches: "Matches", wins: "Wins", winrate: "Win rate", mvp: "MVP", avg_score: "Avg. score",
+          streak: "Win streak", play_time: "Play time", hours: "h", records: "Records", overview: "Overall stats",
+          hl_hk: "Most kills", hl_ma: "Most assists", hl_ms: "Highest score", hl_mtd: "Most damage",
+          hl_mdt: "Most damage taken", hl_mg: "Most gold", season: "Season", load_more: "Load more",
+          empty: "No data", win: "Win", loss: "Loss", score: "Score", duration: "Duration",
+          team_a: "Team 1", team_b: "Team 2", damage: "Damage", teamfight: "Teamfight", hero_level: "Hero level",
+          power: "Power", hidden_friend: "Hidden profile", together: "Together", lvl: "Lv.",
+          privacy_title: "Profile visibility", privacy_text: "Friends can see your profile", account: "Account",
+          linked_at: "Linked on", logout: "Log out", logout_confirm: "Log out of your Mobile Legends account? You can link it again via the bot.",
+          logged_out: "Logged out", saved: "Saved", lanes: ["", "EXP", "Mid", "Roam", "Jungle", "Gold"],
+          close: "Close", hero_matches: "Matches",
+          unavailable_title: "Temporarily unavailable", unavailable_text: "Moonton has temporarily disabled this data (stats, matches, heroes, friends). It will appear here automatically once it is back."
+        }
+      };
+
+      var TABS = [
+        { id: "profile", ico: "person-circle", active: "person-circle" },
+        { id: "matches", ico: "controller", active: "controller" },
+        { id: "heroes", ico: "shield", active: "shield-fill" },
+        { id: "friends", ico: "people", active: "people-fill" },
+        { id: "settings", ico: "gear", active: "gear-fill" }
+      ];
+      var HIGHLIGHTS = ["hk", "ma", "ms", "mtd", "mdt", "mg"];
+      var HIGHLIGHT_ICONS = { hk: "crosshair", ma: "people-fill", ms: "bullseye", mtd: "lightning-charge-fill", mdt: "shield-fill", mg: "coin" };
+
+      var state = {
+        lang: "uz",
+        botUsername: null,
+        accounts: [],
+        rowId: null,
+        tab: "profile",
+        overview: null,
+        sid: null,
+        lists: {}
+      };
+
+      var app = document.getElementById("app");
+
+      // ---------------------------------------------------------------- utils
+      function icon(name, extra) {
+        return '<i class="bi bi-' + name + (extra ? " " + extra : "") + '" aria-hidden="true"></i>';
+      }
+
+      function L(key) { return (I18N[state.lang] || I18N.uz)[key] || I18N.en[key] || key; }
+
+      function esc(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      function safeUrl(url) {
+        return /^https:\/\/[^\s"'<>]+$/.test(String(url || "")) ? String(url) : "";
+      }
+
+      function img(url, cls) {
+        var src = safeUrl(url);
+        return src
+          ? '<img class="' + cls + '" src="' + esc(src) + '" loading="lazy" alt="" onerror="this.style.visibility=\'hidden\'">'
+          : '<div class="' + cls + '"></div>';
+      }
+
+      function num(value, digits) {
+        var n = Number(value);
+        if (!isFinite(n)) return "—";
+        try {
+          return new Intl.NumberFormat(state.lang, { maximumFractionDigits: digits || 0, minimumFractionDigits: digits || 0 }).format(n);
+        } catch (e) { return n.toFixed(digits || 0); }
+      }
+
+      function pct(part, total) {
+        var t = Number(total);
+        return t > 0 ? (Number(part) / t) * 100 : 0;
+      }
+
+      // Intl.RelativeTimeFormat o'zbek tilini hamma mijozda bilmaydi — o'zimiz yozamiz.
+      var AGO = {
+        uz: { now: "hozirgina", suffix: " oldin", units: ["yil", "oy", "kun", "soat", "daqiqa"] },
+        ru: { now: "только что", suffix: " назад", units: ["г.", "мес.", "дн.", "ч", "мин"] },
+        en: { now: "just now", suffix: " ago", units: ["y", "mo", "d", "h", "min"] }
+      };
+
+      function timeAgo(ts) {
+        var seconds = Math.round(Date.now() / 1000 - Number(ts));
+        if (!isFinite(seconds)) return "";
+        var words = AGO[state.lang] || AGO.en;
+        var steps = [31536000, 2592000, 86400, 3600, 60];
+        for (var i = 0; i < steps.length; i++) {
+          if (seconds >= steps[i]) return Math.floor(seconds / steps[i]) + " " + words.units[i] + words.suffix;
+        }
+        return words.now;
+      }
+
+      function formatDate(value) {
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return "—";
+        return String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + d.getFullYear();
+      }
+
+      function duration(seconds) {
+        var s = Number(seconds);
+        if (!isFinite(s) || s <= 0) return "—";
+        return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+      }
+
+      function haptic(kind) {
+        try {
+          if (!tg || !tg.HapticFeedback) return;
+          if (kind === "select") tg.HapticFeedback.selectionChanged();
+          else if (kind === "success" || kind === "error" || kind === "warning") tg.HapticFeedback.notificationOccurred(kind);
+          else tg.HapticFeedback.impactOccurred(kind || "light");
+        } catch (e) { /* eski Telegram mijozlari */ }
+      }
+
+      var toastTimer = null;
+      function toast(text) {
+        var el = document.getElementById("toast");
+        el.textContent = text;
+        el.classList.remove("hidden");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { el.classList.add("hidden"); }, 2200);
+      }
+
+      function api(action, payload) {
+        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", lang: state.lang, rowId: state.rowId }, payload || {});
+        return fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (response) {
+          return response.json().catch(function () { return { ok: false, error: "bad_response" }; });
+        }).catch(function () { return { ok: false, error: "network" }; });
+      }
+
+      function botLink() {
+        return state.botUsername ? "https://t.me/" + state.botUsername : null;
+      }
+
+      function openBot() {
+        haptic("light");
+        var link = botLink();
+        if (tg && link) { try { tg.openTelegramLink(link); } catch (e) { /* noop */ } }
+        if (tg) tg.close();
+      }
+
+      // ---------------------------------------------------------------- states
+      function renderState(iconName, title, text, actions, warn) {
+        var buttons = (actions || []).map(function (a, i) {
+          return '<button class="btn ' + (a.cls || "") + '" data-state-action="' + i + '">' + esc(a.label) + "</button>";
+        }).join("");
+        app.innerHTML = '<div class="state"><div class="big' + (warn ? " warn" : "") + '">' + icon(iconName) + "</div><h2>" + esc(title) + "</h2><p>" + esc(text) + "</p>" + buttons + "</div>";
+        (actions || []).forEach(function (a, i) {
+          app.querySelector('[data-state-action="' + i + '"]').addEventListener("click", a.onClick);
+        });
+      }
+
+      function renderSkeleton(count) {
+        var html = "";
+        for (var i = 0; i < (count || 5); i++) html += '<div class="skeleton"></div>';
+        return html;
+      }
+
+      function handleError(result, retry) {
+        if (result && result.error === "session_expired") {
+          renderState("hourglass-split", L("expired_title"), L("expired_text"), [
+            { label: L("logout"), cls: "danger", onClick: doLogout },
+            { label: L("open_bot"), onClick: openBot }
+          ], true);
+          return;
+        }
+        if (result && (result.error === "not_linked" || result.error === "not_found")) {
+          return boot();
+        }
+        renderState("exclamation-triangle-fill", L("error_title"), L("error_text"), [{ label: L("retry"), cls: "primary", onClick: retry }], true);
+      }
+
+      // ---------------------------------------------------------------- shell
+      function linkedAccounts() {
+        return state.accounts.filter(function (a) { return a.ml_linked; });
+      }
+
+      function renderNav() {
+        var nav = document.getElementById("nav");
+        nav.innerHTML = TABS.map(function (tab) {
+          return '<button data-tab="' + tab.id + '" class="' + (state.tab === tab.id ? "active" : "") + '">' + icon(state.tab === tab.id ? tab.active : tab.ico) + "<span>" + esc(L("tab_" + tab.id)) + "</span></button>";
+        }).join("");
+        nav.classList.remove("hidden");
+        Array.prototype.forEach.call(nav.querySelectorAll("button"), function (btn) {
+          btn.addEventListener("click", function () {
+            if (state.tab === btn.dataset.tab) return;
+            haptic("select");
+            state.tab = btn.dataset.tab;
+            renderNav();
+            renderTab();
+            window.scrollTo(0, 0);
+          });
+        });
+      }
+
+      function switcherHtml() {
+        var linked = linkedAccounts();
+        if (linked.length < 2) return "";
+        return '<div class="switcher">' + linked.map(function (a) {
+          return '<button class="chip ' + (a.id === state.rowId ? "active" : "") + '" data-row="' + esc(a.id) + '">' +
+            esc(a.ml_nickname || a.account_id) + "</button>";
+        }).join("") + "</div>";
+      }
+
+      function bindSwitcher() {
+        Array.prototype.forEach.call(app.querySelectorAll(".chip[data-row]"), function (chip) {
+          chip.addEventListener("click", function () {
+            if (chip.dataset.row === state.rowId) return;
+            haptic("select");
+            selectAccount(chip.dataset.row);
+          });
+        });
+      }
+
+      function selectAccount(rowId) {
+        state.rowId = rowId;
+        state.overview = null;
+        state.lists = {};
+        state.sid = null;
+        try { localStorage.setItem("mlbb_account_row", rowId); } catch (e) { /* noop */ }
+        loadOverview();
+      }
+
+      function renderTab() {
+        if (!state.overview) return;
+        var renderers = { profile: renderProfile, matches: renderMatches, heroes: renderHeroes, friends: renderFriends, settings: renderSettings };
+        (renderers[state.tab] || renderProfile)();
+        bindSwitcher();
+      }
+
+      // ---------------------------------------------------------------- profile
+      function renderProfile() {
+        var o = state.overview;
+        var info = o.info || {};
+        var stats = o.stats || {};
+        var account = o.account || {};
+        var badges = [];
+        if (info.level != null) badges.push(["star-fill", L("level") + " " + num(info.level)]);
+        if (o.rank) badges.push(["trophy-fill", o.rank.label]);
+        if (o.highestRank) badges.push(["award-fill", L("highest") + ": " + o.highestRank.label]);
+        if (info.reg_country) badges.push(["globe2", String(info.reg_country).toUpperCase()]);
+
+        var html = switcherHtml() +
+          '<div class="hero-card"><div class="row">' + img(info.avatar, "avatar") +
+          '<div class="grow"><div class="hero-name">' + esc(info.name || account.ml_nickname || account.account_id) + "</div>" +
+          '<div class="hero-id">ID ' + esc(account.account_id) + " (" + esc(account.zone_id) + ")</div></div></div>" +
+          '<div class="badges">' + badges.map(function (b) { return '<span class="badge">' + icon(b[0]) + esc(b[1]) + "</span>"; }).join("") + "</div></div>";
+
+        if (!o.stats && isUnavailable("stats")) {
+          html += noticeHtml();
+        }
+
+        if (o.stats) {
+          var wr = pct(stats.wc, stats.tc);
+          html += '<div class="section-title">' + icon("bar-chart-fill") + esc(L("overview")) + "</div>" +
+            '<div class="card"><div class="row"><div class="grow"><div class="stat-value">' + num(wr, 1) + '%</div><div class="stat-label">' +
+            esc(L("winrate")) + '</div></div><div class="right"><div class="stat-value">' + num(stats.wc) + " / " + num(stats.tc) +
+            '</div><div class="stat-label">' + esc(L("wins")) + " / " + esc(L("matches")) + "</div></div></div>" +
+            '<div class="winrate-bar"><div style="width:' + Math.min(100, Math.max(0, wr)).toFixed(1) + '%"></div></div></div>' +
+            '<div class="grid">' +
+            statBox("award", num(stats.mvpc), L("mvp")) +
+            statBox("graph-up-arrow", stats.as != null ? num(Number(stats.as) / 100, 2) : "—", L("avg_score")) +
+            statBox("fire", num(stats.wsc), L("streak")) +
+            statBox("clock-history", stats.gt != null ? num(stats.gt, 1) + " " + L("hours") : "—", L("play_time")) +
+            statBox("controller", num(stats.tc), L("matches")) +
+            statBox("x-circle", num(Number(stats.tc || 0) - Number(stats.wc || 0)), L("loss")) +
+            "</div>";
+
+          var records = HIGHLIGHTS.map(function (key) {
+            var item = stats[key];
+            if (!item || !item.hid_e) return "";
+            var value = key === "ms" ? num(Number(item.v) / 100, 2) : num(item.v);
+            return '<div class="list-item">' + img(item.hid_e.ix, "hero-img") + '<div class="grow"><div class="item-title">' + icon(HIGHLIGHT_ICONS[key]) +
+              esc(L("hl_" + key)) + '</div><div class="item-sub">' + esc(item.hid_e.n) + (item.ts ? " · " + esc(timeAgo(item.ts)) : "") +
+              '</div></div><div class="right kda">' + esc(value) + "</div></div>";
+          }).join("");
+          if (records) html += '<div class="section-title">' + icon("trophy-fill") + esc(L("records")) + "</div>" + records;
+        }
+
+        app.innerHTML = html;
+      }
+
+      function noticeHtml() {
+        return '<div class="notice">' + icon("cloud-slash") + '<div><div class="item-title">' + esc(L("unavailable_title")) +
+          "</div><p>" + esc(L("unavailable_text")) + "</p></div></div>";
+      }
+
+      function isUnavailable(part) {
+        return Boolean(state.overview && state.overview.unavailable && state.overview.unavailable[part]);
+      }
+
+      function statBox(iconName, value, label) {
+        return '<div class="stat">' + icon(iconName) + '<div class="stat-value">' + esc(value) + '</div><div class="stat-label">' + esc(label) + "</div></div>";
+      }
+
+      // ---------------------------------------------------------------- season lists
+      function seasonSelectHtml() {
+        var seasons = state.overview.seasons || [];
+        if (!seasons.length) return "";
+        if (state.sid == null) state.sid = seasons[0];
+        return '<select id="seasonSelect">' + seasons.map(function (sid) {
+          return '<option value="' + esc(sid) + '"' + (Number(sid) === Number(state.sid) ? " selected" : "") + ">" + esc(L("season")) + " " + esc(sid) + "</option>";
+        }).join("") + "</select>";
+      }
+
+      function bindSeasonSelect(onChange) {
+        var select = document.getElementById("seasonSelect");
+        if (!select) return;
+        select.addEventListener("change", function () {
+          haptic("select");
+          state.sid = Number(select.value);
+          state.lists = {};
+          onChange();
+        });
+      }
+
+      // kind: matches | heroes | friends
+      function loadList(kind, more) {
+        var key = kind + ":" + state.sid;
+        var current = state.lists[key];
+        if (current && current.loading) return;
+        if (current && !more) return renderTab();
+
+        var entry = current || { items: [], cursor: null, hasNext: false };
+        entry.loading = true;
+        state.lists[key] = entry;
+
+        var action = kind === "matches" ? "matches" : kind === "heroes" ? "heroes" : "friends";
+        api(action, { sid: state.sid, cursor: more ? entry.cursor : undefined }).then(function (result) {
+          entry.loading = false;
+          if (!result.ok && result.error === "unavailable") {
+            entry.loaded = true;
+            entry.unavailable = true;
+            entry.hasNext = false;
+            if (state.tab === kind) renderTab();
+            return;
+          }
+          if (!result.ok) {
+            delete state.lists[key];
+            return handleError(result, function () { renderTab(); });
+          }
+          var data = result.data || {};
+          if (kind === "friends") {
+            entry.items = Array.isArray(data.fs) ? data.fs : [];
+            entry.hasNext = false;
+          } else {
+            entry.items = entry.items.concat(Array.isArray(data.result) ? data.result : []);
+            var page = data.pageInfo || {};
+            entry.cursor = page.nextCursor ? String(page.nextCursor) : null;
+            entry.hasNext = Boolean(page.hasNext && entry.cursor);
+          }
+          entry.loaded = true;
+          if (state.tab === kind) renderTab();
+        });
+      }
+
+      function listShell(kind, itemsHtml, entry) {
+        var html = switcherHtml() + seasonSelectHtml();
+        if (state.sid == null) return html + (isUnavailable("seasons") ? noticeHtml() : '<div class="state"><p>' + esc(L("empty")) + "</p></div>");
+        if (entry && entry.unavailable) return html + noticeHtml();
+        if (!entry || !entry.loaded) return html + renderSkeleton(6);
+        html += itemsHtml || '<div class="state"><p>' + esc(L("empty")) + "</p></div>";
+        if (entry.hasNext) html += '<button class="btn" id="loadMore">' + esc(entry.loading ? L("loading") : L("load_more")) + "</button>";
+        return html;
+      }
+
+      function afterListRender(kind, rerender) {
+        bindSeasonSelect(rerender);
+        var more = document.getElementById("loadMore");
+        if (more) more.addEventListener("click", function () { haptic("light"); more.textContent = L("loading"); loadList(kind, true); });
+      }
+
+      function matchRow(m, attrs) {
+        var win = Number(m.res) === 1;
+        var hero = m.hid_e || {};
+        var lane = L("lanes")[Number(m.lid)] || "";
+        return '<button class="list-item" ' + (attrs || "") + '><div class="result ' + (win ? "win" : "loss") + '"></div>' + img(hero.ix, "hero-img") +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(hero.n || "#" + m.hid) + "</div>" +
+          '<div class="item-sub">' + (lane ? esc(lane) + " · " : "") + esc(timeAgo(m.ts)) + "</div></div>" +
+          '<div class="right"><div class="kda">' + num(m.k) + "/" + num(m.d) + "/" + num(m.a) + "</div>" +
+          '<div class="item-sub"><span class="tag ' + (win ? "win" : "loss") + '">' + esc(win ? L("win") : L("loss")) + "</span>" +
+          (Number(m.mvp) === 1 ? ' <span class="tag mvp">MVP</span>' : "") + "</div></div></button>";
+      }
+
+      function renderMatches() {
+        if (state.sid == null && (state.overview.seasons || []).length) state.sid = state.overview.seasons[0];
+        var entry = state.lists["matches:" + state.sid];
+        var items = entry ? entry.items.map(function (m, i) { return matchRow(m, 'data-match="' + i + '"'); }).join("") : "";
+        app.innerHTML = listShell("matches", items, entry);
+        afterListRender("matches", renderMatches);
+        Array.prototype.forEach.call(app.querySelectorAll("[data-match]"), function (el) {
+          el.addEventListener("click", function () { openMatch(entry.items[Number(el.dataset.match)]); });
+        });
+        if (!entry && state.sid != null) loadList("matches");
+      }
+
+      function renderHeroes() {
+        if (state.sid == null && (state.overview.seasons || []).length) state.sid = state.overview.seasons[0];
+        var entry = state.lists["heroes:" + state.sid];
+        var items = entry ? entry.items.map(function (h, i) {
+          var hero = h.hid_e || {};
+          var wr = pct(h.wc, h.tc);
+          return '<button class="list-item" data-hero="' + i + '">' + img(hero.ix, "hero-img") +
+            '<div class="grow"><div class="item-title ellipsis">' + esc(hero.n || "#" + h.hid) + "</div>" +
+            '<div class="item-sub">' + num(h.tc) + " " + esc(L("matches").toLowerCase()) + " · " + num(wr, 1) + "% · " + esc(L("score")) + " " + num(Number(h.bs) / 100, 2) + "</div></div>" +
+            '<div class="right"><div class="kda">' + num(h.p) + '</div><div class="item-sub">' + esc(L("power")) + "</div></div></button>";
+        }).join("") : "";
+        app.innerHTML = listShell("heroes", items, entry);
+        afterListRender("heroes", renderHeroes);
+        Array.prototype.forEach.call(app.querySelectorAll("[data-hero]"), function (el) {
+          el.addEventListener("click", function () { openHeroMatches(entry.items[Number(el.dataset.hero)]); });
+        });
+        if (!entry && state.sid != null) loadList("heroes");
+      }
+
+      function renderFriends() {
+        if (state.sid == null && (state.overview.seasons || []).length) state.sid = state.overview.seasons[0];
+        var entry = state.lists["friends:" + state.sid];
+        var items = entry ? entry.items.map(function (f) {
+          var p = f.f || {};
+          var name = p.n || (p.pri ? L("hidden_friend") : "—");
+          var idText = p.rid ? "ID " + p.rid + (p.zid ? " (" + p.zid + ")" : "") : "";
+          return '<div class="list-item">' + img(p.ax, "hero-img") + '<div class="grow"><div class="item-title ellipsis">' + esc(name) + "</div>" +
+            '<div class="item-sub">' + esc(L("lvl")) + " " + num(f.l || f.cl) + (idText ? " · " + esc(idText) : "") + "</div></div>" +
+            '<div class="right"><div class="kda">' + num(f.twc) + "/" + num(f.tbc) + '</div><div class="item-sub">' + esc(L("together")) + "</div></div></div>";
+        }).join("") : "";
+        app.innerHTML = listShell("friends", items, entry);
+        afterListRender("friends", renderFriends);
+        if (!entry && state.sid != null) loadList("friends");
+      }
+
+      // ---------------------------------------------------------------- sheets
+      function openSheet(html) {
+        var root = document.getElementById("sheetRoot");
+        root.innerHTML = '<div class="sheet-backdrop"></div><div class="sheet"><div class="sheet-handle"></div>' + html + "</div>";
+        root.querySelector(".sheet-backdrop").addEventListener("click", closeSheet);
+        if (tg && tg.BackButton) { tg.BackButton.show(); }
+        haptic("light");
+        return root.querySelector(".sheet");
+      }
+
+      function closeSheet() {
+        document.getElementById("sheetRoot").innerHTML = "";
+        if (tg && tg.BackButton) tg.BackButton.hide();
+      }
+
+      function openMatch(match) {
+        if (!match) return;
+        var sheet = openSheet(renderSkeleton(8));
+        api("match_detail", { sid: match.sid || state.sid, matchId: match.bid_s || String(match.bid) }).then(function (result) {
+          if (!sheet.isConnected) return;
+          if (!result.ok) {
+            sheet.innerHTML = '<div class="sheet-handle"></div><div class="state"><p>' + esc(L("error_text")) + "</p></div>";
+            return;
+          }
+          var players = (result.data && result.data.result) || [];
+          var first = players[0] || {};
+          var mine = players.filter(function (p) { return String(p.hid) === String(match.hid) && Number(p.k) === Number(match.k) && Number(p.d) === Number(match.d); })[0];
+          var myTeam = mine ? mine.f : null;
+          var html = '<div class="sheet-handle"></div><div class="row"><div class="grow"><div class="hero-name">' +
+            esc(Number(match.res) === 1 ? L("win") : L("loss")) + '</div><div class="item-sub">' + esc(timeAgo(match.ts)) + " · " +
+            esc(L("duration")) + " " + esc(duration(first.bd)) + "</div></div></div>";
+          [1, 2].forEach(function (team) {
+            var list = players.filter(function (p) { return Number(p.f) === team; });
+            if (!list.length) return;
+            var kills = list.reduce(function (s, p) { return s + Number(p.k || 0); }, 0);
+            html += '<div class="team-title"><span>' + esc(team === 1 ? L("team_a") : L("team_b")) + (myTeam === team ? icon("star-fill") : "") +
+              "</span><span>" + num(kills) + "</span></div>";
+            html += list.map(function (p) {
+              var hero = p.hid_e || {};
+              var items = (p.its_e || []).filter(Boolean).map(function (it) { return img(it.ix, ""); }).join("");
+              return '<div class="list-item">' + img(hero.ix, "hero-img sm") + '<div class="grow"><div class="item-title ellipsis">' +
+                esc(p.rname || hero.n || "—") + (Number(p.mvp) === 1 ? ' <span class="tag mvp">MVP</span>' : "") + "</div>" +
+                '<div class="item-sub">' + esc(hero.n || "") + " · " + esc(L("damage")) + " " + num(p.o) + " (" + num(Number(p.op) * 100, 1) + "%) · " +
+                esc(L("teamfight")) + " " + num(Number(p.tfr) * 100, 0) + "%</div>" +
+                (items ? '<div class="items">' + items + "</div>" : "") + "</div>" +
+                '<div class="right"><div class="kda">' + num(p.k) + "/" + num(p.d) + "/" + num(p.a) + '</div><div class="item-sub">' +
+                esc(L("score")) + " " + num(Number(p.s) / 100, 1) + "</div></div></div>";
+            }).join("");
+          });
+          if (!players.length) html += '<div class="state"><p>' + esc(L("empty")) + "</p></div>";
+          sheet.innerHTML = html;
+        });
+      }
+
+      function openHeroMatches(hero) {
+        if (!hero) return;
+        var info = hero.hid_e || {};
+        var sheet = openSheet(renderSkeleton(6));
+        var collected = [];
+        var cursor = null;
+
+        function load() {
+          api("hero_matches", { sid: state.sid, heroId: hero.hid, cursor: cursor || undefined }).then(function (result) {
+            if (!sheet.isConnected) return;
+            if (!result.ok) {
+              sheet.innerHTML = '<div class="sheet-handle"></div><div class="state"><p>' + esc(L("error_text")) + "</p></div>";
+              return;
+            }
+            var data = result.data || {};
+            collected = collected.concat(Array.isArray(data.result) ? data.result : []);
+            var page = data.pageInfo || {};
+            cursor = page.hasNext && page.nextCursor ? String(page.nextCursor) : null;
+            var hi = data.hi || hero;
+            var html = '<div class="sheet-handle"></div><div class="row">' + img(info.ix, "hero-img") + '<div class="grow"><div class="hero-name">' +
+              esc(info.n || "#" + hero.hid) + '</div><div class="item-sub">' + num(hi.tc) + " " + esc(L("matches").toLowerCase()) + " · " +
+              num(pct(hi.wc, hi.tc), 1) + "% · " + esc(L("power")) + " " + num(hi.p) + "</div></div></div>" +
+              '<div class="section-title">' + icon("clock-history") + esc(L("hero_matches")) + "</div>" +
+              (collected.length ? collected.map(function (m) { return matchRow(m, ""); }).join("") : '<div class="state"><p>' + esc(L("empty")) + "</p></div>") +
+              (cursor ? '<button class="btn" id="heroMore">' + esc(L("load_more")) + "</button>" : "");
+            sheet.innerHTML = html;
+            var more = sheet.querySelector("#heroMore");
+            if (more) more.addEventListener("click", function () { more.textContent = L("loading"); load(); });
+          });
+        }
+        load();
+      }
+
+      // ---------------------------------------------------------------- settings
+      function renderSettings() {
+        var o = state.overview;
+        var account = o.account || {};
+        var privacy = o.privacy;
+        // privacy=true — profil do'stlardan yashirilgan.
+        var visible = privacy ? !privacy.privacy : null;
+        var html = switcherHtml() + '<div class="section-title">' + icon("person-vcard") + esc(L("account")) + "</div>" +
+          '<div class="card"><div class="item-title">' + esc(account.ml_nickname || (o.info && o.info.name) || account.account_id) + "</div>" +
+          '<div class="item-sub">ID ' + esc(account.account_id) + " (" + esc(account.zone_id) + ")</div>" +
+          '<div class="item-sub">' + esc(L("linked_at")) + ": " + esc(formatDate(account.ml_linked_at)) + "</div></div>";
+
+        if (visible !== null) {
+          html += '<div class="card toggle-row"><div class="grow"><div class="item-title">' + esc(L("privacy_title")) + '</div><div class="item-sub">' +
+            esc(L("privacy_text")) + '</div></div><label class="switch"><input type="checkbox" id="privacyToggle"' + (visible ? " checked" : "") + "><span></span></label></div>";
+        }
+
+        html += '<div style="height:8px"></div><button class="btn" id="openBotBtn">' + icon("send") + esc(L("open_bot")) + "</button>" +
+          '<button class="btn danger" id="logoutBtn">' + icon("box-arrow-right") + esc(L("logout")) + "</button>";
+        app.innerHTML = html;
+
+        var toggle = document.getElementById("privacyToggle");
+        if (toggle) {
+          toggle.addEventListener("change", function () {
+            var wanted = toggle.checked;
+            toggle.disabled = true;
+            haptic("select");
+            api("privacy_set", { visible: wanted }).then(function (result) {
+              toggle.disabled = false;
+              if (result.ok) {
+                state.overview.privacy = result.data || { privacy: !wanted };
+                haptic("success");
+                toast(L("saved"));
+              } else {
+                toggle.checked = !wanted;
+                haptic("error");
+                toast(L("error_text"));
+              }
+            });
+          });
+        }
+        document.getElementById("openBotBtn").addEventListener("click", openBot);
+        document.getElementById("logoutBtn").addEventListener("click", doLogout);
+      }
+
+      function confirmAction(text) {
+        return new Promise(function (resolve) {
+          if (tg && tg.showConfirm) {
+            try { tg.showConfirm(text, function (ok) { resolve(Boolean(ok)); }); return; } catch (e) { /* fallback */ }
+          }
+          resolve(window.confirm(text));
+        });
+      }
+
+      function doLogout() {
+        haptic("warning");
+        confirmAction(L("logout_confirm")).then(function (ok) {
+          if (!ok) return;
+          api("logout").then(function (result) {
+            if (!result.ok) { haptic("error"); toast(L("error_text")); return; }
+            haptic("success");
+            toast(L("logged_out"));
+            try { localStorage.removeItem("mlbb_account_row"); } catch (e) { /* noop */ }
+            boot();
+          });
+        });
+      }
+
+      // ---------------------------------------------------------------- boot
+      function loadOverview() {
+        app.innerHTML = switcherHtml() + '<div class="skeleton" style="height:150px"></div>' + renderSkeleton(4);
+        bindSwitcher();
+        api("overview").then(function (result) {
+          if (!result.ok) return handleError(result, loadOverview);
+          state.overview = result;
+          var seasons = result.seasons || [];
+          state.sid = seasons.length ? seasons[0] : null;
+          renderNav();
+          renderTab();
+        });
+      }
+
+      function boot() {
+        document.getElementById("nav").classList.add("hidden");
+        closeSheet();
+        app.innerHTML = '<div class="skeleton" style="height:150px"></div>' + renderSkeleton(4);
+
+        if (!tg || !tg.initData) {
+          renderState("phone", L("not_telegram_title"), L("not_telegram_text"), []);
+          return;
+        }
+
+        api("bootstrap").then(function (result) {
+          if (!result.ok) return handleError(result, boot);
+          state.lang = I18N[result.lang] ? result.lang : "uz";
+          state.botUsername = result.botUsername;
+          state.accounts = result.accounts || [];
+          document.documentElement.lang = state.lang;
+          document.title = L("title");
+
+          var linked = linkedAccounts();
+          if (!linked.length) {
+            renderState("controller", L("no_link_title"), L("no_link_text"), [{ label: L("open_bot"), cls: "primary", onClick: openBot }]);
+            return;
+          }
+
+          var saved = null;
+          try { saved = localStorage.getItem("mlbb_account_row"); } catch (e) { /* noop */ }
+          var initial = linked.filter(function (a) { return a.id === saved; })[0] || linked[0];
+          state.tab = "profile";
+          selectAccount(initial.id);
+        });
+      }
+
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        try { tg.setHeaderColor("#0b1020"); tg.setBackgroundColor("#0b1020"); } catch (e) { /* eski mijozlar */ }
+        if (tg.BackButton) tg.BackButton.onClick(closeSheet);
+      }
+
+      boot();
+    })();
+  </script>
+</body>
+</html>

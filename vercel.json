@@ -15,6 +15,9 @@
     "api/miniapp.js": {
       "maxDuration": 15
     },
+    "api/account.js": {
+      "maxDuration": 15
+    },
     "api/daily-report.js": {
       "maxDuration": 10
     }

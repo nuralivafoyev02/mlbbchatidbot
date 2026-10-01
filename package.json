@@ -8,6 +8,8 @@
     "dev": "node dev/serve.js",
     "dev:cf": "npx wrangler dev",
     "dev:miniapp": "node dev/serve-miniapp.js",
+    "dev:account": "node dev/serve-account.js",
+    "dev:all": "node dev/dev-all.js",
     "deploy:cf": "npx wrangler deploy"
   },
   "engines": {
