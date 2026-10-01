@@ -310,7 +310,7 @@
   "btn_shop": "🛒 Do'kon",
   "btn_shop_firstmail": "📧 Firstmail sotib olish",
   "btn_shop_back": "⬅️ Orqaga",
-  "shop_welcome": "🛒 <b>Do'kon</b>\n\nKerakli bo'limni pastdagi tugmalardan tanlang.\n\nℹ️ Do'kon bo'limida ID va serverni tekshirish funksiyalari vaqtincha o'chadi. Qaytish uchun <b>⬅️ Orqaga</b> tugmasini bosing.",
+  "shop_welcome": "🛒 <b>Do'kon</b>\n\nKerakli bo'limni pastdagi tugmalardan tanlang.",
   "shop_mode_blocked": "🛒 Siz hozir <b>Do'kon</b> bo'limidasiz.\n\nID va serverni tekshirish uchun avval <b>⬅️ Orqaga</b> tugmasini bosing.",
   "shop_left": "🏠 Asosiy menyuga qaytdingiz. Endi Account ID va Server ID yuborib tekshirishingiz mumkin.",
   "shop_unavailable": "⚠️ Do'kon vaqtincha ishlamayapti. Birozdan keyin qayta urinib ko'ring.",

@@ -310,7 +310,7 @@
   "btn_shop": "🛒 Shop",
   "btn_shop_firstmail": "📧 Buy Firstmail",
   "btn_shop_back": "⬅️ Back",
-  "shop_welcome": "🛒 <b>Shop</b>\n\nChoose a section using the buttons below.\n\nℹ️ ID and server checks are paused while you are in the shop. Tap <b>⬅️ Back</b> to return.",
+  "shop_welcome": "🛒 <b>Shop</b>\n\nChoose a section using the buttons below.",
   "shop_mode_blocked": "🛒 You are in the <b>Shop</b> section right now.\n\nTo check an ID and server, tap <b>⬅️ Back</b> first.",
   "shop_left": "🏠 You are back in the main menu. You can now send an Account ID and Server ID to check.",
   "shop_unavailable": "⚠️ The shop is temporarily unavailable. Please try again a bit later.",
