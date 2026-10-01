@@ -36,7 +36,7 @@
       overflow-x: hidden;
     }
 
-    body { padding: 12px 16px calc(84px + env(safe-area-inset-bottom)); }
+    body { padding: 12px 16px calc(100px + env(safe-area-inset-bottom)); }
 
     button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
     img { display: block; }
@@ -162,15 +162,51 @@
     .switch input:checked + span::after { transform: translateX(20px); }
 
     /* Bottom nav */
+    /* Telegram mobil tab-bar uslubidagi suzuvchi navigatsiya (admin panel bilan bir xil). */
     .nav {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-      display: grid; grid-template-columns: repeat(5, 1fr);
-      padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-      background: rgba(11, 16, 32, .92); backdrop-filter: blur(14px); border-top: 1px solid var(--border);
+      position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 20;
+      max-width: 520px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 6px;
+      border-radius: 28px; background: rgba(22, 28, 48, .74); border: 1px solid rgba(255, 255, 255, .10);
+      -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06);
     }
-    .nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; color: var(--text2); }
-    .nav button .bi { font-size: 21px; line-height: 1; }
-    .nav button.active { color: var(--text); font-weight: 700; }
+    .nav button {
+      position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 7px 0 6px; border-radius: 22px; font-size: 10px; font-weight: 600; color: var(--text2);
+      transition: color .2s, transform .15s; -webkit-user-select: none; user-select: none;
+    }
+    .nav button:active { transform: scale(.94); }
+    .nav button .bi { font-size: 20px; line-height: 1; }
+    .nav button .nav-ico { display: block; height: 20px; line-height: 1; }
+    .nav button.active { color: #fff; }
+    .nav button.active .bi { color: #c4b5fd; }
+
+    /* Faol tab ostidagi suzuvchi "pill" — tab almashganda joyi va kengligi
+       prujinali animatsiya bilan o'zgaradi. */
+    .nav-indicator {
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: 0;
+      width: 0;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(109, 106, 248, 0.34), rgba(155, 107, 255, 0.26));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 14px rgba(109, 106, 248, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 0
+    }
+
+    .nav-indicator.ready {
+      opacity: 1;
+      transition: transform .42s cubic-bezier(.34, 1.36, .5, 1), width .42s cubic-bezier(.34, 1.36, .5, 1), opacity .2s
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .nav-indicator.ready { transition: none }
+    }
+
 
     /* Sheet */
     .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 30; }
@@ -193,6 +229,24 @@
     .state h2 { font-size: 18px; margin-bottom: 8px; }
     .state p { color: var(--text2); line-height: 1.5; margin-bottom: 18px; }
 
+/* Bo'limdan bo'limga suzib o'tish animatsiyasi */
+    @keyframes slideFromRight {
+      from { opacity: 0; transform: translate3d(32px, 0, 0) }
+      to { opacity: 1; transform: none }
+    }
+
+    @keyframes slideFromLeft {
+      from { opacity: 0; transform: translate3d(-32px, 0, 0) }
+      to { opacity: 1; transform: none }
+    }
+
+    .slide-from-right { animation: slideFromRight .3s cubic-bezier(.22, .8, .3, 1) both }
+    .slide-from-left { animation: slideFromLeft .3s cubic-bezier(.22, .8, .3, 1) both }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide-from-right, .slide-from-left { animation: none }
+    }
+
     .skeleton { border-radius: 14px; height: 64px; margin-bottom: 8px; background: linear-gradient(90deg, var(--card) 25%, var(--card-strong) 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
     @keyframes shimmer { to { background-position: -200% 0; } }
 
@@ -204,7 +258,7 @@
     .notice p { font-size: 13px; color: var(--text2); line-height: 1.45; margin-top: 3px; }
 
     .toast {
-      position: fixed; left: 16px; right: 16px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 40;
+      position: fixed; left: 16px; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 40;
       padding: 12px 14px; border-radius: 14px; background: #1e2740; border: 1px solid var(--border); font-weight: 600;
     }
   </style>
@@ -454,22 +508,90 @@
         return state.accounts.filter(function (a) { return a.ml_linked; });
       }
 
+      // Barmoq bilan chapga/o'ngga surib bo'lim almashtirish. Gorizontal
+      // aylantiriladigan joylar, input'lar va ochiq oynalar e'tiborga olinmaydi.
+      function setupSwipeTabs(surface, opts) {
+        var startX = 0, startY = 0, startT = 0, tracking = false;
+        surface.addEventListener("touchstart", function (e) {
+          tracking = false;
+          if (e.touches.length !== 1 || opts.blocked()) return;
+          var el = e.target;
+          while (el && el !== surface) {
+            if (el.matches && el.matches("input, textarea, select, [data-no-swipe]")) return;
+            if (el.scrollWidth > el.clientWidth + 2) {
+              var ox = getComputedStyle(el).overflowX;
+              if (ox === "auto" || ox === "scroll") return;
+            }
+            el = el.parentElement;
+          }
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          startT = Date.now();
+          tracking = true;
+        }, { passive: true });
+        surface.addEventListener("touchend", function (e) {
+          if (!tracking) return;
+          tracking = false;
+          var t = e.changedTouches[0];
+          var dx = t.clientX - startX;
+          var dy = t.clientY - startY;
+          if (Date.now() - startT > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+          opts.go(dx < 0 ? 1 : -1);
+        }, { passive: true });
+      }
+
+      function goToTab(id) {
+        if (!state.overview || state.tab === id) return;
+        var from = TABS.map(function (t) { return t.id; }).indexOf(state.tab);
+        var to = TABS.map(function (t) { return t.id; }).indexOf(id);
+        haptic("select");
+        state.tab = id;
+        renderNav();
+        renderTab();
+        window.scrollTo(0, 0);
+        app.classList.remove("slide-from-right", "slide-from-left");
+        void app.offsetWidth; // animatsiyani qayta ishga tushirish
+        app.classList.add(to > from ? "slide-from-right" : "slide-from-left");
+      }
+
+      // Nav'dagi faol "pill"ni aktiv tab ostiga suzdirib olib boradi.
+      function moveNavIndicator(nav, animate) {
+        if (!nav) return;
+        var indicator = nav.querySelector(".nav-indicator");
+        var active = nav.querySelector(".nav-item.active, button.active");
+        if (!indicator || !active || !active.offsetWidth) return;
+        if (!animate) indicator.classList.remove("ready");
+        indicator.style.width = active.offsetWidth + "px";
+        indicator.style.transform = "translate3d(" + active.offsetLeft + "px, 0, 0)";
+        if (!animate) {
+          void indicator.offsetWidth;
+          indicator.classList.add("ready");
+        }
+      }
+
+      // Nav bir marta quriladi; keyin faqat active klass va ikonka almashadi —
+      // shunda indikator qayta yaratilmay, joyidan suzib o'tadi.
       function renderNav() {
         var nav = document.getElementById("nav");
-        nav.innerHTML = TABS.map(function (tab) {
-          return '<button data-tab="' + tab.id + '" class="' + (state.tab === tab.id ? "active" : "") + '">' + icon(state.tab === tab.id ? tab.active : tab.ico) + "<span>" + esc(L("tab_" + tab.id)) + "</span></button>";
-        }).join("");
-        nav.classList.remove("hidden");
-        Array.prototype.forEach.call(nav.querySelectorAll("button"), function (btn) {
-          btn.addEventListener("click", function () {
-            if (state.tab === btn.dataset.tab) return;
-            haptic("select");
-            state.tab = btn.dataset.tab;
-            renderNav();
-            renderTab();
-            window.scrollTo(0, 0);
+        var wasHidden = nav.classList.contains("hidden");
+        if (nav.dataset.lang !== state.lang || !nav.querySelector(".nav-indicator")) {
+          nav.innerHTML = '<div class="nav-indicator" aria-hidden="true"></div>' + TABS.map(function (tab) {
+            return '<button data-tab="' + tab.id + '"><span class="nav-ico"></span><span>' + esc(L("tab_" + tab.id)) + "</span></button>";
+          }).join("");
+          nav.dataset.lang = state.lang;
+          Array.prototype.forEach.call(nav.querySelectorAll("button"), function (btn) {
+            btn.addEventListener("click", function () { goToTab(btn.dataset.tab); });
           });
+          wasHidden = true;
+        }
+        TABS.forEach(function (tab) {
+          var btn = nav.querySelector('button[data-tab="' + tab.id + '"]');
+          var isActive = state.tab === tab.id;
+          btn.classList.toggle("active", isActive);
+          btn.querySelector(".nav-ico").innerHTML = icon(isActive ? tab.active : tab.ico);
         });
+        nav.classList.remove("hidden");
+        moveNavIndicator(nav, !wasHidden);
       }
 
       function switcherHtml() {
@@ -912,9 +1034,26 @@
       if (tg) {
         tg.ready();
         tg.expand();
+        // Fullscreen emas, Fullsize; pastga surganda mini app yopilib ketmasin.
+        try { if (tg.isFullscreen && tg.exitFullscreen) tg.exitFullscreen(); } catch (e) { /* noop */ }
+        try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch (e) { /* noop */ }
         try { tg.setHeaderColor("#0b1020"); tg.setBackgroundColor("#0b1020"); } catch (e) { /* eski mijozlar */ }
         if (tg.BackButton) tg.BackButton.onClick(closeSheet);
       }
+
+      function syncNavIndicator() { moveNavIndicator(document.getElementById("nav"), false); }
+      window.addEventListener("resize", syncNavIndicator);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncNavIndicator);
+      if (tg) { try { tg.onEvent("viewportChanged", syncNavIndicator); } catch (e) { /* noop */ } }
+
+      setupSwipeTabs(document.body, {
+        blocked: function () { return !state.overview || Boolean(document.querySelector("#sheetRoot .sheet")); },
+        go: function (step) {
+          var ids = TABS.map(function (t) { return t.id; });
+          var next = ids[ids.indexOf(state.tab) + step];
+          if (next) goToTab(next);
+        }
+      });
 
       boot();
     })();

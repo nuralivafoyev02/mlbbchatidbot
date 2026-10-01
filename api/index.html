@@ -33,7 +33,13 @@
       --blue: #3b82f6;
       --pink: #ec4899;
       --glass: rgba(255, 255, 255, 0.03);
+      /* Fon rasmi ustida turadigan kartalar — to'qroq va kuchliroq xiralashtirilgan,
+         shunda orqadagi logo kontent bilan aralashmaydi. */
+      --surface: rgba(13, 18, 33, 0.80);
+      --surface-blur: blur(18px) saturate(140%);
       --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      /* suzuvchi nav balandligi + pastki bo'shliq */
+      --nav-space: calc(78px + env(safe-area-inset-bottom, 0px));
     }
 
     html,
@@ -68,14 +74,19 @@
       z-index: 0;
       overflow: hidden;
       overflow-x: hidden;
-      pointer-events: none
+      pointer-events: none;
+      /* Fon rasmi (api/mlbblogo-bg.png, miniapp.js ?asset=bg orqali) — o'qilishi uchun qoraytirilgan */
+      background:
+        linear-gradient(180deg, rgba(6, 9, 20, 0.55) 0%, rgba(6, 9, 20, 0.40) 45%, rgba(6, 9, 20, 0.70) 100%),
+        url("?asset=bg") center / cover no-repeat,
+        var(--bg)
     }
 
     .bg-blob {
       position: absolute;
       border-radius: 50%;
       filter: blur(80px);
-      opacity: 0.15;
+      opacity: 0.08;
       animation: blobFloat 20s ease-in-out infinite alternate
     }
 
@@ -132,7 +143,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: var(--bg);
+      background: rgba(6, 9, 20, 0.15);
       padding: 20px;
       transition: opacity .4s, transform .4s
     }
@@ -149,15 +160,16 @@
     }
 
     .login-card {
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       border-radius: 24px;
       padding: 40px 32px;
       width: 100%;
       max-width: 360px;
       text-align: center;
-      backdrop-filter: blur(20px);
-      box-shadow: var(--shadow)
+      box-shadow: var(--shadow);
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .login-logo {
@@ -337,18 +349,32 @@
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 0 16px 16px;
+      padding: 0 16px calc(var(--nav-space) + 8px);
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
       scroll-behavior: smooth
     }
 
+    /* Telegram mobil tab-bar uslubidagi suzuvchi navigatsiya. position: fixed —
+       Telegram viewport balandligi o'zgarganda (expand, klaviatura) ham
+       ekrandan chiqib ketmaydi. */
     .nav {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      z-index: 90;
+      max-width: 520px;
+      margin: 0 auto;
       display: flex;
-      border-top: 1px solid var(--card-border);
-      background: rgba(10, 14, 26, 0.95);
-      backdrop-filter: blur(20px);
-      padding-bottom: env(safe-area-inset-bottom, 0)
+      gap: 4px;
+      padding: 6px;
+      border-radius: 28px;
+      background: rgba(22, 28, 48, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      -webkit-backdrop-filter: blur(22px) saturate(160%);
+      backdrop-filter: blur(22px) saturate(160%);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06)
     }
 
     .nav-item {
@@ -356,17 +382,59 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
-      padding: 10px 0 8px;
+      gap: 3px;
+      padding: 7px 0 6px;
+      border-radius: 22px;
       cursor: pointer;
       color: var(--text2);
       font-size: 10px;
-      font-weight: 500;
-      transition: color .2s
+      font-weight: 600;
+      -webkit-user-select: none;
+      user-select: none;
+      transition: color .2s, background .25s, transform .15s
+    }
+
+    .nav-item:active {
+      transform: scale(0.94)
+    }
+
+    .nav-item {
+      position: relative;
+      z-index: 1
     }
 
     .nav-item.active {
-      color: var(--accent)
+      color: #fff
+    }
+
+    /* Faol tab ostidagi suzuvchi "pill" — tab almashganda joyi va kengligi
+       prujinali animatsiya bilan o'zgaradi. */
+    .nav-indicator {
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: 0;
+      width: 0;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.34), rgba(139, 92, 246, 0.26));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 14px rgba(99, 102, 241, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 0
+    }
+
+    .nav-indicator.ready {
+      opacity: 1;
+      transition: transform .42s cubic-bezier(.34, 1.36, .5, 1), width .42s cubic-bezier(.34, 1.36, .5, 1), opacity .2s
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .nav-indicator.ready { transition: none }
+    }
+
+
+    .nav-item.active i {
+      color: var(--accent3)
     }
 
     .nav-item .icon {
@@ -376,12 +444,13 @@
 
     /* Cards */
     .card {
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       border-radius: 16px;
       padding: 16px;
       margin-bottom: 12px;
-      backdrop-filter: blur(10px)
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .card-title {
@@ -514,12 +583,14 @@
       padding: 12px 16px 12px 40px;
       border: 1px solid var(--card-border);
       border-radius: 12px;
-      background: var(--card);
+      background: var(--surface);
       color: var(--text);
       font-size: 14px;
       font-family: inherit;
       outline: none;
-      transition: border-color .2s
+      transition: border-color .2s;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .search-bar input:focus {
@@ -536,13 +607,15 @@
     }
 
     .user-item {
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 14px;
       margin-bottom: 8px;
       cursor: pointer;
-      transition: transform .15s, border-color .15s
+      transition: transform .15s, border-color .15s;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .user-item:active {
@@ -596,12 +669,14 @@
       padding: 8px 16px;
       border: 1px solid var(--card-border);
       border-radius: 8px;
-      background: var(--card);
+      background: var(--surface);
       color: var(--text);
       font-size: 13px;
       cursor: pointer;
       font-family: inherit;
-      transition: background .15s
+      transition: background .15s;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .page-btn:disabled {
@@ -889,6 +964,24 @@
       display: block
     }
 
+    /* Bo'limdan bo'limga suzib o'tish animatsiyasi */
+    @keyframes slideFromRight {
+      from { opacity: 0; transform: translate3d(32px, 0, 0) }
+      to { opacity: 1; transform: none }
+    }
+
+    @keyframes slideFromLeft {
+      from { opacity: 0; transform: translate3d(-32px, 0, 0) }
+      to { opacity: 1; transform: none }
+    }
+
+    .slide-from-right { animation: slideFromRight .3s cubic-bezier(.22, .8, .3, 1) both }
+    .slide-from-left { animation: slideFromLeft .3s cubic-bezier(.22, .8, .3, 1) both }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide-from-right, .slide-from-left { animation: none }
+    }
+
     /* Refresh btn */
     .refresh-btn {
       background: none;
@@ -997,11 +1090,13 @@
     }
 
     .skeleton-card {
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       border-radius: 16px;
       padding: 16px;
-      margin-bottom: 12px
+      margin-bottom: 12px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .skeleton-stat-grid {
@@ -1033,11 +1128,13 @@
     }
 
     .skeleton-user-item {
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 14px;
-      margin-bottom: 8px
+      margin-bottom: 8px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .skeleton-row {
@@ -1174,7 +1271,7 @@
     /* Scroll to top */
     .scroll-top {
       position: fixed;
-      bottom: 80px;
+      bottom: calc(var(--nav-space) + 12px);
       right: 16px;
       z-index: 50;
       width: 40px;
@@ -1385,11 +1482,13 @@
       gap: 14px;
       padding: 16px;
       border-radius: 16px;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(236, 72, 153, 0.08));
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(236, 72, 153, 0.08)), var(--surface);
       border: 1px solid rgba(99, 102, 241, 0.25);
       cursor: pointer;
       transition: transform .15s, border-color .15s;
-      margin-bottom: 10px
+      margin-bottom: 10px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .shop-cat:active {
@@ -1440,12 +1539,14 @@
       height: 34px;
       border-radius: 10px;
       border: 1px solid var(--card-border);
-      background: var(--card);
+      background: var(--surface);
       color: var(--text);
       font-size: 16px;
       cursor: pointer;
       margin-right: 8px;
-      flex-shrink: 0
+      flex-shrink: 0;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .shop-title-row {
@@ -1470,11 +1571,13 @@
     .shop-counter {
       padding: 10px;
       border-radius: 12px;
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       text-align: center;
       cursor: pointer;
-      transition: border-color .15s, background .15s
+      transition: border-color .15s, background .15s;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .shop-counter.active {
@@ -1505,13 +1608,15 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 12px 14px;
       margin-bottom: 8px;
       cursor: pointer;
-      transition: transform .15s, border-color .15s
+      transition: transform .15s, border-color .15s;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
     }
 
     .fm-item:active {
@@ -1602,7 +1707,7 @@
     .shop-fab {
       position: fixed;
       left: 18px;
-      bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+      bottom: calc(var(--nav-space) + 12px);
       z-index: 60;
       width: 54px;
       height: 54px;
@@ -1796,6 +1901,26 @@
   </style>
   <!-- Telegram Mini App API (HapticFeedback va h.k.) -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    // Telegram'da Fullsize (expand) holatida ochamiz. Fullscreen EMAS — aks holda
+    // tepadagi tugmalar Telegram'ning "Yopish / ⋯" tugmalari ostida qoladi.
+    (function () {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg || !tg.initData) return;
+      try {
+        tg.ready();
+        tg.expand();
+        if (tg.isFullscreen && typeof tg.exitFullscreen === "function") tg.exitFullscreen();
+        // Ro'yxatni pastga surganda mini app yopilib/kichrayib ketmasin.
+        if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes();
+        if (typeof tg.setHeaderColor === "function") tg.setHeaderColor("#0a0e1a");
+        if (typeof tg.setBackgroundColor === "function") tg.setBackgroundColor("#0a0e1a");
+        if (typeof tg.setBottomBarColor === "function") tg.setBottomBarColor("#0a0e1a");
+        // Ba'zi mijozlarda birinchi expand o'tib ketadi — viewport o'zgarsa qayta so'raymiz.
+        tg.onEvent("viewportChanged", function () { if (!tg.isExpanded) tg.expand(); });
+      } catch (e) { /* eski Telegram mijozlari */ }
+    })();
+  </script>
 </head>
 
 <body>
@@ -2161,7 +2286,8 @@
     </div>
 
     <!-- Bottom Nav -->
-    <div class="nav">
+    <div class="nav" id="bottomNav">
+      <div class="nav-indicator" aria-hidden="true"></div>
       <div class="nav-item active" onclick="switchTab('Dashboard')"><i class="bi bi-speedometer2"></i>Asosiy</div>
       <div class="nav-item" onclick="switchTab('Users')"><i class="bi bi-people"></i>Userlar</div>
       <div class="nav-item" onclick="switchTab('Shop')"><i class="bi bi-shop"></i>Do'kon</div>
@@ -2422,21 +2548,115 @@
       }
       window.hapticLight = hapticLight;
 
+      // Yopish / Bekor qilish / Saqlash va boshqa asosiy tugmalar — yengil vibratsiya.
+      // (shop-back o'zi closeFirstmail() ichida vibratsiya beradi.)
+      document.addEventListener("click", function (e) {
+        var target = e.target && e.target.closest
+          ? e.target.closest(".btn-cancel, .btn-save, .login-btn, .refresh-btn, .fm-action, .admin-add-row button")
+          : null;
+        if (target && !target.disabled) hapticLight();
+      }, true);
+
+      // Nav'dagi faol "pill"ni aktiv tab ostiga suzdirib olib boradi.
+      function moveNavIndicator(nav, animate) {
+        if (!nav) return;
+        var indicator = nav.querySelector(".nav-indicator");
+        var active = nav.querySelector(".nav-item.active, button.active");
+        if (!indicator || !active || !active.offsetWidth) return;
+        if (!animate) indicator.classList.remove("ready");
+        indicator.style.width = active.offsetWidth + "px";
+        indicator.style.transform = "translate3d(" + active.offsetLeft + "px, 0, 0)";
+        if (!animate) {
+          void indicator.offsetWidth;
+          indicator.classList.add("ready");
+        }
+      }
+
+      var TAB_ORDER = ["Dashboard", "Users", "Shop", "Settings"];
+      var tabScroll = {};
+
+      // Barmoq bilan chapga/o'ngga surib bo'lim almashtirish. Gorizontal
+      // aylantiriladigan joylar, input'lar va ochiq oynalar e'tiborga olinmaydi.
+      function setupSwipeTabs(surface, opts) {
+        var startX = 0, startY = 0, startT = 0, tracking = false;
+        surface.addEventListener("touchstart", function (e) {
+          tracking = false;
+          if (e.touches.length !== 1 || opts.blocked()) return;
+          var el = e.target;
+          while (el && el !== surface) {
+            if (el.matches && el.matches("input, textarea, select, [data-no-swipe]")) return;
+            if (el.scrollWidth > el.clientWidth + 2) {
+              var ox = getComputedStyle(el).overflowX;
+              if (ox === "auto" || ox === "scroll") return;
+            }
+            el = el.parentElement;
+          }
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          startT = Date.now();
+          tracking = true;
+        }, { passive: true });
+        surface.addEventListener("touchend", function (e) {
+          if (!tracking) return;
+          tracking = false;
+          var t = e.changedTouches[0];
+          var dx = t.clientX - startX;
+          var dy = t.clientY - startY;
+          if (Date.now() - startT > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+          opts.go(dx < 0 ? 1 : -1);
+        }, { passive: true });
+      }
+
       function switchTab(name) {
-        if (name !== currentTab) hapticLight();
+        var previous = currentTab;
+        var changed = name !== previous;
+        if (changed) hapticLight();
+        var content = document.getElementById("content");
+        if (changed && content) tabScroll[previous] = content.scrollTop;
         currentTab = name;
-        document.querySelectorAll(".section").forEach(function (s) { s.classList.remove("active"); });
-        document.getElementById("sec" + name).classList.add("active");
-        var tabs = ["Dashboard", "Users", "Shop", "Settings"];
+        document.querySelectorAll(".section").forEach(function (s) {
+          s.classList.remove("active", "slide-from-right", "slide-from-left");
+        });
+        var section = document.getElementById("sec" + name);
+        section.classList.add("active");
+        if (changed) {
+          // Har bir bo'lim o'z scroll joyini eslab qoladi.
+          if (content) {
+            content.style.scrollBehavior = "auto";
+            content.scrollTop = tabScroll[name] || 0;
+            content.style.scrollBehavior = "";
+          }
+          void section.offsetWidth; // animatsiyani qayta ishga tushirish
+          section.classList.add(TAB_ORDER.indexOf(name) > TAB_ORDER.indexOf(previous) ? "slide-from-right" : "slide-from-left");
+        }
+        var tabs = TAB_ORDER;
         document.querySelectorAll(".nav-item").forEach(function (item, i) {
           item.classList.toggle("active", tabs[i] === name);
         });
+        moveNavIndicator(document.getElementById("bottomNav"), changed);
         if (name === "Users" && allUsers.length === 0) loadUsers();
         if (name === "Settings") { loadSettings(); loadMandatorySettings(); }
         if (name === "Shop") { if (fmView === "list") loadFirstmails(); else loadShopSummary(); }
         updateShopFab();
       }
       window.switchTab = switchTab;
+
+      // Indikatorning boshlang'ich joyi (animatsiyasiz) va o'lcham o'zgarganda qayta hisoblash.
+      function syncNavIndicator() { moveNavIndicator(document.getElementById("bottomNav"), false); }
+      syncNavIndicator();
+      window.addEventListener("resize", syncNavIndicator);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncNavIndicator);
+      try {
+        if (window.Telegram && window.Telegram.WebApp) window.Telegram.WebApp.onEvent("viewportChanged", syncNavIndicator);
+      } catch (e) { /* noop */ }
+
+      setupSwipeTabs(document.getElementById("content"), {
+        blocked: function () { return Boolean(document.querySelector(".modal-overlay.open")); },
+        go: function (step) {
+          var next = TAB_ORDER[TAB_ORDER.indexOf(currentTab) + step];
+          if (next) switchTab(next);
+        }
+      });
 
       /* -----------------------------------------------------------------------
          Active Users
@@ -2560,7 +2780,7 @@
       window.closeActiveUserModal = closeActiveUserModal;
 
       document.getElementById("activeUserModal").addEventListener("click", function (e) {
-        if (e.target === e.currentTarget) closeActiveUserModal();
+        if (e.target === e.currentTarget) { hapticLight(); closeActiveUserModal(); }
       });
 
       /* -----------------------------------------------------------------------
@@ -2888,7 +3108,7 @@
       window.saveUser = saveUser;
 
       document.getElementById("userModal").addEventListener("click", function (e) {
-        if (e.target === e.currentTarget) closeModal();
+        if (e.target === e.currentTarget) { hapticLight(); closeModal(); }
       });
 
       /* -----------------------------------------------------------------------
@@ -3589,10 +3809,10 @@
       }
 
       document.getElementById("fmActionModal").addEventListener("click", function (e) {
-        if (e.target === e.currentTarget) closeFmAction();
+        if (e.target === e.currentTarget) { hapticLight(); closeFmAction(); }
       });
       document.getElementById("fmFormModal").addEventListener("click", function (e) {
-        if (e.target === e.currentTarget) closeFmForm();
+        if (e.target === e.currentTarget) { hapticLight(); closeFmForm(); }
       });
 
       /* -----------------------------------------------------------------------

@@ -84,3 +84,21 @@ test("miniapp: login without env returns login_not_configured and old sessions d
     delete require.cache[modulePath];
   }
 });
+
+test("miniapp: serves the admin background image with an image content type", async () => {
+  delete require.cache[require.resolve("../api/miniapp.js")];
+  const handler = require("../api/miniapp.js");
+  const res = {
+    statusCode: 200, headers: {}, body: null,
+    status(code) { this.statusCode = code; return this; },
+    setHeader(key, value) { this.headers[key] = value; return this; },
+    send(payload) { this.body = payload; return this; },
+  };
+
+  await handler({ method: "GET", headers: {}, query: { asset: "bg" } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.match(res.headers["Content-Type"], /^image\/(jpeg|png)$/);
+  assert.ok(Buffer.isBuffer(res.body) && res.body.length > 1000);
+  assert.match(res.headers["Cache-Control"], /max-age/);
+});

@@ -69,6 +69,10 @@ function enrichPremiumEmojis(text) {
 // ---------------------------------------------------------------------------
 module.exports = async function handler(req, res) {
   try {
+    if (req.method === "GET" && req.query && req.query.asset === "bg") {
+      return serveBackground(res);
+    }
+
     if (req.method === "GET" && !isApiAction(req)) {
       const session = readSession(req);
       const authed = session ? await isAuthed(session) : false;
@@ -1053,6 +1057,24 @@ function serveApp(req, res) {
       .status(500)
       .setHeader("Content-Type", "text/html; charset=utf-8")
       .send("<h1>Mini App HTML topilmadi</h1><p>api/index.html fayli mavjud emas.</p>");
+  }
+}
+
+// Admin panel fon rasmi (api/mlbblogo-bg.png). `api/` ichidagi fayllar Vercel'da
+// statik berilmaydi, shuning uchun funksiya o'zi qaytaradi. Fayl kengaytmasi
+// .png bo'lsa ham ichida JPEG bo'lishi mumkin — turi baytlardan aniqlanadi.
+function serveBackground(res) {
+  try {
+    const image = fs.readFileSync(path.join(__dirname, "mlbblogo-bg.png"));
+    const isJpeg = image[0] === 0xff && image[1] === 0xd8;
+    return res
+      .status(200)
+      .setHeader("Content-Type", isJpeg ? "image/jpeg" : "image/png")
+      .setHeader("Cache-Control", "public, max-age=604800, immutable")
+      .send(image);
+  } catch (e) {
+    console.error("[MINIAPP_BG_ERROR]", e.message);
+    return res.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").send("not found");
   }
 }
 
