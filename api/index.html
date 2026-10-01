@@ -1794,6 +1794,8 @@
       cursor: pointer
     }
   </style>
+  <!-- Telegram Mini App API (HapticFeedback va h.k.) -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
 <body>
@@ -2404,7 +2406,24 @@
       /* -----------------------------------------------------------------------
          Tabs
       ----------------------------------------------------------------------- */
+      /* -----------------------------------------------------------------------
+         Haptic — bo'limdan bo'limga o'tishda yengil vibratsiya
+      ----------------------------------------------------------------------- */
+      function hapticLight() {
+        try {
+          var tg = window.Telegram && window.Telegram.WebApp;
+          if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === "function") {
+            tg.HapticFeedback.impactOccurred("light");
+            return;
+          }
+          // Telegram'dan tashqarida (oddiy brauzer, Android) — qisqa vibratsiya.
+          if (navigator.vibrate) navigator.vibrate(10);
+        } catch (e) { /* vibratsiya ixtiyoriy */ }
+      }
+      window.hapticLight = hapticLight;
+
       function switchTab(name) {
+        if (name !== currentTab) hapticLight();
         currentTab = name;
         document.querySelectorAll(".section").forEach(function (s) { s.classList.remove("active"); });
         document.getElementById("sec" + name).classList.add("active");
@@ -3239,6 +3258,7 @@
       window.loadFirstmails = loadFirstmails;
 
       function openFirstmail() {
+        hapticLight();
         fmView = "list";
         document.getElementById("shopHome").style.display = "none";
         document.getElementById("shopFirstmail").style.display = "block";
@@ -3249,6 +3269,7 @@
       window.openFirstmail = openFirstmail;
 
       function closeFirstmail() {
+        hapticLight();
         fmView = "home";
         document.getElementById("shopFirstmail").style.display = "none";
         document.getElementById("shopHome").style.display = "block";

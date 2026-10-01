@@ -268,9 +268,12 @@ test("shop: Do'kon mode disables ID checks and lists firstmails with sold ones s
     await send(bot, message(9103, "📧 Firstmail sotib olish"));
     const list = telegramCalls.find((c) => c.method === "sendMessage" && /Firstmail/.test(c.payload.text));
     assert.ok(list, "firstmail list should be sent");
-    assert.match(list.payload.text, /<code>fre•••@firstmail\.ltd<\/code> — 15 000 so'm/);
-    assert.match(list.payload.text, /<s>old•••@firstmail\.ltd<\/s>/);
-    assert.doesNotMatch(list.payload.text, /secret-pass|freshmail@/);
+    // Post matnida ro'yxat yo'q — faqat qisqa ko'rsatma; pochtalar tugmalarda.
+    assert.match(list.payload.text, /pastdagi tugmalardan/);
+    assert.doesNotMatch(list.payload.text, /@firstmail|•••|secret-pass/);
+    const buttonTexts = list.payload.reply_markup.inline_keyboard.flat().map((b) => b.text).join("\n");
+    assert.match(buttonTexts, /fre•••@firstmail\.ltd · 15 000 so'm/);
+    assert.doesNotMatch(buttonTexts, /old•••|freshmail@/, "sold items and full emails stay hidden");
     const itemButtons = list.payload.reply_markup.inline_keyboard.flat().filter((b) => b.callback_data?.startsWith("shop_fm:"));
     assert.deepEqual(itemButtons.map((b) => b.callback_data), [`shop_fm:${available.id}`], "only available items are buyable");
 

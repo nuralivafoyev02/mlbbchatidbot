@@ -1648,7 +1648,7 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
 // 🛒 Do'kon (shop)
 // ---------------------------------------------------------------------------
 const SHOP_MODE = "shop";
-const SHOP_FM_PAGE_SIZE = 8;
+const SHOP_FM_PAGE_SIZE = 10;
 
 // Asosiy klaviatura tugmalari: shop rejimida bosilsa, user do'kondan chiqib
 // o'sha funksiyaga o'tadi (eski klaviatura qolib ketgan holatlar uchun).
@@ -1750,45 +1750,33 @@ function getShopPriceText(item, lang) {
     t("shop_fm_price_none", lang);
 }
 
+// Post matnida pochtalar ro'yxati chiqmaydi — faqat qisqa ko'rsatma.
+// Sotuvdagi pochtalar pastdagi inline tugmalar bo'lib turadi; sotilganlari
+// botda umuman ko'rsatilmaydi.
 function buildShopFirstmailListView(items, page, lang) {
   const all = Array.isArray(items) ? items : [];
-  const availableCount = all.filter((item) => item.status === shop.SHOP_FM_STATUS_AVAILABLE).length;
-  const soldCount = all.length - availableCount;
-  const pages = Math.max(1, Math.ceil(all.length / SHOP_FM_PAGE_SIZE));
+  const available = all.filter((item) => item.status === shop.SHOP_FM_STATUS_AVAILABLE);
+  const pages = Math.max(1, Math.ceil(available.length / SHOP_FM_PAGE_SIZE));
   const safePage = Math.min(Math.max(0, Number(page) || 0), pages - 1);
-  const pageItems = all.slice(safePage * SHOP_FM_PAGE_SIZE, (safePage + 1) * SHOP_FM_PAGE_SIZE);
-  const lines = [
-    t("shop_fm_title", lang),
-    "",
-    t("shop_fm_summary", lang, { available: availableCount, sold: soldCount }),
-    "",
-  ];
+  const pageItems = available.slice(safePage * SHOP_FM_PAGE_SIZE, (safePage + 1) * SHOP_FM_PAGE_SIZE);
+  const lines = [t("shop_fm_title", lang), ""];
   const rows = [];
 
-  if (all.length === 0) {
-    lines.push(t("shop_fm_empty", lang));
+  if (available.length === 0) {
+    lines.push(all.length > 0 ? t("shop_fm_all_sold", lang) : t("shop_fm_empty", lang));
   } else {
-    pageItems.forEach((item, offset) => {
-      const index = safePage * SHOP_FM_PAGE_SIZE + offset + 1;
-      const email = escapeHtml(shop.maskShopEmail(item.email));
+    lines.push(t("shop_fm_hint", lang));
 
-      if (item.status === shop.SHOP_FM_STATUS_SOLD) {
-        lines.push(t("shop_fm_item_sold", lang, { index, email }));
-        return;
-      }
+    if (pages > 1) {
+      lines.push("", t("shop_fm_page", lang, { page: safePage + 1, pages }));
+    }
 
-      lines.push(t("shop_fm_item", lang, { index, email, price: escapeHtml(getShopPriceText(item, lang)) }));
+    pageItems.forEach((item) => {
       rows.push([{
-        text: `${index}. ${shop.maskShopEmail(item.email)} · ${getShopPriceText(item, lang)}`.slice(0, 60),
+        text: `📧 ${shop.maskShopEmail(item.email)} · ${getShopPriceText(item, lang)}`.slice(0, 60),
         callback_data: `shop_fm:${item.id}`,
       }]);
     });
-
-    lines.push("", availableCount > 0 ? t("shop_fm_hint", lang) : t("shop_fm_all_sold", lang));
-
-    if (pages > 1) {
-      lines.push(t("shop_fm_page", lang, { page: safePage + 1, pages }));
-    }
   }
 
   const nav = [];
