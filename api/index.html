@@ -2331,7 +2331,9 @@
             document.getElementById("app").classList.add("visible");
             initApp();
           } else {
-            err.textContent = "Login yoki parol noto'g'ri";
+            err.textContent = result.error === "login_not_configured"
+              ? "Admin login sozlanmagan (ADMIN_PANEL_USERNAME / ADMIN_PANEL_PASSWORD env)"
+              : "Login yoki parol noto'g'ri";
             btn.innerHTML = "Kirish";
             btn.classList.remove("loading");
             btn.disabled = false;

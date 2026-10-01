@@ -378,6 +378,8 @@ test("shop: admin panel API requires login and manages firstmails", async () => 
   process.env.SUPABASE_URL = "https://testproject.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_test-role-key";
   process.env.ADMIN_PANEL_SECRET = "panel-secret";
+  process.env.ADMIN_PANEL_USERNAME = "shop-admin";
+  process.env.ADMIN_PANEL_PASSWORD = "shop-pass-123";
   delete require.cache[modulePath];
 
   global.fetch = async (url, options = {}) => {
@@ -409,7 +411,7 @@ test("shop: admin panel API requires login and manages firstmails", async () => 
     const denied = await call("shop_fm_list");
     assert.equal(denied.status, 401);
 
-    const login = await call("login", { username: "admin", password: "admin123" });
+    const login = await call("login", { username: "shop-admin", password: "shop-pass-123" });
     assert.equal(login.payload.ok, true);
     const cookie = String(login.headers["set-cookie"]).split(";")[0];
 
@@ -444,6 +446,8 @@ test("shop: admin panel API requires login and manages firstmails", async () => 
     delete process.env.SUPABASE_URL;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     delete process.env.ADMIN_PANEL_SECRET;
+    delete process.env.ADMIN_PANEL_USERNAME;
+    delete process.env.ADMIN_PANEL_PASSWORD;
     delete require.cache[modulePath];
   }
 });

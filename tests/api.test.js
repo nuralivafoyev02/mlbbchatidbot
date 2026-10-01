@@ -13,6 +13,8 @@ function setEnv() {
   process.env.SUPABASE_URL = "https://fake.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_fake";
   process.env.ADMIN_PANEL_SECRET = "test-admin-secret";
+  process.env.ADMIN_PANEL_USERNAME = "panel-admin";
+  process.env.ADMIN_PANEL_PASSWORD = "S3cure-test-pass";
   process.env.MLBB_LOOKUP_API_URL = "https://lookup.example.test/nickname/ml";
   process.env.SUPPORT_USERNAME = "vafoyev_n";
 }
@@ -234,7 +236,7 @@ test("admin: correct login sets session cookie and redirects", async () => {
       method: "POST",
       query: { action: "login" },
       headers: {},
-      body: { action: "login", username: "admin", password: "admin123" },
+      body: { action: "login", username: "panel-admin", password: "S3cure-test-pass" },
     },
     res
   );
@@ -279,7 +281,7 @@ test("admin: authenticated dashboard shows token creation form and list", async 
       method: "POST",
       query: { action: "login" },
       headers: {},
-      body: { action: "login", username: "admin", password: "admin123" },
+      body: { action: "login", username: "panel-admin", password: "S3cure-test-pass" },
     },
     loginRes
   );
@@ -294,7 +296,6 @@ test("admin: authenticated dashboard shows token creation form and list", async 
   assert.equal(res.statusCode, 200);
   assert.ok(res.body.includes("Yangi token yaratish"));
   assert.ok(res.body.includes("mlbb_abc"));
-  assert.ok(res.body.includes("Parolni o'zgartirish"));
   restoreEnv();
 });
 
@@ -309,7 +310,7 @@ test("admin: creating a token reveals the raw token only once", async () => {
       method: "POST",
       query: { action: "login" },
       headers: {},
-      body: { action: "login", username: "admin", password: "admin123" },
+      body: { action: "login", username: "panel-admin", password: "S3cure-test-pass" },
     },
     loginRes
   );

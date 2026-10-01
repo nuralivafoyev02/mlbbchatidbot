@@ -2,12 +2,11 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const shop = require("./_shop.js");
+const adminAuth = require("./_admin-auth.js");
 
 // ---------------------------------------------------------------------------
 // Config (same pattern as api/admin.js)
 // ---------------------------------------------------------------------------
-const DEFAULT_ADMIN_USER = "admin";
-const DEFAULT_ADMIN_PASSWORD = "admin123";
 const SESSION_TTL_MS = 1000 * 60 * 60;           // 1 hour (default)
 const SESSION_TTL_REMEMBER_MS = 1000 * 60 * 60 * 24; // 24 hours (remember me)
 const COOKIE_NAME = "mlbb_miniapp_session";
@@ -15,7 +14,6 @@ const USERS_PAGE_SIZE = 20;
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const SUPABASE_SERVICE_KEY = resolveServiceKey(process.env);
-const ADMIN_PANEL_SECRET = (process.env.ADMIN_PANEL_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,7396686285");
 const SUPPORT_USERNAME = (process.env.SUPPORT_USERNAME || "Ksava_org").replace(/^@/, "").trim();
 const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || "checkmlbbidBot").trim();
@@ -158,12 +156,12 @@ function readSession(req) {
 }
 
 function sign(value) {
-  return crypto.createHmac("sha256", ADMIN_PANEL_SECRET).update(String(value)).digest("base64url");
+  return crypto.createHmac("sha256", adminAuth.getAdminSessionKey()).update(String(value)).digest("base64url");
 }
 
 function createSession(res, remember) {
   const ttl = remember ? SESSION_TTL_REMEMBER_MS : SESSION_TTL_MS;
-  const payloadB64 = base64Encode(JSON.stringify({ sub: DEFAULT_ADMIN_USER, iat: Date.now(), exp: Date.now() + ttl }));
+  const payloadB64 = base64Encode(JSON.stringify({ sub: adminAuth.getAdminSessionSubject(), iat: Date.now(), exp: Date.now() + ttl }));
   const value = `${payloadB64}.${sign(payloadB64)}`;
   res.setHeader("Set-Cookie", `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax`);
   return value;
@@ -174,35 +172,22 @@ function clearSession(res) {
 }
 
 async function isAuthed(session) {
-  if (!session || session.sub !== DEFAULT_ADMIN_USER) return false;
+  if (!session || !adminAuth.isAdminLoginConfigured()) return false;
+  if (session.sub !== adminAuth.getAdminSessionSubject()) return false;
   return true;
-}
-
-async function checkPassword(password) {
-  try {
-    const rows = await supabaseRequest(`/admin_settings?key=eq.admin_password&select=value&limit=1`);
-    if (Array.isArray(rows) && rows.length > 0 && rows[0]?.value) {
-      const { salt, hash } = rows[0].value;
-      const candidate = crypto.createHash("sha256").update(String(salt) + ":" + String(password)).digest("hex");
-      return timingSafeEqualStr(candidate, hash);
-    }
-    return timingSafeEqualStr(password, DEFAULT_ADMIN_PASSWORD);
-  } catch {
-    return timingSafeEqualStr(password, DEFAULT_ADMIN_PASSWORD);
-  }
 }
 
 // ---------------------------------------------------------------------------
 // API handlers
 // ---------------------------------------------------------------------------
 async function handleLogin(req, res, body) {
-  const username = String(body.username || "").trim();
-  const password = String(body.password || "").trim();
-  if (username !== DEFAULT_ADMIN_USER) {
-    return json(res, 401, { ok: false, error: "invalid_credentials" });
+  if (!adminAuth.isAdminLoginConfigured()) {
+    console.error("[MINIAPP_LOGIN] ADMIN_PANEL_USERNAME / ADMIN_PANEL_PASSWORD env sozlanmagan");
+    return json(res, 503, { ok: false, error: "login_not_configured" });
   }
-  const valid = await checkPassword(password);
-  if (!valid) {
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
+  if (!adminAuth.verifyAdminLogin(username, password)) {
     return json(res, 401, { ok: false, error: "invalid_credentials" });
   }
   const remember = body.remember_me === true || body.remember_me === "true";

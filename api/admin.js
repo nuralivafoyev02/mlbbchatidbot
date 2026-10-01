@@ -1,12 +1,9 @@
 const crypto = require("node:crypto");
+const adminAuth = require("./_admin-auth.js");
 
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, "");
 const SUPABASE_SERVICE_KEY = resolveServiceKey(process.env);
-const ADMIN_PANEL_SECRET = cleanEnv(
-  process.env.ADMIN_PANEL_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET
-);
-const DEFAULT_ADMIN_USER = "admin";
-const DEFAULT_ADMIN_PASSWORD = "admin123";
+// Login/parol faqat env'da: ADMIN_PANEL_USERNAME / ADMIN_PANEL_PASSWORD (api/_admin-auth.js).
 const SUPABASE_TIMEOUT_MS = parseBoundedNumber(
   process.env.SUPABASE_TIMEOUT_MS,
   2500,
@@ -96,7 +93,7 @@ function readSession(req) {
 
 function sign(value) {
   return crypto
-    .createHmac("sha256", ADMIN_PANEL_SECRET)
+    .createHmac("sha256", adminAuth.getAdminSessionKey())
     .update(String(value))
     .digest("base64url");
 }
@@ -104,7 +101,7 @@ function sign(value) {
 function createSession(res) {
   const payloadB64 = base64Encode(
     JSON.stringify({
-      sub: DEFAULT_ADMIN_USER,
+      sub: adminAuth.getAdminSessionSubject(),
       iat: Date.now(),
       exp: Date.now() + SESSION_TTL_MS,
     })
@@ -124,7 +121,10 @@ function clearSession(res) {
 }
 
 async function isAuthed(session) {
-  if (!session || session.sub !== DEFAULT_ADMIN_USER) {
+  if (!session || !adminAuth.isAdminLoginConfigured()) {
+    return false;
+  }
+  if (session.sub !== adminAuth.getAdminSessionSubject()) {
     return false;
   }
   return true;
@@ -134,15 +134,15 @@ async function isAuthed(session) {
 // Login / logout / password
 // ------------------------------------------------------------------
 async function handleLogin(req, res, body) {
-  const username = cleanEnv(body.username);
-  const password = cleanEnv(body.password);
-
-  if (username !== DEFAULT_ADMIN_USER) {
-    return serveLogin(req, res, "Foydalanuvchi nomi yoki parol noto'g'ri.");
+  if (!adminAuth.isAdminLoginConfigured()) {
+    console.error("[ADMIN_LOGIN] ADMIN_PANEL_USERNAME / ADMIN_PANEL_PASSWORD env sozlanmagan");
+    return serveLogin(req, res, "Admin login sozlanmagan: ADMIN_PANEL_USERNAME va ADMIN_PANEL_PASSWORD env qiymatlarini qo'ying.");
   }
 
-  const valid = await checkPassword(password);
-  if (!valid) {
+  const username = cleanEnv(body.username);
+  const password = String(body.password ?? "");
+
+  if (!adminAuth.verifyAdminLogin(username, password)) {
     return serveLogin(req, res, "Foydalanuvchi nomi yoki parol noto'g'ri.");
   }
 
@@ -155,34 +155,18 @@ function handleLogout(req, res) {
   return redirect(res, "/api/admin");
 }
 
-async function handleChangePassword(req, res, body) {
+async function handleChangePassword(req, res) {
   const session = readSession(req);
   if (!(await isAuthed(session))) {
     return serveLogin(req, res, "Avval tizimga kiring.");
   }
 
-  const current = cleanEnv(body.current_password);
-  const next = cleanEnv(body.new_password);
-
-  if (!current || !next) {
-    return serveDashboard(req, res, session, "Joriy va yangi parol kiritilishi shart.");
-  }
-
-  if (next.length < 6) {
-    return serveDashboard(req, res, session, "Yangi parol kamida 6 belgidan iborat bo'lsin.");
-  }
-
-  if (!(await checkPassword(current))) {
-    return serveDashboard(req, res, session, "Joriy parol noto'g'ri.");
-  }
-
-  try {
-    await setPassword(next);
-  } catch (error) {
-    console.error("[SET_PASSWORD_ERROR]", error);
-    return serveDashboard(req, res, session, "Parolni saqlashda xatolik yuz berdi. Likinroq urinib ko'ring.");
-  }
-  return serveDashboard(req, res, session, "✅ Parol muvaffaqiyatli o'zgartirildi.");
+  return serveDashboard(
+    req,
+    res,
+    session,
+    "Parol endi ADMIN_PANEL_PASSWORD env orqali o'zgartiriladi (Vercel → Settings → Environment Variables)."
+  );
 }
 
 // ------------------------------------------------------------------
@@ -221,7 +205,7 @@ async function handleCreateToken(req, res, body) {
         token_hash: tokenHash,
         token_prefix: tokenPrefix,
         title,
-        created_by: DEFAULT_ADMIN_USER,
+        created_by: adminAuth.getAdminSessionSubject() || "admin",
         expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
         is_revoked: false,
         usage_count: 0,
@@ -264,46 +248,6 @@ async function handleRevokeToken(req, res, body) {
     console.error("[ADMIN_REVOKE_TOKEN_ERROR]", error);
     return serveDashboard(req, res, session, "Tokenni bekor qilishda xatolik yuz berdi.");
   }
-}
-
-// ------------------------------------------------------------------
-// Password storage
-// ------------------------------------------------------------------
-async function checkPassword(password) {
-  try {
-    const rows = await supabaseRequest(
-      `/admin_settings?key=eq.admin_password&select=value&limit=1`
-    );
-
-    if (Array.isArray(rows) && rows.length > 0 && rows[0]?.value) {
-      const { salt, hash } = rows[0].value;
-      const candidate = crypto
-        .createHash("sha256")
-        .update(String(salt) + ":" + String(password))
-        .digest("hex");
-      return timingSafeEqualStr(candidate, hash);
-    }
-
-    // Default fallback
-    return timingSafeEqualStr(password, DEFAULT_ADMIN_PASSWORD);
-  } catch (error) {
-    console.error("[CHECK_PASSWORD_ERROR]", error);
-    return timingSafeEqualStr(password, DEFAULT_ADMIN_PASSWORD);
-  }
-}
-
-async function setPassword(password) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto
-    .createHash("sha256")
-    .update(salt + ":" + String(password))
-    .digest("hex");
-
-  await supabaseRequest("/admin_settings?on_conflict=key", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates",
-    body: { key: "admin_password", value: { salt, hash } },
-  });
 }
 
 function hashToken(rawToken) {
@@ -447,7 +391,6 @@ function renderDashboard({ message, notice, tokens, warnings = [] }) {
       <label>Amal qilish muddati (kun)</label>
       <input type="number" name="days" min="1" max="3650" placeholder="Masalan: 30" required>
       <button type="submit">Yaratish</button>
-      <button type="button" class="ghost" style="margin-left:8px" onclick="openModal('pwModal')">🔒 Parolni o'zgartirish</button>
     </form>
   </div>
 
@@ -472,23 +415,6 @@ function renderDashboard({ message, notice, tokens, warnings = [] }) {
       </tbody>
     </table>
     </div>
-  </div>
-</div>
-
-<div class="modal" id="pwModal" onclick="if(event.target===this)closeModal('pwModal')">
-  <div class="modal-card">
-    <h2>Parolni o'zgartirish</h2>
-    <form method="POST" action="/api/admin?action=change_password">
-      <input type="hidden" name="action" value="change_password">
-      <label>Joriy parol</label>
-      <input type="password" name="current_password" required autocomplete="current-password">
-      <label>Yangi parol (kamida 6 belgi)</label>
-      <input type="password" name="new_password" required autocomplete="new-password">
-      <div class="row">
-        <button type="button" class="btn-ghost" onclick="closeModal('pwModal')">Bekor qilish</button>
-        <button type="submit" class="btn-primary">Saqlash</button>
-      </div>
-    </form>
   </div>
 </div>
 
