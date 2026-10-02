@@ -7,8 +7,8 @@ const adminAuth = require("./_admin-auth.js");
 // ---------------------------------------------------------------------------
 // Config (same pattern as api/admin.js)
 // ---------------------------------------------------------------------------
-const SESSION_TTL_MS = 1000 * 60 * 60;           // 1 hour (default)
-const SESSION_TTL_REMEMBER_MS = 1000 * 60 * 60 * 24; // 24 hours (remember me)
+const SESSION_TTL_MS = 1000 * 60 * 60;                     // 1 hour (default)
+const SESSION_TTL_REMEMBER_MS = 1000 * 60 * 60 * 24 * 30;  // 30 days (remember me)
 const COOKIE_NAME = "mlbb_miniapp_session";
 const USERS_PAGE_SIZE = 20;
 
@@ -167,12 +167,23 @@ function createSession(res, remember) {
   const ttl = remember ? SESSION_TTL_REMEMBER_MS : SESSION_TTL_MS;
   const payloadB64 = base64Encode(JSON.stringify({ sub: adminAuth.getAdminSessionSubject(), iat: Date.now(), exp: Date.now() + ttl }));
   const value = `${payloadB64}.${sign(payloadB64)}`;
-  res.setHeader("Set-Cookie", `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax`);
+
+  // "Eslab qolish" belgilansa — cookie'ga Max-Age/Expires beramiz, shunda u
+  // "persistent" bo'ladi va Telegram butunlay yopilib qayta ochilса ham saqlanib
+  // qoladi. Belgilanmasa — Max-Age'siz "session cookie": ilova yopilganda o'chadi.
+  let cookie = `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax; Secure`;
+  if (remember) {
+    const maxAgeSec = Math.floor(SESSION_TTL_REMEMBER_MS / 1000);
+    const expires = new Date(Date.now() + SESSION_TTL_REMEMBER_MS).toUTCString();
+    cookie += `; Max-Age=${maxAgeSec}; Expires=${expires}`;
+  }
+
+  res.setHeader("Set-Cookie", cookie);
   return value;
 }
 
 function clearSession(res) {
-  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`);
+  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Secure; Max-Age=0`);
 }
 
 async function isAuthed(session) {
