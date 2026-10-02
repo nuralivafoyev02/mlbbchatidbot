@@ -462,6 +462,75 @@
       margin-bottom: 12px
     }
 
+    /* Sozlamalar: ochiladigan-yopiladigan kartalar (default yopiq) */
+    .card.collapsible {
+      padding: 0
+    }
+
+    .collapse-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+      text-align: left
+    }
+
+    .collapse-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text2)
+    }
+
+    .collapse-title i {
+      color: var(--accent3);
+      font-size: 15px
+    }
+
+    .collapse-chevron {
+      color: var(--text2);
+      transition: transform .25s ease
+    }
+
+    .card.collapsible.open .collapse-chevron {
+      transform: rotate(180deg)
+    }
+
+    .collapse-body {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows .25s ease
+    }
+
+    .card.collapsible.open .collapse-body {
+      grid-template-rows: 1fr
+    }
+
+    .collapse-inner {
+      min-height: 0;
+      overflow: hidden;
+      padding: 0 16px;
+      visibility: hidden;
+      transition: padding .25s ease, visibility 0s .25s
+    }
+
+    .card.collapsible.open .collapse-inner {
+      padding: 0 16px 16px;
+      visibility: visible;
+      transition: padding .25s ease, visibility 0s
+    }
+
     .stats-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -964,14 +1033,16 @@
       display: block
     }
 
-    /* Bo'limdan bo'limga suzib o'tish animatsiyasi */
+    /* Bo'limdan bo'limga suzib o'tish animatsiyasi.
+       Faqat transform: ota elementda opacity < 1 bo'lsa, ichidagi kartalarning
+       backdrop-filter'i o'chib qoladi (fon rasmi bir lahza tiniq ko'rinadi). */
     @keyframes slideFromRight {
-      from { opacity: 0; transform: translate3d(32px, 0, 0) }
+      from { transform: translate3d(32px, 0, 0) }
       to { opacity: 1; transform: none }
     }
 
     @keyframes slideFromLeft {
-      from { opacity: 0; transform: translate3d(-32px, 0, 0) }
+      from { transform: translate3d(-32px, 0, 0) }
       to { opacity: 1; transform: none }
     }
 
@@ -1604,15 +1675,67 @@
       color: var(--red)
     }
 
+    .fm-sums {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px
+    }
+
+    .fm-sum {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      min-width: 0;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .fm-sum.green {
+      border-color: rgba(16, 185, 129, 0.3);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), var(--surface) 70%)
+    }
+
+    .fm-sum.red {
+      border-color: rgba(239, 68, 68, 0.3);
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.14), var(--surface) 70%)
+    }
+
+    .fm-sum-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: .4px
+    }
+
+    .fm-sum-value {
+      font-size: 17px;
+      font-weight: 800;
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .fm-sum.green .fm-sum-value {
+      color: var(--green)
+    }
+
+    .fm-sum.red .fm-sum-value {
+      color: var(--red)
+    }
+
     .fm-item {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       background: var(--surface);
       border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 12px 14px;
-      margin-bottom: 8px;
+      border-radius: 10px;
+      padding: 7px 10px;
+      margin-bottom: 6px;
       cursor: pointer;
       transition: transform .15s, border-color .15s;
       -webkit-backdrop-filter: var(--surface-blur);
@@ -1625,15 +1748,15 @@
     }
 
     .fm-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
       background: rgba(99, 102, 241, 0.15);
       color: var(--accent3);
-      font-size: 16px;
+      font-size: 13px;
       flex-shrink: 0
     }
 
@@ -1643,7 +1766,7 @@
     }
 
     .fm-email {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
@@ -1651,9 +1774,9 @@
     }
 
     .fm-meta {
-      font-size: 11px;
+      font-size: 10.5px;
       color: var(--text2);
-      margin-top: 2px;
+      margin-top: 1px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis
@@ -1671,9 +1794,9 @@
       display: inline-block;
       font-size: 10px;
       font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 6px;
-      margin-top: 4px;
+      padding: 1px 6px;
+      border-radius: 5px;
+      margin-top: 2px;
       text-transform: uppercase;
       letter-spacing: .4px
     }
@@ -2190,9 +2313,19 @@
             <h2><i class="bi bi-envelope-at"></i> Firstmail</h2>
             <button class="refresh-btn" style="margin:0" onclick="loadFirstmails()"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
+          <div class="fm-sums">
+            <div class="fm-sum green">
+              <div class="fm-sum-label"><i class="bi bi-shop"></i> Sotuvda</div>
+              <div class="fm-sum-value" id="fmSumAvailable">—</div>
+            </div>
+            <div class="fm-sum red">
+              <div class="fm-sum-label"><i class="bi bi-bag-check"></i> Sotildi</div>
+              <div class="fm-sum-value" id="fmSumSold">—</div>
+            </div>
+          </div>
           <div class="search-bar">
             <span class="search-icon"><i class="bi bi-search"></i></span>
-            <input type="text" id="fmSearch" placeholder="Qidirish: email, narx, izoh..." oninput="renderFirstmails()">
+            <input type="text" id="fmSearch" placeholder="Qidirish: email, narx, izoh..." oninput="debounceFmSearch()">
           </div>
           <div class="shop-counters" id="fmCounters">
             <div class="shop-counter active" data-filter="all" onclick="setFmFilter('all')"><b id="fmCountAll">0</b><span>Hammasi</span></div>
@@ -2200,6 +2333,10 @@
             <div class="shop-counter red" data-filter="sold" onclick="setFmFilter('sold')"><b id="fmCountSold">0</b><span>Sotilgan</span></div>
           </div>
           <div id="fmList"></div>
+          <div id="fmSentinel" style="height:1px"></div>
+          <div class="empty" id="fmLoader" style="display:none;padding:12px">
+            <div class="spinner"></div>
+          </div>
           <div style="height:70px"></div>
         </div>
       </div>
@@ -2209,8 +2346,12 @@
         <div class="section-header">
           <h2><i class="bi bi-gear"></i> Bot sozlamalari</h2>
         </div>
-        <div class="card">
-          <div class="card-title">Default limitlar</div>
+        <div class="card collapsible">
+          <button type="button" class="collapse-head" onclick="toggleSettingsCard(this)" aria-expanded="false">
+            <span class="collapse-title"><i class="bi bi-sliders"></i>Default limitlar</span>
+            <i class="bi bi-chevron-down collapse-chevron"></i>
+          </button>
+          <div class="collapse-body"><div class="collapse-inner">
           <div class="settings-group">
             <div class="settings-label">To'liq ma'lumot limiti (paket)</div>
             <input class="settings-input" type="number" id="setFullInfoLimit" min="0" value="3">
@@ -2225,9 +2366,14 @@
           </div>
           <button class="login-btn" style="margin-top:8px" onclick="saveSettings()"><i class="bi bi-floppy"></i>
             Saqlash</button>
+          </div></div>
         </div>
-        <div class="card">
-          <div class="card-title">Majburiy guruh / kanal</div>
+        <div class="card collapsible">
+          <button type="button" class="collapse-head" onclick="toggleSettingsCard(this)" aria-expanded="false">
+            <span class="collapse-title"><i class="bi bi-megaphone"></i>Majburiy guruh / kanal</span>
+            <i class="bi bi-chevron-down collapse-chevron"></i>
+          </button>
+          <div class="collapse-body"><div class="collapse-inner">
           <div class="settings-group">
             <div class="settings-label">Havola yoki ID kiriting</div>
             <input class="settings-input" type="text" id="mandatoryGroupIdInput" placeholder="Kiriting..."
@@ -2273,14 +2419,20 @@
               </div>
             </div>
           </div>
+          </div></div>
         </div>
-        <div class="card">
-          <div class="card-title">Adminlar ro'yxati</div>
+        <div class="card collapsible">
+          <button type="button" class="collapse-head" onclick="toggleSettingsCard(this)" aria-expanded="false">
+            <span class="collapse-title"><i class="bi bi-shield-lock"></i>Adminlar ro'yxati</span>
+            <i class="bi bi-chevron-down collapse-chevron"></i>
+          </button>
+          <div class="collapse-body"><div class="collapse-inner">
           <div id="adminList" style="margin-bottom:8px"></div>
           <div class="admin-add-row">
             <input class="settings-input" type="text" id="newAdminId" placeholder="TG ID qo'shish">
             <button onclick="addAdmin()">+ Qo'shish</button>
           </div>
+          </div></div>
         </div>
       </div>
     </div>
@@ -2636,7 +2788,7 @@
         moveNavIndicator(document.getElementById("bottomNav"), changed);
         if (name === "Users" && allUsers.length === 0) loadUsers();
         if (name === "Settings") { loadSettings(); loadMandatorySettings(); }
-        if (name === "Shop") { if (fmView === "list") loadFirstmails(); else loadShopSummary(); }
+        if (name === "Shop") { if (fmView === "list") reloadFirstmailsKeepingPosition(); else loadShopSummary(); }
         updateShopFab();
       }
       window.switchTab = switchTab;
@@ -2981,6 +3133,16 @@
         document.getElementById("content").scrollTo({ top: 0, behavior: "smooth" });
       }
       window.scrollToTop = scrollToTop;
+
+      function toggleSettingsCard(head) {
+        var card = head.closest(".card.collapsible");
+        if (!card) return;
+        hapticLight();
+        var open = !card.classList.contains("open");
+        card.classList.toggle("open", open);
+        head.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      window.toggleSettingsCard = toggleSettingsCard;
 
       function debounceSearch() {
         clearTimeout(searchTimeout);
@@ -3390,11 +3552,16 @@
       /* -----------------------------------------------------------------------
          Do'kon → Firstmail
       ----------------------------------------------------------------------- */
+      var FM_PAGE_SIZE = 30;
       var fmItems = [];
       var fmCounts = { total: 0, available: 0, sold: 0 };
+      var fmSums = { available: 0, sold: 0 };
       var fmFilter = "all";
       var fmView = "home";
       var fmLoading = false;
+      var fmHasMore = false;
+      var fmRequestSeq = 0;
+      var fmSearchTimer = null;
       var currentFm = null;
       var fmFormMode = "single";
       var fmEditingId = null;
@@ -3418,37 +3585,29 @@
         document.getElementById("fmCountAll").textContent = fmCounts.total;
         document.getElementById("fmCountAvailable").textContent = fmCounts.available;
         document.getElementById("fmCountSold").textContent = fmCounts.sold;
+        document.getElementById("fmSumAvailable").textContent = formatPrice(String(fmSums.available || 0));
+        document.getElementById("fmSumSold").textContent = formatPrice(String(fmSums.sold || 0));
       }
 
-      function recountFm() {
-        var sold = fmItems.filter(function (i) { return i.status === "sold"; }).length;
-        fmCounts = { total: fmItems.length, available: fmItems.length - sold, sold: sold };
+      function applyFmSummary(data) {
+        if (data.counts) fmCounts = data.counts;
+        if (data.sums) fmSums = data.sums;
         updateShopMeta();
         updateFmCounters();
       }
 
-      function sortFmItems() {
-        function ts(v) { var n = Date.parse(v || ""); return isNaN(n) ? 0 : n; }
-        fmItems.sort(function (a, b) {
-          if (a.status !== b.status) return a.status === "available" ? -1 : 1;
-          if (a.status === "sold") return ts(b.sold_at) - ts(a.sold_at);
-          return ts(b.created_at) - ts(a.created_at);
-        });
-      }
-
       function buildFmSkeleton() {
-        var row = '<div class="fm-item" style="cursor:default"><div class="skeleton" style="width:36px;height:36px;border-radius:10px;margin:0"></div>' +
-          '<div style="flex:1"><div class="skeleton skeleton-line w60" style="height:13px;margin-bottom:6px"></div>' +
-          '<div class="skeleton skeleton-line w40" style="height:10px;margin:0"></div></div>' +
-          '<div class="skeleton skeleton-line" style="width:56px;height:14px;margin:0"></div></div>';
-        return row + row + row + row;
+        var row = '<div class="fm-item" style="cursor:default"><div class="skeleton" style="width:28px;height:28px;border-radius:8px;margin:0"></div>' +
+          '<div style="flex:1"><div class="skeleton skeleton-line w60" style="height:12px;margin-bottom:5px"></div>' +
+          '<div class="skeleton skeleton-line w40" style="height:9px;margin:0"></div></div>' +
+          '<div class="skeleton skeleton-line" style="width:56px;height:12px;margin:0"></div></div>';
+        return row + row + row + row + row + row;
       }
 
       function loadShopSummary() {
-        api("shop_fm_list", {}).then(function (result) {
+        api("shop_fm_list", { limit: 0 }).then(function (result) {
           if (result.ok && result.data) {
-            fmItems = result.data.items || [];
-            recountFm();
+            applyFmSummary(result.data);
           } else {
             document.getElementById("shopFmMeta").textContent = "Ma'lumotni yuklab bo'lmadi";
           }
@@ -3457,25 +3616,80 @@
         });
       }
 
-      function loadFirstmails() {
-        if (fmLoading) return;
+      function fmListError(text) {
+        document.getElementById("fmList").innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-wifi-off"></i></div><div class="empty-text">' + esc(text) + "</div></div>";
+      }
+
+      // reset=true — ro'yxat boshidan; keepCount=true — o'zgartirishdan keyin
+      // allaqachon ko'rsatilgan miqdorni (scroll joyi saqlanishi uchun) qayta yuklaydi.
+      function loadFirstmails(reset, keepCount) {
+        if (reset === undefined) reset = true;
+        if (!reset && (fmLoading || !fmHasMore)) return;
+        var seq = ++fmRequestSeq;
+        var offset = reset ? 0 : fmItems.length;
+        var limit = reset && keepCount ? Math.max(FM_PAGE_SIZE, fmItems.length) : FM_PAGE_SIZE;
         fmLoading = true;
-        if (!fmItems.length) document.getElementById("fmList").innerHTML = buildFmSkeleton();
-        api("shop_fm_list", {}).then(function (result) {
+        if (reset && !keepCount) {
+          fmItems = [];
+          fmHasMore = false;
+          document.getElementById("fmList").innerHTML = buildFmSkeleton();
+        }
+        if (!reset) document.getElementById("fmLoader").style.display = "block";
+        api("shop_fm_list", {
+          offset: offset,
+          limit: limit,
+          status: fmFilter === "all" ? "" : fmFilter,
+          query: document.getElementById("fmSearch").value.trim()
+        }).then(function (result) {
+          if (seq !== fmRequestSeq) return;
           fmLoading = false;
+          document.getElementById("fmLoader").style.display = "none";
           if (!result.ok || !result.data) {
-            document.getElementById("fmList").innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-wifi-off"></i></div><div class="empty-text">' + esc(result.message || "Yuklab bo'lmadi") + "</div></div>";
+            if (reset) fmListError(result.message || "Yuklab bo'lmadi");
+            else showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
             return;
           }
-          fmItems = result.data.items || [];
-          recountFm();
-          renderFirstmails();
+          var page = result.data.items || [];
+          fmHasMore = Boolean(result.data.has_more);
+          applyFmSummary(result.data);
+          if (reset) {
+            fmItems = page;
+            renderFirstmails();
+          } else {
+            fmItems = fmItems.concat(page);
+            appendFirstmails(page);
+          }
         }).catch(function () {
+          if (seq !== fmRequestSeq) return;
           fmLoading = false;
-          document.getElementById("fmList").innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-wifi-off"></i></div><div class="empty-text">Server bilan bog\'lanishda xatolik</div></div>';
+          document.getElementById("fmLoader").style.display = "none";
+          if (reset) fmListError("Server bilan bog'lanishda xatolik");
+          else showToast("❌ Server bilan bog'lanishda xatolik", "error");
         });
       }
       window.loadFirstmails = loadFirstmails;
+
+      function reloadFirstmailsKeepingPosition() {
+        loadFirstmails(true, true);
+      }
+
+      function debounceFmSearch() {
+        clearTimeout(fmSearchTimer);
+        fmSearchTimer = setTimeout(function () { loadFirstmails(true); }, 350);
+      }
+      window.debounceFmSearch = debounceFmSearch;
+
+      function setupFmInfiniteScroll() {
+        var sentinel = document.getElementById("fmSentinel");
+        if (!sentinel || !window.IntersectionObserver) return;
+        var observer = new IntersectionObserver(function (entries) {
+          if (entries[0].isIntersecting && currentTab === "Shop" && fmView === "list" && fmHasMore && !fmLoading) {
+            loadFirstmails(false);
+          }
+        }, { rootMargin: "300px" });
+        observer.observe(sentinel);
+      }
+      setupFmInfiniteScroll();
 
       function openFirstmail() {
         hapticLight();
@@ -3483,8 +3697,7 @@
         document.getElementById("shopHome").style.display = "none";
         document.getElementById("shopFirstmail").style.display = "block";
         updateShopFab();
-        if (fmItems.length) renderFirstmails();
-        loadFirstmails();
+        loadFirstmails(true);
       }
       window.openFirstmail = openFirstmail;
 
@@ -3503,20 +3716,9 @@
         document.querySelectorAll("#fmCounters .shop-counter").forEach(function (el) {
           el.classList.toggle("active", el.getAttribute("data-filter") === filter);
         });
-        renderFirstmails();
+        loadFirstmails(true);
       }
       window.setFmFilter = setFmFilter;
-
-      function getVisibleFirstmails() {
-        var q = document.getElementById("fmSearch").value.trim().toLowerCase();
-        return fmItems.filter(function (item) {
-          if (fmFilter !== "all" && item.status !== fmFilter) return false;
-          if (!q) return true;
-          return [item.email, item.price, item.note].some(function (v) {
-            return String(v || "").toLowerCase().indexOf(q) !== -1;
-          });
-        });
-      }
 
       function formatPrice(price) {
         var v = String(price || "").trim();
@@ -3525,16 +3727,8 @@
         return v;
       }
 
-      function renderFirstmails() {
-        var list = document.getElementById("fmList");
-        var items = getVisibleFirstmails();
-        if (!items.length) {
-          var q = document.getElementById("fmSearch").value.trim();
-          var text = q ? "Qidiruv bo'yicha hech narsa topilmadi" : (fmItems.length ? "Bu bo'limda pochta yo'q" : "Hali pochta qo'shilmagan.<br>Pastdagi <b>+</b> tugmasini bosing.");
-          list.innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-envelope-x"></i></div><div class="empty-text">' + text + "</div></div>";
-          return;
-        }
-        list.innerHTML = items.map(function (item) {
+      function buildFmItemsHtml(items) {
+        return items.map(function (item) {
           var sold = item.status === "sold";
           var metaParts = [];
           if (sold) metaParts.push("Sotildi " + (item.sold_at ? timeAgo(item.sold_at) : ""));
@@ -3547,22 +3741,40 @@
             '<div style="text-align:right;flex-shrink:0"><div class="fm-price">' + esc(formatPrice(item.price) || "—") + "</div>" +
             '<span class="fm-status ' + (sold ? "sold" : "available") + '">' + (sold ? "Sotilgan" : "Sotuvda") + "</span></div></div>";
         }).join("");
-        list.querySelectorAll(".fm-item").forEach(function (el) {
+      }
+
+      function attachFmClickHandlers(root) {
+        root.querySelectorAll(".fm-item[data-fid]").forEach(function (el) {
+          if (el._hasClick) return;
+          el._hasClick = true;
           el.addEventListener("click", function () { openFmAction(el.getAttribute("data-fid")); });
         });
+      }
+
+      function renderFirstmails() {
+        var list = document.getElementById("fmList");
+        if (!fmItems.length) {
+          var q = document.getElementById("fmSearch").value.trim();
+          var text = q ? "Qidiruv bo'yicha hech narsa topilmadi" : (fmCounts.total ? "Bu bo'limda pochta yo'q" : "Hali pochta qo'shilmagan.<br>Pastdagi <b>+</b> tugmasini bosing.");
+          list.innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-envelope-x"></i></div><div class="empty-text">' + text + "</div></div>";
+          return;
+        }
+        list.innerHTML = buildFmItemsHtml(fmItems);
+        attachFmClickHandlers(list);
+      }
+
+      function appendFirstmails(items) {
+        var list = document.getElementById("fmList");
+        var tmp = document.createElement("div");
+        tmp.innerHTML = buildFmItemsHtml(items);
+        while (tmp.firstChild) list.appendChild(tmp.firstChild);
+        attachFmClickHandlers(list);
       }
       window.renderFirstmails = renderFirstmails;
 
       function findFm(id) {
         for (var i = 0; i < fmItems.length; i++) if (fmItems[i].id === id) return fmItems[i];
         return null;
-      }
-
-      function replaceFm(item) {
-        for (var i = 0; i < fmItems.length; i++) {
-          if (fmItems[i].id === item.id) { fmItems[i] = item; return; }
-        }
-        fmItems.push(item);
       }
 
       function resetDeleteButton() {
@@ -3628,11 +3840,8 @@
         btn.innerHTML = '<span class="spinner" style="width:20px;height:20px"></span><span>Saqlanmoqda</span>';
         api("shop_fm_set_sold", { id: item.id, sold: makeSold }).then(function (result) {
           if (result.ok && result.data && result.data.item) {
-            replaceFm(result.data.item);
-            sortFmItems();
-            recountFm();
-            renderFirstmails();
             closeFmAction();
+            reloadFirstmailsKeepingPosition();
             showToast(makeSold ? "✅ Sotildi deb belgilandi" : "✅ Sotuvga qaytarildi", "success");
           } else {
             btn.disabled = false;
@@ -3670,10 +3879,8 @@
         btn.innerHTML = '<span class="spinner" style="width:20px;height:20px;border-top-color:#fff"></span><span>O\'chirilmoqda</span>';
         api("shop_fm_delete", { id: id }).then(function (result) {
           if (result.ok) {
-            fmItems = fmItems.filter(function (i) { return i.id !== id; });
-            recountFm();
-            renderFirstmails();
             closeFmAction();
+            reloadFirstmailsKeepingPosition();
             showToast("✅ Pochta o'chirildi", "success");
           } else {
             resetDeleteButton();
@@ -3767,18 +3974,14 @@
             return;
           }
           if (fmEditingId) {
-            replaceFm(result.data.item);
             showToast("✅ O'zgarishlar saqlandi", "success");
           } else {
-            (result.data.items || []).forEach(replaceFm);
             var msg = "✅ " + result.data.created + " ta pochta qo'shildi";
             if (result.data.skipped) msg += " (" + result.data.skipped + " ta o'tkazib yuborildi)";
             showToast(msg, result.data.created ? "success" : "warning");
           }
-          sortFmItems();
-          recountFm();
-          renderFirstmails();
           closeFmForm();
+          reloadFirstmailsKeepingPosition();
         }).catch(function () {
           btn.disabled = false;
           btn.innerHTML = '<i class="bi bi-floppy"></i> Saqlash';

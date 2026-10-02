@@ -28,7 +28,12 @@ function createFakeBotSettings() {
 
       if (keyFilter.startsWith("like.")) {
         const prefix = keyFilter.slice(5).replace(/\*$/, "");
-        return [...rows.values()].filter((row) => row.key.startsWith(prefix));
+        const matched = [...rows.values()]
+          .filter((row) => row.key.startsWith(prefix))
+          .sort((a, b) => a.key.localeCompare(b.key));
+        const offset = Number(url.searchParams.get("offset") || 0);
+        const limit = Number(url.searchParams.get("limit") || matched.length);
+        return matched.slice(offset, offset + limit);
       }
 
       return [...rows.values()];
@@ -516,4 +521,32 @@ test("shop: buy request goes only to the shop owner (@Ksava_org)", async () => {
     delete global.__MLBB_BOT_STATS__;
     delete require.cache[require.resolve("../api/bot.js")];
   }
+});
+
+test("shop: list reads past the 1000-row page limit", async () => {
+  const fake = createFakeBotSettings();
+  const store = shop.createFirstmailStore(async (path, options) => fake.handle(path, options));
+
+  for (let i = 0; i < 1005; i += 1) {
+    const id = `p${String(i).padStart(6, "0")}`;
+    fake.rows.set(`shop_fm:${id}`, { key: `shop_fm:${id}`, value: { email: `u${i}@firstmail.ltd`, status: "available" } });
+  }
+
+  assert.equal((await store.list()).length, 1005);
+
+  const result = await store.createMany([{ email: "u1004@firstmail.ltd", password: "x" }]);
+  assert.equal(result.created.length, 0);
+  assert.equal(result.skipped[0].error, "email_exists");
+});
+
+test("shop: summarize counts and sums numeric prices by status", () => {
+  const result = shop.summarizeFirstmails([
+    { status: "available", price: "3500" },
+    { status: "available", price: "15 000" },
+    { status: "available", price: "$2" },
+    { status: "sold", price: "5000" },
+  ]);
+
+  assert.deepEqual(result.counts, { total: 4, available: 3, sold: 1 });
+  assert.deepEqual(result.sums, { available: 18500, sold: 5000 });
 });

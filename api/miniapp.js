@@ -922,18 +922,33 @@ function getShopStore() {
   return shop.createFirstmailStore((reqPath, options) => supabaseRequest(reqPath, options));
 }
 
-function summarizeFirstmails(items) {
-  const sold = items.filter((item) => item.status === shop.SHOP_FM_STATUS_SOLD).length;
-  return { total: items.length, available: items.length - sold, sold };
-}
+const SHOP_FM_LIST_MAX_LIMIT = 500;
 
 async function handleShopFmList(req, res, body) {
   if (!(await requireAuth(req, res))) return;
 
   try {
     const items = await getShopStore().list();
-    const filtered = shop.filterFirstmails(items, body.query);
-    return json(res, 200, { ok: true, data: { items: filtered, counts: summarizeFirstmails(items) } });
+    const status = [shop.SHOP_FM_STATUS_AVAILABLE, shop.SHOP_FM_STATUS_SOLD].includes(body.status) ? body.status : "";
+    const filtered = shop.filterFirstmails(status ? items.filter((item) => item.status === status) : items, body.query);
+    const summary = shop.summarizeFirstmails(items);
+
+    // limit berilmasa — eski xatti-harakat (hammasi); admin panel 30 tadan so'raydi.
+    const hasLimit = body.limit !== undefined && body.limit !== null;
+    const offset = Math.max(0, Math.floor(Number(body.offset) || 0));
+    const limit = hasLimit ? Math.min(SHOP_FM_LIST_MAX_LIMIT, Math.max(0, Math.floor(Number(body.limit) || 0))) : filtered.length;
+    const page = filtered.slice(offset, offset + limit);
+
+    return json(res, 200, {
+      ok: true,
+      data: {
+        items: page,
+        total: filtered.length,
+        has_more: offset + page.length < filtered.length,
+        counts: summary.counts,
+        sums: summary.sums,
+      },
+    });
   } catch (e) {
     console.error("[SHOP_FM_LIST]", e.message);
     return json(res, 500, { ok: false, error: "shop_list_failed", message: "Ro'yxatni yuklab bo'lmadi" });

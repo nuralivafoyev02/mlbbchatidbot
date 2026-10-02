@@ -17,7 +17,10 @@ const crypto = require("node:crypto");
 const SHOP_FM_KEY_PREFIX = "shop_fm:";
 const SHOP_FM_STATUS_AVAILABLE = "available";
 const SHOP_FM_STATUS_SOLD = "sold";
-const SHOP_FM_MAX_ITEMS = 1000;
+// Supabase PostgREST bitta javobda ko'pi bilan ~1000 qator qaytaradi —
+// ro'yxat sahifalab o'qiladi.
+const SHOP_FM_PAGE_SIZE = 1000;
+const SHOP_FM_MAX_PAGES = 20;
 const SHOP_FM_LIMITS = Object.freeze({
   email: 254,
   password: 200,
@@ -178,6 +181,25 @@ function formatShopPrice(price, currencyLabel = "so'm") {
   return value;
 }
 
+// Narx faqat raqamlardan iborat bo'lsa summaga qo'shiladi ("15 000" ham bo'ladi).
+function parseShopPriceNumber(price) {
+  const value = String(price || "").replace(/\s+/g, "");
+  return /^\d+$/.test(value) ? Number(value) : 0;
+}
+
+function summarizeFirstmails(items = []) {
+  const counts = { total: items.length, available: 0, sold: 0 };
+  const sums = { available: 0, sold: 0 };
+
+  items.forEach((item) => {
+    const key = item.status === SHOP_FM_STATUS_SOLD ? "sold" : "available";
+    counts[key] += 1;
+    sums[key] += parseShopPriceNumber(item.price);
+  });
+
+  return { counts, sums };
+}
+
 function getShopKey(id) {
   return `${SHOP_FM_KEY_PREFIX}${id}`;
 }
@@ -189,13 +211,26 @@ function createFirstmailStore(requestFn) {
   }
 
   async function list() {
-    const params = new URLSearchParams();
-    params.set("key", `like.${SHOP_FM_KEY_PREFIX}*`);
-    params.set("select", "key,value,updated_at");
-    params.set("limit", String(SHOP_FM_MAX_ITEMS));
+    const rows = [];
 
-    const rows = await requestFn(`/bot_settings?${params.toString()}`);
-    const items = (Array.isArray(rows) ? rows : []).map(normalizeFirstmailRecord).filter(Boolean);
+    for (let page = 0; page < SHOP_FM_MAX_PAGES; page += 1) {
+      const params = new URLSearchParams();
+      params.set("key", `like.${SHOP_FM_KEY_PREFIX}*`);
+      params.set("select", "key,value,updated_at");
+      params.set("order", "key.asc");
+      params.set("limit", String(SHOP_FM_PAGE_SIZE));
+      params.set("offset", String(page * SHOP_FM_PAGE_SIZE));
+
+      const chunk = await requestFn(`/bot_settings?${params.toString()}`);
+      const batch = Array.isArray(chunk) ? chunk : [];
+      rows.push(...batch);
+
+      if (batch.length < SHOP_FM_PAGE_SIZE) {
+        break;
+      }
+    }
+
+    const items = rows.map(normalizeFirstmailRecord).filter(Boolean);
 
     return sortFirstmails(items);
   }
@@ -374,5 +409,7 @@ module.exports = {
   normalizeFirstmailInput,
   normalizeFirstmailRecord,
   parseBulkFirstmails,
+  parseShopPriceNumber,
   sortFirstmails,
+  summarizeFirstmails,
 };
