@@ -364,11 +364,11 @@
       right: 12px;
       bottom: calc(10px + env(safe-area-inset-bottom, 0px));
       z-index: 90;
-      max-width: 520px;
+      max-width: 500px;
       margin: 0 auto;
       display: flex;
       gap: 4px;
-      padding: 6px;
+      padding: 5px;
       border-radius: 28px;
       background: rgba(22, 28, 48, 0.72);
       border: 1px solid rgba(255, 255, 255, 0.10);
@@ -383,11 +383,11 @@
       flex-direction: column;
       align-items: center;
       gap: 3px;
-      padding: 7px 0 6px;
-      border-radius: 22px;
+      padding: 6px 0 5px;
+      border-radius: 20px;
       cursor: pointer;
       color: var(--text2);
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 600;
       -webkit-user-select: none;
       user-select: none;
@@ -440,6 +440,199 @@
     .nav-item .icon {
       font-size: 20px;
       line-height: 1
+    }
+
+    /* Ajratuvchi chiziq — asosiy tablar va Feat tugmasi orasida */
+    .nav-sep {
+      flex: 0 0 1px;
+      align-self: center;
+      width: 1px;
+      height: 26px;
+      margin: 0 4px;
+      background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.20), transparent);
+      border-radius: 1px
+    }
+
+    /* Feat tugmasi — app-bar o'ng tomonidagi alohida bo'lim */
+    .nav-feat {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 46px;
+      align-self: stretch;
+      border-radius: 20px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 19px;
+      background: linear-gradient(135deg, var(--accent), var(--pink));
+      box-shadow: 0 4px 14px rgba(236, 72, 153, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      -webkit-user-select: none;
+      user-select: none;
+      transition: transform .15s, box-shadow .25s;
+      position: relative;
+      z-index: 1
+    }
+
+    .nav-feat:active {
+      transform: scale(0.9)
+    }
+
+    .nav-feat i {
+      animation: featGlow 2.4s ease-in-out infinite
+    }
+
+    @keyframes featGlow {
+      0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, .45)) }
+      50% { filter: drop-shadow(0 0 8px rgba(255, 255, 255, .95)) }
+    }
+
+    /* Eshik (door) o'tish animatsiyasi — ekran tepa/pastdan markazga yopiladi */
+    .door-transition {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: none;
+      pointer-events: none
+    }
+
+    .door-transition.active {
+      display: block;
+      pointer-events: auto
+    }
+
+    .door {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 51%;
+      background: linear-gradient(180deg, #0b1020, #141a33);
+      transition: transform .46s cubic-bezier(.76, 0, .24, 1)
+    }
+
+    .door-top {
+      top: 0;
+      transform: translateY(-101%);
+      border-bottom: 2px solid var(--accent);
+      box-shadow: 0 8px 26px rgba(0, 0, 0, .55)
+    }
+
+    .door-bottom {
+      bottom: 0;
+      transform: translateY(101%);
+      border-top: 2px solid var(--accent);
+      box-shadow: 0 -8px 26px rgba(0, 0, 0, .55)
+    }
+
+    .door-transition.closing .door-top,
+    .door-transition.closing .door-bottom {
+      transform: translateY(0)
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .door { transition-duration: .2s }
+    }
+
+    /* Feat bo'limi — texnik ishlar ekrani */
+    .feat-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 38%, rgba(99, 102, 241, 0.16), transparent 60%), var(--bg)
+    }
+
+    .feat-screen.open {
+      display: flex
+    }
+
+    .feat-body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 0 28px 96px;
+      text-align: center
+    }
+
+    .feat-gears {
+      position: relative;
+      width: 130px;
+      height: 100px;
+      margin-bottom: 6px
+    }
+
+    .feat-gears .gear {
+      position: absolute;
+      line-height: 1
+    }
+
+    .feat-gears .gear-a {
+      font-size: 70px;
+      top: 0;
+      left: 4px;
+      color: var(--accent3);
+      animation: gearCW 4.2s linear infinite
+    }
+
+    .feat-gears .gear-b {
+      font-size: 48px;
+      top: 44px;
+      left: 70px;
+      color: var(--pink);
+      animation: gearCCW 2.8s linear infinite
+    }
+
+    @keyframes gearCW {
+      to { transform: rotate(360deg) }
+    }
+
+    @keyframes gearCCW {
+      to { transform: rotate(-360deg) }
+    }
+
+    .feat-text {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      max-width: 280px;
+      line-height: 1.4
+    }
+
+    .feat-sub {
+      font-size: 13px;
+      color: var(--text2)
+    }
+
+    /* Feat bo'limidagi pastki app-bar — xuddi asosiy nav ko'rinishida */
+    .feat-nav {
+      justify-content: flex-start;
+      align-items: center
+    }
+
+    .nav-back {
+      background: linear-gradient(135deg, #1b2240, #141a33);
+      border: 1px solid rgba(255, 255, 255, 0.12)
+    }
+
+    .nav-back i {
+      animation: none
+    }
+
+    .feat-nav-label {
+      flex: 1;
+      text-align: center;
+      padding-right: 46px;
+      color: var(--text2);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      -webkit-user-select: none;
+      user-select: none
     }
 
     /* Cards */
@@ -2516,7 +2709,31 @@
       <div class="nav-item" onclick="switchTab('Users')"><i class="bi bi-people"></i>Userlar</div>
       <div class="nav-item" onclick="switchTab('Shop')"><i class="bi bi-shop"></i>Do'kon</div>
       <div class="nav-item" onclick="switchTab('Settings')"><i class="bi bi-gear"></i>Sozlamalar</div>
+      <div class="nav-sep" aria-hidden="true"></div>
+      <div class="nav-feat" onclick="openFeat()" role="button" aria-label="Feat" title="Feat"><i class="bi bi-magic"></i></div>
     </div>
+  </div>
+
+  <!-- Feat Section (texnik ishlar) -->
+  <div class="feat-screen" id="featScreen" aria-hidden="true">
+    <div class="feat-body">
+      <div class="feat-gears">
+        <i class="bi bi-gear-fill gear gear-a"></i>
+        <i class="bi bi-gear-fill gear gear-b"></i>
+      </div>
+      <div class="feat-text">Bu yerda texnik ishlar olib borilmoqda</div>
+      <div class="feat-sub">Tez orada ishga tushadi ⚙️</div>
+    </div>
+    <div class="nav feat-nav">
+      <div class="nav-feat nav-back" onclick="closeFeat()" role="button" aria-label="Ortga" title="Ortga"><i class="bi bi-arrow-left"></i></div>
+      <div class="feat-nav-label">Feat</div>
+    </div>
+  </div>
+
+  <!-- Door transition overlay -->
+  <div class="door-transition" id="doorTransition" aria-hidden="true">
+    <div class="door door-top"></div>
+    <div class="door door-bottom"></div>
   </div>
 
   <!-- User Detail Modal -->
@@ -2864,6 +3081,81 @@
         updateShopFab();
       }
       window.switchTab = switchTab;
+
+      /* -----------------------------------------------------------------------
+         Feat bo'limi — eshik (door) animatsiyasi + sound effektlar
+      ----------------------------------------------------------------------- */
+      // WebAudio orqali kichik "whoosh" effekt (tashqi fayl kerak emas).
+      var _featAC = null;
+      function featSound(kind) {
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          _featAC = _featAC || new AC();
+          if (_featAC.state === "suspended") _featAC.resume();
+          var t = _featAC.currentTime;
+          var o = _featAC.createOscillator();
+          var g = _featAC.createGain();
+          o.connect(g); g.connect(_featAC.destination);
+          o.type = "triangle";
+          if (kind === "enter") {
+            o.frequency.setValueAtTime(240, t);
+            o.frequency.exponentialRampToValueAtTime(900, t + 0.26);
+          } else {
+            o.frequency.setValueAtTime(760, t);
+            o.frequency.exponentialRampToValueAtTime(200, t + 0.3);
+          }
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(0.22, t + 0.03);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+          o.start(t);
+          o.stop(t + 0.36);
+        } catch (e) { /* audio yo'q bo'lsa — muammo emas */ }
+      }
+
+      // Eshiklar markazga yopiladi → midFn (ekran almashtiriladi) → eshiklar ochiladi.
+      var _doorBusy = false;
+      function runDoorTransition(midFn) {
+        var d = document.getElementById("doorTransition");
+        if (!d) { if (midFn) midFn(); return; }
+        d.classList.add("active");
+        void d.offsetWidth;
+        d.classList.add("closing");
+        setTimeout(function () {
+          if (midFn) midFn();
+          d.classList.remove("closing");       // eshiklar qayta ochiladi
+          setTimeout(function () {
+            d.classList.remove("active");
+            _doorBusy = false;
+          }, 500);
+        }, 470);
+      }
+
+      function openFeat() {
+        var feat = document.getElementById("featScreen");
+        if (_doorBusy || feat.classList.contains("open")) return;
+        _doorBusy = true;
+        hapticLight();
+        featSound("enter");
+        runDoorTransition(function () {
+          feat.classList.add("open");
+          feat.setAttribute("aria-hidden", "false");
+        });
+      }
+      window.openFeat = openFeat;
+
+      function closeFeat() {
+        var feat = document.getElementById("featScreen");
+        if (_doorBusy || !feat.classList.contains("open")) return;
+        _doorBusy = true;
+        hapticLight();
+        featSound("back");
+        runDoorTransition(function () {
+          feat.classList.remove("open");
+          feat.setAttribute("aria-hidden", "true");
+        });
+      }
+      window.closeFeat = closeFeat;
 
       // Indikatorning boshlang'ich joyi (animatsiyasiz) va o'lcham o'zgarganda qayta hisoblash.
       function syncNavIndicator() { moveNavIndicator(document.getElementById("bottomNav"), false); }
