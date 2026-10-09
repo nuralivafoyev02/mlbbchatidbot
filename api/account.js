@@ -15,6 +15,7 @@ const path = require("node:path");
 const arena = require("./_mlbb-arena.js");
 const shop = require("./_shop.js");
 const limitPrices = require("./_limit-prices.js");
+const shopOrders = require("./_shop-orders.js");
 const { createShopNotifier, buildFirstmailBuyText, buildLimitBuyText } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 
@@ -39,6 +40,10 @@ function getConfig() {
 
 module.exports = async function handler(req, res) {
   try {
+    if (req.method === "GET" && req.query && req.query.asset === "bg") {
+      return serveBackground(res);
+    }
+
     if (req.method === "GET") {
       return isCabinetRequest(req) ? serveCabinet(res) : serveApp(res);
     }
@@ -407,7 +412,7 @@ async function handleCabinet(res, { config, user }) {
     limit: String(CABINET_HISTORY_LIMIT),
   });
 
-  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails] = await Promise.all([
+  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders] = await Promise.all([
     loadPreferredLanguage(config, user),
     settle(listUserAccounts(config, userId), "ACCOUNTS"),
     settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
@@ -417,6 +422,8 @@ async function handleCabinet(res, { config, user }) {
     settle(supabaseRequest(config, `/quota_usage_events?${historyParams.toString()}`), "HISTORY"),
     settle(limitPrices.createLimitPriceStore(storeRequest(config)).list(), "PRICES"),
     settle(loadFirstmailPage(config, 0), "FIRSTMAIL"),
+    // 019 migratsiyasi qo'llanmagan bo'lsa — null, UI "tarix hali yo'q" deydi.
+    settle(shopOrders.listUserShopOrders(storeRequest(config), userId, CABINET_HISTORY_LIMIT), "ORDERS"),
   ]);
 
   return json(res, 200, {
@@ -445,6 +452,8 @@ async function handleCabinet(res, { config, user }) {
     firstmails: firstmails ? firstmails.items : [],
     firstmailTotal: firstmails ? firstmails.total : 0,
     firstmailHasMore: firstmails ? firstmails.hasMore : false,
+    orders: orders || [],
+    ordersAvailable: Array.isArray(orders),
   });
 }
 
@@ -650,7 +659,16 @@ async function handleBuyLimit(res, { config, user, body }) {
 
   const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
   const delivered = await notifier.notify(buildLimitBuyText(user, item), user.id);
-  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername });
+  const order = delivered
+    ? await shopOrders.recordShopOrder(storeRequest(config), {
+      userId: user.id,
+      kind: "limit",
+      itemId: item.id,
+      title: `${item.kind}:${item.amount}`,
+      price: item.price,
+    })
+    : null;
+  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername, order });
 }
 
 async function handleBuyFirstmail(res, { config, user, body }) {
@@ -662,7 +680,17 @@ async function handleBuyFirstmail(res, { config, user, body }) {
   const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
   const text = buildFirstmailBuyText(user, item, shop.formatShopPrice(item.price) || "kelishiladi");
   const delivered = await notifier.notify(text, user.id);
-  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername });
+  const order = delivered
+    ? await shopOrders.recordShopOrder(storeRequest(config), {
+      userId: user.id,
+      kind: "firstmail",
+      itemId: item.id,
+      title: shop.maskShopEmail(item.email),
+      price: shop.parseShopPriceNumber(item.price),
+      priceText: shop.formatShopPrice(item.price),
+    })
+    : null;
+  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername, order });
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +703,22 @@ function serveApp(res) {
 
 function serveCabinet(res) {
   return serveHtml(res, path.join(__dirname, "cabinet-miniapp.html"), "#0a0e1a");
+}
+
+// Kabinet orqa foni — admin paneldagi rasm (api/miniapp.js → ?asset=bg bilan bir xil).
+function serveBackground(res) {
+  try {
+    const image = fs.readFileSync(path.join(__dirname, "mlbblogo-bg.png"));
+    const isJpeg = image[0] === 0xff && image[1] === 0xd8;
+    return res
+      .status(200)
+      .setHeader("Content-Type", isJpeg ? "image/jpeg" : "image/png")
+      .setHeader("Cache-Control", "public, max-age=604800, immutable")
+      .send(image);
+  } catch (error) {
+    console.error("[CABINET_BG_ERROR]", error?.message);
+    return res.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").send("not found");
+  }
 }
 
 // /api/account?view=cabinet — shaxsiy kabinet; boshqasi — "Mening akkauntim".

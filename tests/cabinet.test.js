@@ -130,6 +130,7 @@ function installCabinetBackend() {
   const accounts = [];
   const telegram = [];
   const arenaCalls = [];
+  const orders = [];
   let nextId = 10;
   const history = [
     { id: 1, user_id: "777", kind: "full_info", delta: -1, source: "use", account_id: "555555", zone_id: "1", target: null, remaining: 2, created_at: "2026-10-09T10:00:00Z" },
@@ -189,6 +190,15 @@ function installCabinetBackend() {
       const body = options.body ? JSON.parse(options.body) : {};
       if (path.startsWith("/rpc/")) return jsonResponse(rpc(decodeURIComponent(path.slice(5)), body));
       if (path.startsWith("/quota_usage_events")) return jsonResponse(history);
+      if (path.startsWith("/shop_orders")) {
+        if (String(options.method || "GET").toUpperCase() === "POST") {
+          const row = { id: orders.length + 1, status: "pending", created_at: new Date().toISOString(), ...body };
+          orders.unshift(row);
+          return jsonResponse([row]);
+        }
+        const userId = new URL(`https://x${path}`).searchParams.get("user_id").slice(3);
+        return jsonResponse(orders.filter((o) => String(o.user_id) === userId));
+      }
       if (path.startsWith("/bot_settings")) return jsonResponse(settings.handle(path, { ...options, body }));
       if (path.startsWith("/bot_users")) return jsonResponse([{ preferred_language: "uz", user_id: 1, chat_id: 1, username: "Ksava_org" }]);
       return jsonResponse([]);
@@ -196,7 +206,7 @@ function installCabinetBackend() {
     return jsonResponse({});
   };
 
-  return { settings, accounts, telegram, arenaCalls, restore: () => { global.fetch = original; } };
+  return { settings, accounts, telegram, arenaCalls, orders, restore: () => { global.fetch = original; } };
 }
 
 function loadAccountApp() {
@@ -372,4 +382,44 @@ test("cabinet: firstmails come in pages of 30 (rest via the firstmails action)",
   } finally {
     backend.restore();
   }
+});
+
+test("cabinet: buy requests are kept in the shop history (orders)", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const item = (await limitPrices.createLimitPriceStore(backend.settings.handle).save({ kind: "full_info", amount: 10, price: 15000 })).item;
+    const shop = require("../api/_shop.js");
+    const fm = await shop.createFirstmailStore(backend.settings.handle).create({ email: "secretbox@firstmail.ltd", price: "20000" });
+    const fmId = (fm.item || fm).id;
+    const app = loadAccountApp();
+
+    const empty = (await call(app, USER, "cabinet")).body;
+    assert.deepEqual(empty.orders, []);
+    assert.equal(empty.ordersAvailable, true);
+
+    const limitRes = (await call(app, USER, "buy_limit", { id: item.id })).body;
+    assert.equal(limitRes.order.kind, "limit");
+    assert.equal(limitRes.order.title, "full_info:10");
+    assert.equal(limitRes.order.price, 15000);
+    assert.equal(limitRes.order.status, "pending");
+
+    const fmRes = (await call(app, USER, "buy_firstmail", { id: fmId })).body;
+    assert.equal(fmRes.order.kind, "firstmail");
+    assert.doesNotMatch(fmRes.order.title, /secretbox/, "pochta to'liq ko'rinmaydi");
+
+    const after = (await call(app, USER, "cabinet")).body;
+    assert.deepEqual(after.orders.map((o) => o.kind), ["firstmail", "limit"]);
+    assert.ok(after.orders.every((o) => !("user_id" in o)));
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: background image is served from the account function", async () => {
+  const app = loadAccountApp();
+  const res = createRes();
+  await app({ method: "GET", query: { asset: "bg" }, headers: {} }, res);
+  assert.equal(res.statusCode, 200);
+  assert.match(res.headers["Content-Type"], /^image\//);
+  assert.ok(Buffer.isBuffer(res.body) && res.body.length > 1000);
 });
