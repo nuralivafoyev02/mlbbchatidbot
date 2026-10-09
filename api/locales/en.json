@@ -40,7 +40,7 @@
   "unknown_text": "I didn't understand what you meant 🙂\nBetter use the buttons below.",
   "admin_only": "This section is for admins only!",
   "error_unexpected": "An unexpected error occurred, but I'm still working.\n\nPlease send the ID again in this format:\n1289050 (10050)",
-  "bind_info_limit_reached": "⛔️ <b>Daily limit reached!</b>\n\nThe bindings check service can be used only <b>10 times</b> per day.\nContact @obitomlb or @vafoyev_n to extend your daily limit.\nPlease try again tomorrow or after 00:00.",
+  "bind_info_limit_reached": "⛔️ <b>Daily limit reached!</b>\n\nThe bindings check service can be used only <b>10 times</b> per day.\nContact @Ksava_org to extend your daily limit.\nPlease try again tomorrow or after 00:00.",
   "invalid_bind_input": "Bindings not found. Please check the Account ID and Server/Zone ID and send them again.",
   "bind_failed_bridge_not_configured": "The bridge endpoint is not configured to check bindings through the provider.\nThe error was reported to the admins, try again once the settings are updated.",
   "bind_failed_bengkel_parse": "Could not read the bindings from the Bengkel bot response.\nPlease check the ID and Server/Zone ID and send them again.",

@@ -75,9 +75,8 @@ async function saveUserLangToSupabase(userId, lang) {
 
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
-const SUPPORT_USERNAME = sanitizeTelegramUsername(
-  process.env.SUPPORT_USERNAME || "vafoyev_n"
-);
+// Aloqa manzili env'dan emas — api/_contact.js (hamma joyda bitta: @Ksava_org).
+const SUPPORT_USERNAME = sanitizeTelegramUsername(require("./_contact.js").ADMIN_CONTACT_USERNAME);
 const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );

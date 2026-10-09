@@ -3,11 +3,11 @@
 //
 // Bot ichidagi Firstmail xaridi bilan bir xil qoida (api/bot.js →
 // notifyShopBuyRequest): so'rov do'kon egasiga boradi — SHOP_NOTIFY_CHAT_ID,
-// aks holda SUPPORT_USERNAME bo'yicha bot_users dan topilgan chat. Egasiga
+// aks holda @Ksava_org (api/_contact.js) bo'yicha bot_users dan topilgan chat. Egasiga
 // yetib bormasa — zaxira sifatida ADMIN_IDS ga.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SUPPORT_USERNAME = "vafoyev_n";
+const { ADMIN_CONTACT_USERNAME } = require("./_contact.js");
 const DEFAULT_ADMIN_IDS = "5081175125,8500085987,7396686285";
 
 function cleanEnv(value) {
@@ -28,7 +28,8 @@ function formatSom(value) {
 }
 
 function resolveShopNotifyConfig(env = process.env) {
-  const support = cleanEnv(env.SUPPORT_USERNAME || DEFAULT_SUPPORT_USERNAME).replace(/^@/, "");
+  // Aloqa manzili env'dan emas — api/_contact.js.
+  const support = ADMIN_CONTACT_USERNAME;
 
   return {
     notifyChatId: /^-?\d{1,20}$/.test(cleanEnv(env.SHOP_NOTIFY_CHAT_ID)) ? cleanEnv(env.SHOP_NOTIFY_CHAT_ID) : null,

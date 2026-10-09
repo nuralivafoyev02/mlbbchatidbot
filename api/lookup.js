@@ -18,10 +18,10 @@ const LOOKUP_TIMEOUT_MS = parseBoundedNumber(
   20000
 );
 const DEFAULT_LANG = "uz";
-const SUPPORT_USERNAME = cleanEnv(process.env.SUPPORT_USERNAME) || "vafoyev_n";
+const SUPPORT_USERNAME = require("./_contact.js").ADMIN_CONTACT_USERNAME;
 
 const ACCESS_DENIED_MESSAGE =
-  "API dan foydalanish uchun @vafoyev_n ga Telegram orqali murojaat qiling, " +
+  `API dan foydalanish uchun @${SUPPORT_USERNAME} ga Telegram orqali murojaat qiling, ` +
   "sizga Token ochib berishi yoki access berishi mumkin.";
 
 module.exports = async function handler(req, res) {

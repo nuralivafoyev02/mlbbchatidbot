@@ -133,7 +133,7 @@ test("lookup: requires token and returns access-denied gating message", async ()
   assert.equal(res.statusCode, 401);
   const parsed = JSON.parse(res.body);
   assert.equal(parsed.ok, false);
-  assert.ok(parsed.message.includes("@vafoyev_n"), parsed.message);
+  assert.ok(parsed.message.includes("@Ksava_org"), parsed.message);
   assert.match(parsed.message, /murojaat qiling/);
   restoreEnv();
 });

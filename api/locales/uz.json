@@ -40,7 +40,7 @@
   "unknown_text": "Nima demoqchiligizni tushunmadim 🙂\nYaxshisi pastdagi tugmalardan foydalaning.",
   "admin_only": "Bu bo'lim faqat adminlar uchun!",
   "error_unexpected": "Kutilmagan xatolik bo'ldi, lekin men ishlayapman.\n\nIltimos, ID'ni yana shu formatda yuboring:\n1289050 (10050)",
-  "bind_info_limit_reached": "⛔️ <b>Kunlik limitga yetdingiz!</b>\n\nUlanmalarni tekshirish xizmatidan kuniga faqat <b>10 marta</b> foydalanishi mumkin.\n@obitomlb yoki @vafoyev_n ga murojaat qilsangiz kunlik limitingizni uzaytirib berishi mumkin.\nIltimos, ertaga yoki soat 00:00 dan keyin qayta urinib ko'ring.",
+  "bind_info_limit_reached": "⛔️ <b>Kunlik limitga yetdingiz!</b>\n\nUlanmalarni tekshirish xizmatidan kuniga faqat <b>10 marta</b> foydalanishi mumkin.\n@Ksava_org ga murojaat qilsangiz kunlik limitingizni uzaytirib berishi mumkin.\nIltimos, ertaga yoki soat 00:00 dan keyin qayta urinib ko'ring.",
   "invalid_bind_input": "Ulanmalar topilmadi. Account ID va Server/Zone ID ni tekshirib qayta yuboring.",
   "bind_failed_bridge_not_configured": "Provider orqali ulanmalarni tekshirish uchun bridge endpoint sozlanmagan.\nAdminlarga xatolik yozib qo'yildi, sozlama yangilangandan keyin qayta urinib ko'ring.",
   "bind_failed_bengkel_parse": "Bengkel bot javobidan ulanmalar ma'lumotini o'qib bo'lmadi.\nIltimos, ID va Server/Zone ID ni tekshirib qayta yuboring.",

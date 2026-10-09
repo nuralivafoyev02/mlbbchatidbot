@@ -19,7 +19,7 @@ const USERS_PAGE_SIZE = 20;
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const SUPABASE_SERVICE_KEY = resolveServiceKey(process.env);
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,7396686285");
-const SUPPORT_USERNAME = (process.env.SUPPORT_USERNAME || "Ksava_org").replace(/^@/, "").trim();
+const SUPPORT_USERNAME = require("./_contact.js").ADMIN_CONTACT_USERNAME;
 const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || "checkmlbbidBot").trim();
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 
