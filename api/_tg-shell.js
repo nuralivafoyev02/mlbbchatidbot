@@ -152,7 +152,10 @@ function buildShellScript(color) {
       if (document.body) mountTopbar();
       else document.addEventListener("DOMContentLoaded", mountTopbar);
 
-      if (!tg || !tg.initData) {
+      // Telegram ichida ekanini platform bo'yicha aniqlaymiz, initData bo'yicha EMAS:
+      // reply keyboard tugmasidan (admin panel shunday ochiladi) ochilganda
+      // initData bo'sh keladi. Oddiy brauzerda platform === "unknown".
+      if (!tg || !tg.platform || tg.platform === "unknown") {
         settle();
         return;
       }

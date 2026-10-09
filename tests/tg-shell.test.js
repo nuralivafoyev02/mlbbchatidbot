@@ -15,6 +15,9 @@ test("tg-shell: replaces the marker with style + script", () => {
   assert.match(html, /setHeaderColor\("#0b1020"\)/);
   assert.match(html, /--top-space/);
   assert.match(html, /MLBBBOT/);
+  // Reply keyboard tugmasidan ochilganda initData bo'sh — unga qarab to'xtamasligi kerak.
+  assert.doesNotMatch(html, /!tg\.initData/);
+  assert.match(html, /tg\.platform === "unknown"/);
 });
 
 test("tg-shell: ignores invalid colors and pages without the marker", () => {
