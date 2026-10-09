@@ -4,6 +4,7 @@ const path = require("node:path");
 const shop = require("./_shop.js");
 const donat = require("./_donat.js");
 const adminAuth = require("./_admin-auth.js");
+const { injectTelegramShell } = require("./_tg-shell.js");
 
 // ---------------------------------------------------------------------------
 // Config (same pattern as api/admin.js)
@@ -1196,7 +1197,7 @@ async function handleShopDnPackDelete(req, res, body) {
 function serveApp(req, res) {
   try {
     const htmlPath = path.join(__dirname, "index.html");
-    const html = fs.readFileSync(htmlPath, "utf8");
+    const html = injectTelegramShell(fs.readFileSync(htmlPath, "utf8"), { color: "#0a0e1a" });
     return res
       .status(200)
       .setHeader("Content-Type", "text/html; charset=utf-8")

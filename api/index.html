@@ -39,7 +39,7 @@
       --surface-blur: blur(18px) saturate(140%);
       --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       /* suzuvchi nav balandligi + pastki bo'shliq */
-      --nav-space: calc(78px + env(safe-area-inset-bottom, 0px));
+      --nav-space: calc(78px + var(--safe-bottom, 0px));
     }
 
     html,
@@ -144,7 +144,7 @@
       align-items: center;
       justify-content: center;
       background: rgba(6, 9, 20, 0.15);
-      padding: 20px;
+      padding: calc(20px + var(--top-space, 0px)) 20px calc(20px + var(--safe-bottom, 0px));
       transition: opacity .4s, transform .4s
     }
 
@@ -314,6 +314,8 @@
       display: flex;
       flex-direction: column;
       height: 100%;
+      /* Fullscreen'da: Dynamic Island + Telegram tugmalari ostidan boshlanadi */
+      padding: var(--top-space, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
       opacity: 0;
       transition: opacity .4s
     }
@@ -363,7 +365,7 @@
       position: fixed;
       left: 12px;
       right: 12px;
-      bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      bottom: calc(10px + var(--safe-bottom, 0px));
       z-index: 90;
       max-width: 520px;
       margin: 0 auto;
@@ -538,6 +540,7 @@
       position: fixed;
       inset: 0;
       z-index: 100;
+      padding-top: var(--top-space, 0px);
       display: none;
       flex-direction: column;
       align-items: center;
@@ -985,10 +988,10 @@
       border-radius: 20px 20px 0 0;
       width: 100%;
       max-width: 480px;
-      max-height: 85vh;
+      max-height: min(85vh, calc(100% - var(--top-space, 0px) - 12px));
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0));
+      padding: 20px 20px calc(20px + var(--safe-bottom, 0px));
       transform: translateY(100%);
       transition: transform .3s
     }
@@ -1188,7 +1191,7 @@
     /* Toast */
     .toast {
       position: fixed;
-      top: 20px;
+      top: calc(var(--top-space, 0px) + 14px);
       left: 50%;
       transform: translateX(-50%) translateY(-80px);
       z-index: 300;
@@ -2426,26 +2429,8 @@
   </style>
   <!-- Telegram Mini App API (HapticFeedback va h.k.) -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script>
-    // Telegram'da Fullsize (expand) holatida ochamiz. Fullscreen EMAS — aks holda
-    // tepadagi tugmalar Telegram'ning "Yopish / ⋯" tugmalari ostida qoladi.
-    (function () {
-      var tg = window.Telegram && window.Telegram.WebApp;
-      if (!tg || !tg.initData) return;
-      try {
-        tg.ready();
-        tg.expand();
-        if (tg.isFullscreen && typeof tg.exitFullscreen === "function") tg.exitFullscreen();
-        // Ro'yxatni pastga surganda mini app yopilib/kichrayib ketmasin.
-        if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes();
-        if (typeof tg.setHeaderColor === "function") tg.setHeaderColor("#0a0e1a");
-        if (typeof tg.setBackgroundColor === "function") tg.setBackgroundColor("#0a0e1a");
-        if (typeof tg.setBottomBarColor === "function") tg.setBottomBarColor("#0a0e1a");
-        // Ba'zi mijozlarda birinchi expand o'tib ketadi — viewport o'zgarsa qayta so'raymiz.
-        tg.onEvent("viewportChanged", function () { if (!tg.isExpanded) tg.expand(); });
-      } catch (e) { /* eski Telegram mijozlari */ }
-    })();
-  </script>
+  <!-- Fullscreen + safe area + MLBBBOT yorlig'i: api/_tg-shell.js server tomonda qo'yadi -->
+  <!-- tg-shell -->
 </head>
 
 <body>
@@ -3177,9 +3162,14 @@
       /* -----------------------------------------------------------------------
          Auto session check — existing cookie ni tekshirish
       ----------------------------------------------------------------------- */
+      // Fullscreen + safe area o'rnashguncha ochilish ekrani turadi — aks holda
+      // kontent ochilgan zahoti pastga sakrab tushadi (api/_tg-shell.js).
       function dismissBoot() {
-        var boot = document.getElementById("bootSpinner");
-        if (boot) boot.classList.add("hide");
+        var ready = window.tgShellReady || Promise.resolve();
+        ready.then(function () {
+          var boot = document.getElementById("bootSpinner");
+          if (boot) boot.classList.add("hide");
+        });
       }
 
       api("get_stats").then(function (result) {

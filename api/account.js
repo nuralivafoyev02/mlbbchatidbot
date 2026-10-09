@@ -13,6 +13,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const arena = require("./_mlbb-arena.js");
+const { injectTelegramShell } = require("./_tg-shell.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60;
@@ -285,7 +286,9 @@ async function loadPreferredLanguage(config, user) {
 // ---------------------------------------------------------------------------
 function serveApp(res) {
   try {
-    const html = fs.readFileSync(path.join(__dirname, "account-miniapp.html"), "utf8");
+    const html = injectTelegramShell(fs.readFileSync(path.join(__dirname, "account-miniapp.html"), "utf8"), {
+      color: "#0b1020",
+    });
     return res
       .status(200)
       .setHeader("Content-Type", "text/html; charset=utf-8")
