@@ -35,8 +35,8 @@
       --glass: rgba(255, 255, 255, 0.03);
       /* Fon rasmi ustida turadigan kartalar — to'qroq va kuchliroq xiralashtirilgan,
          shunda orqadagi logo kontent bilan aralashmaydi. */
-      --surface: rgba(13, 18, 33, 0.80);
-      --surface-blur: blur(18px) saturate(140%);
+      --surface: rgba(13, 18, 33, 0.88);
+      --surface-blur: blur(28px) saturate(150%);
       --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       /* suzuvchi nav balandligi + pastki bo'shliq */
       --nav-space: calc(78px + var(--safe-bottom, 0px));
@@ -2608,6 +2608,13 @@
       width: 34px;
       height: 34px;
       cursor: pointer
+    }
+
+    /* Barcha karta/bo'limlar — kuchli blur (orqa fondagi rasm ustidan "chiqib" ketmasin) */
+    .card, .login-card, .stat-card, .user-item, .page-btn, .fm-item, .fm-sum, .shop-cat, .shop-counter,
+    .shop-back, .dn-head, .wl-card, .search-bar input, .skeleton-card, .skeleton-user-item {
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur);
     }
   </style>
   <!-- Telegram Mini App API (HapticFeedback va h.k.) -->
