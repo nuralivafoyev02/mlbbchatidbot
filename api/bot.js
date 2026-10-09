@@ -142,6 +142,7 @@ const EMOJIS = require("./emojis.json");
 const shop = require("./_shop.js");
 const arena = require("./_mlbb-arena.js");
 const quotaLog = require("./_quota-log.js");
+const { buildWalletSaleText } = require("./_shop-notify.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze(EMOJIS.bindProviders || {});
@@ -2039,6 +2040,33 @@ async function notifyShopBuyRequest(user, item) {
   return delivered;
 }
 
+function formatShopSom(value, lang) {
+  return shop.formatShopPrice(String(Math.max(0, Math.round(Number(value) || 0))), lang === "uz" ? "so'm" : lang === "ru" ? "сум" : "UZS");
+}
+
+// Balans (supabase/020_wallet.sql). null — balans tizimi ishlamayapti
+// (migratsiya yo'q yoki Supabase xatosi) → eski "so'rov yuborish" yo'li.
+async function getWalletBalance(userId) {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const result = await supabaseRpc("wallet_get", { p_user_id: String(userId) });
+    const balance = Number(result?.balance);
+    return result && result.ok === true && Number.isFinite(balance) ? balance : null;
+  } catch (error) {
+    console.error("[WALLET_GET_ERROR]", error.message);
+    return null;
+  }
+}
+
+// Balansni faqat Shaxsiy kabinetda to'ldirish mumkin (karta + ELDER PAY).
+function shopTopupButton(lang, chatId) {
+  return Number(chatId) > 0
+    ? { text: t("shop_topup_btn", lang), web_app: { url: CABINET_MINIAPP_URL } }
+    : { text: t("shop_topup_btn", lang), url: `https://t.me/${TELEGRAM_BOT_USERNAME}` };
+}
+
+// "Sotib olish": narxi raqam bo'lsa — balansdan to'lashni tasdiqlash oynasi;
+// narx kelishiladigan bo'lsa yoki balans ishlamasa — so'rov adminga.
 async function handleShopFirstmailBuy(chatId, user, id, messageId = null) {
   const lang = getUserLang(user.id);
   const item = await getAvailableShopFirstmail(id);
@@ -2048,6 +2076,105 @@ async function handleShopFirstmailBuy(chatId, user, id, messageId = null) {
     return;
   }
 
+  const price = shop.parseShopPriceNumber(item.price);
+  const balance = price ? await getWalletBalance(user.id) : null;
+
+  if (!price || balance === null) {
+    await requestShopFirstmailManually(chatId, user, item, messageId);
+    return;
+  }
+
+  const enough = balance >= price;
+  const rows = [
+    [enough
+      ? { text: t("shop_fm_pay_btn", lang), callback_data: `shop_fm_pay:${item.id}` }
+      : shopTopupButton(lang, chatId)],
+    [{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }],
+  ];
+
+  await sendOrEditAdminMessage(
+    chatId,
+    messageId,
+    t(enough ? "shop_fm_pay_confirm" : "shop_fm_no_money", lang, {
+      email: escapeHtml(shop.maskShopEmail(item.email)),
+      price: escapeHtml(formatShopSom(price, lang)),
+      balance: escapeHtml(formatShopSom(balance, lang)),
+    }),
+    { inline_keyboard: rows }
+  );
+}
+
+// "Balansdan to'lash": bitta Postgres tranzaksiyasi — pul yechiladi, pochta
+// sotildi deb belgilanadi va buyurtma yoziladi (yoki hech biri bo'lmaydi).
+async function handleShopFirstmailPay(chatId, user, id, messageId = null) {
+  const lang = getUserLang(user.id);
+  const back = { inline_keyboard: [[{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }]] };
+
+  if (!shop.isValidShopItemId(id) || !isSupabaseConfigured()) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_not_available", lang), shopNotAvailableMarkup(lang));
+    return;
+  }
+
+  let result;
+  try {
+    result = await supabaseRpc("wallet_buy_firstmail", { p_user_id: String(user.id), p_item_id: id });
+  } catch (error) {
+    console.error("[SHOP_FM_PAY_ERROR]", error);
+    recordError("shop_fm_pay_failed", error.message, { id, userId: user.id });
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_pay_failed", lang), {
+      inline_keyboard: [[shopTopupButton(lang, chatId)], ...back.inline_keyboard],
+    });
+    return;
+  }
+
+  if (!result || result.ok !== true) {
+    const error = result?.error;
+
+    if (error === "price_not_set") {
+      const item = await getAvailableShopFirstmail(id);
+      if (item) {
+        await requestShopFirstmailManually(chatId, user, item, messageId);
+        return;
+      }
+    }
+
+    if (error === "insufficient_funds") {
+      await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_no_money", lang, {
+        email: "",
+        price: escapeHtml(formatShopSom(result.price, lang)),
+        balance: escapeHtml(formatShopSom(result.balance, lang)),
+      }), { inline_keyboard: [[shopTopupButton(lang, chatId)], ...back.inline_keyboard] });
+      return;
+    }
+
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_not_available", lang), shopNotAvailableMarkup(lang));
+    return;
+  }
+
+  await sendOrEditAdminMessage(chatId, messageId, t("shop_fm_paid", lang, {
+    email: escapeHtml(result.email),
+    password: escapeHtml(result.password || "—"),
+    price: escapeHtml(formatShopSom(result.price, lang)),
+    balance: escapeHtml(formatShopSom(result.balance, lang)),
+  }), back);
+
+  // Egasiga ma'lumot uchun (best effort — xarid allaqachon bajarilgan).
+  try {
+    const ownerChatId = await getShopNotifyChatId();
+    const text = buildWalletSaleText(user, {
+      kind: "firstmail",
+      item: { email: result.email },
+      orderId: result.order_id,
+      price: result.price,
+    });
+    if (ownerChatId) await sendShopNotify(ownerChatId, text, user.id);
+  } catch (error) {
+    console.error("[SHOP_SALE_NOTIFY_ERROR]", error.message);
+  }
+}
+
+async function requestShopFirstmailManually(chatId, user, item, messageId = null) {
+  const lang = getUserLang(user.id);
   await notifyShopBuyRequest(user, item);
 
   const contactUrl = getShopContactUrl();
@@ -2081,6 +2208,11 @@ async function handleShopCallback(chatId, user, data, messageId = null) {
 
   if (data.startsWith("shop_fm_buy:")) {
     await handleShopFirstmailBuy(chatId, user, data.slice("shop_fm_buy:".length), messageId);
+    return;
+  }
+
+  if (data.startsWith("shop_fm_pay:")) {
+    await handleShopFirstmailPay(chatId, user, data.slice("shop_fm_pay:".length), messageId);
     return;
   }
 

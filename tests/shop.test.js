@@ -550,3 +550,93 @@ test("shop: summarize counts and sums numeric prices by status", () => {
   assert.deepEqual(result.counts, { total: 4, available: 3, sold: 1 });
   assert.deepEqual(result.sums, { available: 18500, sold: 5000 });
 });
+
+test("shop: firstmail is paid from the balance inside the bot — confirm, then credentials", async () => {
+  const originalFetch = global.fetch;
+  const fake = createFakeBotSettings();
+  const telegramCalls = [];
+  const rpcCalls = [];
+  let balance = 20000;
+
+  global.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.startsWith("https://api.telegram.org/")) {
+      telegramCalls.push({ method: href.split("/").pop(), payload: JSON.parse(options.body || "{}") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+    }
+    const path = href.slice("https://testproject.supabase.co/rest/v1".length);
+    let data;
+    if (path === "/rpc/wallet_get") {
+      data = { ok: true, balance };
+    } else if (path === "/rpc/wallet_buy_firstmail") {
+      const args = JSON.parse(options.body);
+      rpcCalls.push(args);
+      const row = fake.rows.get(`shop_fm:${args.p_item_id}`);
+      if (!row || row.value.status !== "available") {
+        data = { ok: false, error: "not_available" };
+      } else {
+        balance -= 15000;
+        row.value.status = "sold";
+        data = { ok: true, order_id: 9, balance, price: 15000, email: row.value.email, password: row.value.password };
+      }
+    } else if (path.startsWith("/rpc/")) {
+      data = null;
+    } else {
+      data = fake.handle(path, options);
+    }
+    return new Response(data === null ? "" : JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const tap = async (bot, data, updateId) => {
+    await bot({
+      method: "POST",
+      headers: { "x-telegram-bot-api-secret-token": "test-secret" },
+      query: {},
+      body: {
+        update_id: updateId,
+        callback_query: { id: `cb-${updateId}`, data, from: { id: 7700400, first_name: "Buyer" }, message: { message_id: 80, chat: { id: 7700400, type: "private" } } },
+      },
+    }, createRes());
+  };
+
+  try {
+    const bot = loadBotWithSupabase();
+    const store = shop.createFirstmailStore(async (path, options) => fake.handle(path, options));
+    const item = (await store.create({ email: "paid.box@firstmail.ltd", password: "pw-777", price: "15 000" })).item;
+
+    await tap(bot, `shop_fm_buy:${item.id}`, 9401);
+    const confirm = telegramCalls.find((c) => c.method === "editMessageText");
+    assert.match(confirm.payload.text, /Xaridni tasdiqlang/);
+    assert.match(confirm.payload.text, /20 000 so'm/);
+    assert.doesNotMatch(confirm.payload.text, /paid\.box@/, "to'lovdan oldin to'liq pochta ko'rinmaydi");
+    assert.equal(confirm.payload.reply_markup.inline_keyboard[0][0].callback_data, `shop_fm_pay:${item.id}`);
+    assert.equal(rpcCalls.length, 0, "tasdiqlashdan oldin pul yechilmaydi");
+
+    telegramCalls.length = 0;
+    await tap(bot, `shop_fm_pay:${item.id}`, 9402);
+    const paid = telegramCalls.find((c) => c.method === "editMessageText");
+    assert.match(paid.payload.text, /paid\.box@firstmail\.ltd/);
+    assert.match(paid.payload.text, /pw-777/);
+    assert.match(paid.payload.text, /5 000 so'm/);
+
+    // Ikkinchi bosish — pochta endi yo'q, pul yechilmaydi.
+    telegramCalls.length = 0;
+    await tap(bot, `shop_fm_pay:${item.id}`, 9403);
+    assert.match(telegramCalls.find((c) => c.method === "editMessageText").payload.text, /allaqachon sotilgan/);
+    assert.equal(balance, 5000);
+
+    // Balans yetmasa — to'lash tugmasi o'rniga kabinetdagi to'ldirish.
+    const second = (await store.create({ email: "next.box@firstmail.ltd", price: "15000" })).item;
+    telegramCalls.length = 0;
+    await tap(bot, `shop_fm_buy:${second.id}`, 9404);
+    const poor = telegramCalls.find((c) => c.method === "editMessageText");
+    assert.match(poor.payload.text, /yetarli emas/);
+    assert.ok(poor.payload.reply_markup.inline_keyboard[0][0].web_app, "to'ldirish kabinetda ochiladi");
+  } finally {
+    global.fetch = originalFetch;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[require.resolve("../api/bot.js")];
+  }
+});

@@ -8,6 +8,7 @@ const quotaLog = require("../api/_quota-log.js");
 const SUPABASE = "https://testproject.supabase.co/rest/v1";
 const ARENA = "https://arena.example.test/api";
 const BOT_TOKEN = "123456:test-token";
+const ELDERPAY = "https://elderpay.example.test";
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
@@ -136,8 +137,80 @@ function installCabinetBackend() {
     { id: 1, user_id: "777", kind: "full_info", delta: -1, source: "use", account_id: "555555", zone_id: "1", target: null, remaining: 2, created_at: "2026-10-09T10:00:00Z" },
   ];
 
+  // 020_wallet.sql funksiyalarining soddalashtirilgan nusxasi.
+  const wallet = { balances: new Map(), topups: [], txns: [] };
+  const balanceOf = (userId) => wallet.balances.get(String(userId)) || 0;
+  function apply(userId, delta, kind, extra = {}) {
+    const next = balanceOf(userId) + delta;
+    if (next < 0) return null;
+    wallet.balances.set(String(userId), next);
+    wallet.txns.unshift({ id: wallet.txns.length + 1, user_id: String(userId), delta, balance_after: next, kind, created_at: new Date().toISOString(), ...extra });
+    return next;
+  }
+  function insertOrder(row) {
+    const order = { id: orders.length + 1, created_at: new Date().toISOString(), ...row };
+    orders.unshift(order);
+    return order;
+  }
+
+  function walletRpc(name, args) {
+    const userId = String(args.p_user_id);
+    switch (name) {
+      case "wallet_get": return { ok: true, balance: balanceOf(userId) };
+      case "wallet_create_topup": {
+        wallet.topups.filter((t) => t.user_id === userId && t.status === "pending").forEach((t) => { t.status = "cancelled"; });
+        const topup = {
+          id: wallet.topups.length + 1, user_id: userId, amount: args.p_amount, pay_amount: args.p_amount + 347, status: "pending",
+          created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
+        };
+        wallet.topups.push(topup);
+        return { ok: true, topup };
+      }
+      case "wallet_cancel_topup": {
+        const topup = wallet.topups.find((t) => String(t.id) === String(args.p_topup_id) && t.user_id === userId && t.status === "pending");
+        if (topup) topup.status = "cancelled";
+        return { ok: Boolean(topup) };
+      }
+      case "wallet_credit_topup": {
+        if (wallet.topups.some((t) => t.provider_txn_id === args.p_txn_id)) return { ok: true, status: "duplicate" };
+        const topup = args.p_topup_id
+          ? wallet.topups.find((t) => String(t.id) === String(args.p_topup_id))
+          : wallet.topups.find((t) => t.pay_amount === args.p_amount && t.status !== "paid");
+        if (!topup) return { ok: false, error: "not_matched" };
+        if (topup.status === "paid") return { ok: true, status: "already_paid", topup_id: topup.id, user_id: topup.user_id };
+        Object.assign(topup, { status: "paid", provider_txn_id: args.p_txn_id, paid_amount: args.p_amount });
+        const balance = apply(topup.user_id, args.p_amount, "topup", { topup_id: topup.id });
+        return { ok: true, status: "credited", topup_id: topup.id, user_id: topup.user_id, amount: args.p_amount, balance };
+      }
+      case "wallet_buy_limit": {
+        const pkg = settings.rows.get(`shop_lp:${args.p_package_id}`);
+        if (!pkg) return { ok: false, error: "not_available" };
+        const { kind, amount, price } = pkg.value;
+        if (balanceOf(userId) < price) return { ok: false, error: "insufficient_funds", price, balance: balanceOf(userId) };
+        const order = insertOrder({ user_id: userId, kind: "limit", item_id: args.p_package_id, title: `${kind}:${amount}`, price, paid_amount: price, status: "done", delivery: { kind, amount } });
+        const balance = apply(userId, -price, "purchase", { order_id: order.id });
+        return { ok: true, order_id: order.id, balance, kind, amount, price, remaining: 2 + amount };
+      }
+      case "wallet_buy_firstmail": {
+        const row = settings.rows.get(`shop_fm:${args.p_item_id}`);
+        if (!row || row.value.status !== "available") return { ok: false, error: "not_available" };
+        const price = Number(String(row.value.price).replace(/\s/g, ""));
+        if (!price) return { ok: false, error: "price_not_set" };
+        if (balanceOf(userId) < price) return { ok: false, error: "insufficient_funds", price, balance: balanceOf(userId) };
+        const order = insertOrder({ user_id: userId, kind: "firstmail", item_id: args.p_item_id, title: "masked", price, paid_amount: price, status: "done", delivery: { email: row.value.email, password: row.value.password } });
+        const balance = apply(userId, -price, "purchase", { order_id: order.id });
+        row.value = { ...row.value, status: "sold", buyer_id: userId };
+        return { ok: true, order_id: order.id, balance, price, email: row.value.email, password: row.value.password };
+      }
+      default:
+        return undefined;
+    }
+  }
+
   function rpc(name, args) {
     const userId = String(args.p_user_id);
+    const walletResult = walletRpc(name, args);
+    if (walletResult !== undefined) return walletResult;
     switch (name) {
       case "list_user_accounts":
         return accounts.filter((a) => a.user_id === userId).map((a) => ({ id: a.id, account_id: a.account_id, zone_id: a.zone_id, ml_linked: a.ml_token !== null, ml_nickname: a.ml_nickname }));
@@ -199,14 +272,60 @@ function installCabinetBackend() {
         const userId = new URL(`https://x${path}`).searchParams.get("user_id").slice(3);
         return jsonResponse(orders.filter((o) => String(o.user_id) === userId));
       }
+      if (path.startsWith("/wallet_topups")) {
+        const params = new URL(`https://x${path}`).searchParams;
+        const matches = (t) =>
+          (!params.get("id") || String(t.id) === params.get("id").slice(3)) &&
+          (!params.get("user_id") || t.user_id === params.get("user_id").slice(3)) &&
+          (!params.get("status") || (params.get("status").startsWith("neq.")
+            ? t.status !== params.get("status").slice(4)
+            : t.status === params.get("status").slice(3))) &&
+          (!params.get("provider_order") || Boolean(t.provider_order));
+        if (String(options.method || "GET").toUpperCase() === "PATCH") {
+          wallet.topups.filter(matches).forEach((t) => Object.assign(t, body));
+          return jsonResponse([]);
+        }
+        return jsonResponse(wallet.topups.filter(matches).slice().reverse());
+      }
+      if (path.startsWith("/wallet_transactions")) {
+        const userId = new URL(`https://x${path}`).searchParams.get("user_id").slice(3);
+        return jsonResponse(wallet.txns.filter((t) => t.user_id === userId));
+      }
       if (path.startsWith("/bot_settings")) return jsonResponse(settings.handle(path, { ...options, body }));
       if (path.startsWith("/bot_users")) return jsonResponse([{ preferred_language: "uz", user_id: 1, chat_id: 1, username: "Ksava_org" }]);
       return jsonResponse([]);
     }
+    if (href.startsWith(ELDERPAY)) {
+      const call = JSON.parse(options.body);
+      elderCalls.push(call);
+      if (call.method === "create") {
+        if (elder.conflicts > 0) {
+          elder.conflicts -= 1;
+          return jsonResponse({ status: "error", message: "Bu miqdordagi to'lov allaqachon mavjud" }, 409);
+        }
+        const order = `ord-${elderCalls.length}`;
+        elder.orders.set(order, { amount: call.amount, status: "pending" });
+        return jsonResponse({ status: "success", order, data: { amount: String(call.amount), over: 5 } });
+      }
+      const order = elder.orders.get(call.order);
+      if (!order) return jsonResponse({ status: "error", message: "order topilmadi" }, 400);
+      if (call.method === "check") {
+        return jsonResponse({ status: "success", order: call.order, data: { amount: String(order.amount), status: order.status, date: "2026-10-09", over: 3 } });
+      }
+      if (call.method === "cancel") {
+        order.status = "cancel";
+        return jsonResponse({ status: "success", message: "ok", order: call.order });
+      }
+    }
     return jsonResponse({});
   };
 
-  return { settings, accounts, telegram, arenaCalls, orders, restore: () => { global.fetch = original; } };
+  const elder = { orders: new Map(), conflicts: 0 };
+  const elderCalls = [];
+  return {
+    settings, accounts, telegram, arenaCalls, orders, wallet, elder, elderCalls,
+    restore: () => { global.fetch = original; },
+  };
 }
 
 function loadAccountApp() {
@@ -219,6 +338,11 @@ function loadAccountApp() {
   process.env.SUPPORT_USERNAME = "Ksava_org";
   process.env.ADMIN_IDS = "5081175125";
   delete process.env.SHOP_NOTIFY_CHAT_ID;
+  process.env.WALLET_CARD_NUMBER = "8600 1234 5678 9012";
+  process.env.WALLET_CARD_HOLDER = "ALI VALIYEV";
+  process.env.ELDERPAY_API_URL = ELDERPAY;
+  process.env.ELDERPAY_SHOP_ID = "123456";
+  process.env.ELDERPAY_SHOP_KEY = "shop-secret-key";
   delete require.cache[require.resolve("../api/account.js")];
   return require("../api/account.js");
 }
@@ -338,22 +462,129 @@ test("cabinet: ML link — 5 wrong codes lock the code", async () => {
   }
 });
 
-test("cabinet: buy requests go to the shop owner with buyer + item details", async () => {
+test("cabinet: limit is bought from the balance — insufficient funds first, then topup + purchase", async () => {
   const backend = installCabinetBackend();
   try {
     const item = (await limitPrices.createLimitPriceStore(backend.settings.handle).save({ kind: "reset_pw", amount: 5, price: 10000 })).item;
     const app = loadAccountApp();
 
-    const res = await call(app, USER, "buy_limit", { id: item.id });
-    assert.equal(res.body.ok, true);
-    assert.equal(backend.telegram.length, 1);
-    assert.equal(String(backend.telegram[0].chat_id), "1");
-    assert.match(backend.telegram[0].text, /#dokon_sorov #limit/);
-    assert.match(backend.telegram[0].text, /@ali/);
-    assert.match(backend.telegram[0].text, /10 000 so'm/);
+    const poor = await call(app, USER, "buy_limit", { id: item.id });
+    assert.equal(poor.statusCode, 402);
+    assert.deepEqual([poor.body.error, poor.body.balance, poor.body.price], ["insufficient_funds", 0, 10000]);
+    assert.equal(backend.orders.length, 0, "pul yetmasa buyurtma yozilmaydi");
+
+    // To'ldirish: noyob summa, karta rekvizitlari.
+    const cabinet = (await call(app, USER, "cabinet")).body;
+    assert.equal(cabinet.wallet.balance, 0);
+    assert.equal(cabinet.wallet.config.card, "8600 1234 5678 9012");
+    assert.equal(cabinet.wallet.config.auto, true);
+    assert.equal((await call(app, USER, "topup_create", { amount: 100 })).body.error, "invalid_amount");
+    const topup = (await call(app, USER, "topup_create", { amount: 20000 })).body.topup;
+    assert.equal(topup.pay_amount, 20347);
+
+    // ElderPay'da aynan shu summaga buyurtma ochildi (shop_key faqat serverda).
+    assert.deepEqual(backend.elderCalls[0], { method: "create", shop_id: "123456", shop_key: "shop-secret-key", amount: 20347, user_id: "tg_777" });
+    assert.ok(!JSON.stringify(topup).includes("shop-secret-key"));
+
+    // Pul hali tushmagan.
+    const early = (await call(app, USER, "topup_check", { id: topup.id })).body;
+    assert.deepEqual([early.ok, early.credited, early.topup.status], [true, false, "pending"]);
+    assert.deepEqual(backend.elderCalls.at(-1), { method: "check", order: "ord-1" });
+
+    // Boshqa user birovning so'rovini tekshira olmaydi.
+    assert.equal((await call(app, { id: 888, first_name: "B" }, "topup_check", { id: topup.id })).statusCode, 404);
+
+    backend.elder.orders.get("ord-1").status = "paid";
+    const paid = (await call(app, USER, "topup_check", { id: topup.id })).body;
+    assert.deepEqual([paid.credited, paid.balance, paid.topup.status], [true, 20347, "paid"]);
+    assert.ok(backend.telegram.some((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)));
+
+    // Qayta tekshirish ikkinchi marta yozmaydi.
+    assert.equal((await call(app, USER, "topup_check", { id: topup.id })).body.balance, 20347);
+
+    const bought = (await call(app, USER, "buy_limit", { id: item.id })).body;
+    assert.equal(bought.ok, true);
+    assert.equal(bought.balance, 10347);
+    assert.deepEqual(bought.limit, { kind: "reset_pw", amount: 5, remaining: 7 });
+    assert.equal(bought.order.status, "done");
+    assert.ok(backend.telegram.some((m) => String(m.chat_id) === "1" && /#sotuv #limit/.test(m.text) && /@ali/.test(m.text)));
+
+    const wallet = (await call(app, USER, "wallet")).body;
+    assert.deepEqual(wallet.transactions.map((t) => [t.kind, t.delta]), [["purchase", -10000], ["topup", 20347]]);
 
     assert.equal((await call(app, USER, "buy_limit", { id: "zzzzzzzz" })).body.error, "not_available");
     assert.equal((await call(app, USER, "buy_firstmail", { id: "zzzzzzzz" })).body.error, "not_available");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: firstmail from balance reveals credentials to the buyer only; agreed-price mail stays a request", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const shop = require("../api/_shop.js");
+    const store = shop.createFirstmailStore(backend.settings.handle);
+    const fm = (await store.create({ email: "secretbox@firstmail.ltd", password: "pw-123", price: "15 000" })).item;
+    const agreed = (await store.create({ email: "deal@firstmail.ltd", price: "kelishiladi" })).item;
+    backend.wallet.balances.set("777", 20000);
+    const app = loadAccountApp();
+
+    const res = (await call(app, USER, "buy_firstmail", { id: fm.id })).body;
+    assert.equal(res.ok, true);
+    assert.deepEqual(res.delivery, { email: "secretbox@firstmail.ltd", password: "pw-123" });
+    assert.equal(res.balance, 5000);
+    assert.deepEqual(res.order.delivery, { email: "secretbox@firstmail.ltd", password: "pw-123" });
+
+    // Ikkinchi xaridor ololmaydi.
+    backend.wallet.balances.set("888", 50000);
+    assert.equal((await call(app, { id: 888, first_name: "B" }, "buy_firstmail", { id: fm.id })).body.error, "not_available");
+
+    // Kabinet tarixida login/parol faqat egasida.
+    const mine = (await call(app, USER, "cabinet")).body;
+    assert.equal(mine.orders[0].delivery.password, "pw-123");
+    const other = (await call(app, { id: 888, first_name: "B" }, "cabinet")).body;
+    assert.ok(!JSON.stringify(other).includes("pw-123"));
+
+    // Narx kelishiladigan pochta — eski so'rov yo'li, balansdan yechilmaydi.
+    const manual = (await call(app, USER, "buy_firstmail", { id: agreed.id })).body;
+    assert.deepEqual([manual.ok, manual.manual], [true, true]);
+    assert.equal(manual.order.status, "pending");
+    assert.equal(backend.wallet.balances.get("777"), 5000);
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: ElderPay — 409 picks another amount, cancel closes the order, a paid order is credited on the next cabinet open", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const app = loadAccountApp();
+
+    // Shu summada boshqa faol to'lov bor — so'rov bekor qilinib, qayta yaratiladi.
+    backend.elder.conflicts = 1;
+    const first = (await call(app, USER, "topup_create", { amount: 50000 })).body;
+    assert.equal(first.ok, true);
+    assert.equal(backend.wallet.topups.length, 2);
+    assert.equal(backend.wallet.topups[0].status, "cancelled");
+    assert.equal(backend.wallet.topups[1].provider_order, "ord-2");
+
+    // Bekor qilish ElderPay'dagi buyurtmani ham yopadi.
+    assert.equal((await call(app, USER, "topup_cancel", { id: first.topup.id })).body.ok, true);
+    assert.equal(backend.elder.orders.get("ord-2").status, "cancel");
+
+    // To'lab, oynani yopib qo'ygan foydalanuvchi: kabinet ochilganda yoziladi.
+    const second = (await call(app, USER, "topup_create", { amount: 30000 })).body.topup;
+    const order = backend.wallet.topups.find((t) => String(t.id) === second.id).provider_order;
+    backend.elder.orders.get(order).status = "paid";
+    const cabinet = (await call(app, USER, "cabinet")).body;
+    assert.equal(cabinet.wallet.balance, 30347);
+    assert.ok(backend.telegram.some((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)));
+
+    // ElderPay ishlamasa — foydalanuvchiga tushunarli xato, so'rov ochiq qolmaydi.
+    backend.elder.conflicts = 5;
+    const busy = (await call(app, USER, "topup_create", { amount: 10000 })).body;
+    assert.equal(busy.error, "busy");
+    assert.ok(backend.wallet.topups.every((t) => t.status !== "pending"));
   } finally {
     backend.restore();
   }
@@ -379,37 +610,6 @@ test("cabinet: firstmails come in pages of 30 (rest via the firstmails action)",
     assert.equal(next.hasMore, false);
     const ids = new Set([...first.firstmails, ...next.items].map((f) => f.id));
     assert.equal(ids.size, 35, "sahifalar takrorlanmaydi");
-  } finally {
-    backend.restore();
-  }
-});
-
-test("cabinet: buy requests are kept in the shop history (orders)", async () => {
-  const backend = installCabinetBackend();
-  try {
-    const item = (await limitPrices.createLimitPriceStore(backend.settings.handle).save({ kind: "full_info", amount: 10, price: 15000 })).item;
-    const shop = require("../api/_shop.js");
-    const fm = await shop.createFirstmailStore(backend.settings.handle).create({ email: "secretbox@firstmail.ltd", price: "20000" });
-    const fmId = (fm.item || fm).id;
-    const app = loadAccountApp();
-
-    const empty = (await call(app, USER, "cabinet")).body;
-    assert.deepEqual(empty.orders, []);
-    assert.equal(empty.ordersAvailable, true);
-
-    const limitRes = (await call(app, USER, "buy_limit", { id: item.id })).body;
-    assert.equal(limitRes.order.kind, "limit");
-    assert.equal(limitRes.order.title, "full_info:10");
-    assert.equal(limitRes.order.price, 15000);
-    assert.equal(limitRes.order.status, "pending");
-
-    const fmRes = (await call(app, USER, "buy_firstmail", { id: fmId })).body;
-    assert.equal(fmRes.order.kind, "firstmail");
-    assert.doesNotMatch(fmRes.order.title, /secretbox/, "pochta to'liq ko'rinmaydi");
-
-    const after = (await call(app, USER, "cabinet")).body;
-    assert.deepEqual(after.orders.map((o) => o.kind), ["firstmail", "limit"]);
-    assert.ok(after.orders.every((o) => !("user_id" in o)));
   } finally {
     backend.restore();
   }

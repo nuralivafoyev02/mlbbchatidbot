@@ -82,6 +82,35 @@ function buildFirstmailBuyText(user, item, priceText) {
   ].join("\n");
 }
 
+// Balansdan to'langan (avtomatik bajarilgan) sotuv — egasiga ma'lumot uchun.
+function buildWalletSaleText(user, { kind, item, orderId, price }) {
+  const what = kind === "firstmail"
+    ? `✉️ Pochta: <code>${escapeHtml(item.email)}</code>`
+    : `📦 Paket: <b>${escapeHtml(LIMIT_KIND_LABELS[item.kind] || item.kind)}</b> × <b>${escapeHtml(item.amount)}</b>`;
+
+  return [
+    kind === "firstmail" ? "#sotuv #firstmail" : "#sotuv #limit",
+    "",
+    "✅ <b>Balansdan xarid — avtomatik bajarildi</b>",
+    "",
+    buyerLine(user),
+    what,
+    `💰 Summa: <b>${escapeHtml(formatSom(price))}</b>`,
+    `🧾 Buyurtma: <code>#${escapeHtml(orderId)}</code>`,
+    "",
+    "Xatolik bo'lsa admin paneldagi <b>Balans</b> bo'limidan pulni qaytarish mumkin.",
+  ].join("\n");
+}
+
+function buildTopupCreditedText(amount, balance) {
+  return [
+    "✅ <b>Balans to'ldirildi</b>",
+    "",
+    `➕ Tushgan summa: <b>${escapeHtml(formatSom(amount))}</b>`,
+    `💰 Joriy balans: <b>${escapeHtml(formatSom(balance))}</b>`,
+  ].join("\n");
+}
+
 // deps: { botToken, requestFn (Supabase REST), fetchFn? }
 function createShopNotifier({ botToken, requestFn, fetchFn = fetch, env = process.env } = {}) {
   const config = resolveShopNotifyConfig(env);
@@ -167,6 +196,8 @@ module.exports = {
   LIMIT_KIND_LABELS,
   buildFirstmailBuyText,
   buildLimitBuyText,
+  buildTopupCreditedText,
+  buildWalletSaleText,
   createShopNotifier,
   resolveShopNotifyConfig,
 };

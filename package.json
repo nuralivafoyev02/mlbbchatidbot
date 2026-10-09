@@ -10,7 +10,8 @@
     "dev:miniapp": "node dev/serve-miniapp.js",
     "dev:account": "node dev/serve-account.js",
     "dev:all": "node dev/dev-all.js",
-    "deploy:cf": "npx wrangler deploy"
+    "deploy": "npx wrangler deploy",
+    "deploy:dev": "npx wrangler deploy --env dev"
   },
   "engines": {
     "node": ">=18"
@@ -19,6 +20,7 @@
     "telegram": "^2.26.22"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "wrangler": "^4.107.0"
   }
 }

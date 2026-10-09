@@ -74,5 +74,47 @@
     "BROADCAST_RATE_PER_SEC": "25",
     "BROADCAST_BATCH_SIZE": "25",
     "BROADCAST_MAX_SENDS_PER_RUN": "40"
+  },
+  // Dev (beta) muhiti: `npx wrangler deploy --env dev`.
+  // Alohida Worker (mlbbchatidbot-dev) + alohida Durable Object namespace.
+  // Queues ataylab yo'q (meros qilinmaydi ham) — DO asosiy yo'l.
+  // Maxfiy qiymatlar (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
+  // SUPABASE_SERVICE_KEY, FULL_INFO_API_KEY) `wrangler secret put ... --env dev`.
+  "env": {
+    "dev": {
+      "name": "mlbbchatidbot-dev",
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "ASYNC_RUNNER",
+            "class_name": "AsyncRunner"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["AsyncRunner"]
+        }
+      ],
+      "vars": {
+        "MAIN_GROUP_ID": "-1003832186200",
+        "SUPPORT_USERNAME": "Ksava_org",
+        "ADMIN_IDS": "5081175125",
+        "TELEGRAM_BOT_USERNAME": "devcheckmlbbidBot",
+        "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
+        "ADVANCED_SERVER_RANGES": "5101-5800",
+        "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",
+        "FULL_INFO_API": "https://api.jebray.com",
+        "FULL_INFO_TIMEOUT_MS": "30000",
+        "FULL_INFO_RETRIES": "2",
+        "TELEGRAM_TIMEOUT_MS": "5000",
+        "BROADCAST_RATE_PER_SEC": "25",
+        "BROADCAST_BATCH_SIZE": "25",
+        "BROADCAST_MAX_SENDS_PER_RUN": "40",
+        "MINIAPP_URL": "https://mlbbchatidbot-git-dev-nuralis-projects-64433b49.vercel.app/api/miniapp",
+        "ACCOUNT_MINIAPP_URL": "https://mlbbchatidbot-git-dev-nuralis-projects-64433b49.vercel.app/api/account"
+      }
+    }
   }
 }

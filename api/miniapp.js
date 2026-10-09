@@ -5,6 +5,8 @@ const shop = require("./_shop.js");
 const donat = require("./_donat.js");
 const limitPrices = require("./_limit-prices.js");
 const quotaLog = require("./_quota-log.js");
+const walletLib = require("./_wallet.js");
+const shopOrders = require("./_shop-orders.js");
 const adminAuth = require("./_admin-auth.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 
@@ -151,6 +153,18 @@ module.exports = async function handler(req, res) {
           return handleShopLpSave(req, res, body);
         case "shop_lp_delete":
           return handleShopLpDelete(req, res, body);
+        case "wallet_overview":
+          return handleWalletOverview(req, res, body);
+        case "wallet_config_save":
+          return handleWalletConfigSave(req, res, body);
+        case "wallet_user":
+          return handleWalletUser(req, res, body);
+        case "wallet_adjust":
+          return handleWalletAdjust(req, res, body);
+        case "wallet_refund":
+          return handleWalletRefund(req, res, body);
+        case "wallet_topup_confirm":
+          return handleWalletTopupConfirm(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -1099,6 +1113,212 @@ async function handleShopFmDelete(req, res, body) {
   } catch (e) {
     console.error("[SHOP_FM_DELETE]", e.message);
     return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 💰 Balans va to'lovlar (supabase/020_wallet.sql, api/_wallet.js)
+//
+// Admin: karta rekvizitlari, kutilayotgan to'ldirishlarni qo'lda tasdiqlash
+// (ELDER PAY ishlamay qolsa — zaxira), buyurtma pulini qaytarish va
+// foydalanuvchi balansini tuzatish. Har bir pul harakati foydalanuvchiga bot
+// orqali xabar qilinadi.
+// ---------------------------------------------------------------------------
+function getWallet() {
+  return walletLib.createWallet((reqPath, options) => supabaseRequest(reqPath, options));
+}
+
+const WALLET_ERROR_TEXTS = {
+  card_invalid: "Karta raqami 16 ta raqamdan iborat bo'lishi kerak",
+  min_invalid: "Eng kam summa noto'g'ri",
+  max_invalid: "Eng ko'p summa eng kamidan kichik bo'lmasin",
+  invalid_amount: "Summa noto'g'ri",
+  insufficient_funds: "Balansda buncha mablag' yo'q",
+  not_found: "Topilmadi",
+  not_paid: "Bu buyurtma balansdan to'lanmagan — qaytaradigan pul yo'q",
+  not_matched: "To'ldirish so'rovi topilmadi",
+  invalid_user: "Foydalanuvchi ID noto'g'ri",
+};
+
+function walletError(res, error, status = 400) {
+  return json(res, status, { ok: false, error, message: WALLET_ERROR_TEXTS[error] || error });
+}
+
+function walletFailure(res, label, e) {
+  console.error(`[WALLET_${label}]`, e.message);
+  const missing = /wallet_|shop_orders|42P01|PGRST20/.test(String(e.message));
+  return json(res, missing ? 503 : 500, {
+    ok: false,
+    error: missing ? "wallet_unavailable" : "server_error",
+    message: missing ? "Balans jadvali topilmadi — supabase/020_wallet.sql migratsiyasini qo'llang" : "Xatolik",
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function formatSomText(value) {
+  return `${String(Math.round(Number(value) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} so'm`;
+}
+
+async function notifyWalletUser(userId, text) {
+  if (!TELEGRAM_BOT_TOKEN || !/^\d{1,20}$/.test(String(userId))) return;
+  try {
+    await fetchWithTimeout(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: String(userId), text, parse_mode: "HTML" }),
+    });
+  } catch (e) {
+    console.error("[WALLET_NOTIFY]", e.message);
+  }
+}
+
+async function handleWalletOverview(req, res) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const wallet = getWallet();
+    // To'lanib, foydalanuvchi tekshirmay qolgan buyurtmalar shu yerda yoziladi.
+    const synced = await wallet.syncRecentTopups({ limit: 20 }).catch((e) => {
+      console.error("[WALLET_SYNC]", e.message);
+      return [];
+    });
+    for (const item of synced) {
+      await notifyWalletUser(item.user_id, [
+        "✅ <b>Balans to'ldirildi</b>",
+        "",
+        `➕ Tushgan summa: <b>${formatSomText(item.amount)}</b>`,
+        `💳 Joriy balans: <b>${formatSomText(item.balance)}</b>`,
+      ].join("\n"));
+    }
+    const [config, pending, recent, orders] = await Promise.all([
+      wallet.getConfig(),
+      wallet.listTopups({ status: "pending", limit: 50 }),
+      wallet.listTopups({ limit: 30 }),
+      shopOrders.listShopOrders((reqPath, options) => supabaseRequest(reqPath, options), { limit: 40 }),
+    ]);
+    return json(res, 200, {
+      ok: true,
+      data: {
+        config,
+        auto: wallet.payClient.enabled,
+        synced: synced.length,
+        pending,
+        topups: recent,
+        orders: orders.filter((o) => o.paid_amount > 0),
+      },
+    });
+  } catch (e) {
+    return walletFailure(res, "OVERVIEW", e);
+  }
+}
+
+async function handleWalletConfigSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getWallet().saveConfig(body);
+    if (!result.ok) return walletError(res, result.error);
+    return json(res, 200, { ok: true, data: { config: result.config } });
+  } catch (e) {
+    return walletFailure(res, "CONFIG", e);
+  }
+}
+
+async function handleWalletUser(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const userId = String(body.user_id || "").trim();
+  if (!/^\d{1,20}$/.test(userId)) return walletError(res, "invalid_user");
+
+  try {
+    const wallet = getWallet();
+    const [balance, transactions, orders, topups] = await Promise.all([
+      wallet.getBalance(userId),
+      wallet.listTransactions(userId, 50),
+      shopOrders.listShopOrders((reqPath, options) => supabaseRequest(reqPath, options), { userId, limit: 50 }),
+      wallet.listTopups({ userId, limit: 20 }),
+    ]);
+    return json(res, 200, { ok: true, data: { user_id: userId, balance, transactions, orders, topups } });
+  } catch (e) {
+    return walletFailure(res, "USER", e);
+  }
+}
+
+async function handleWalletAdjust(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const userId = String(body.user_id || "").trim();
+  const delta = Number(String(body.delta ?? "").replace(/\s+/g, ""));
+  if (!/^\d{1,20}$/.test(userId)) return walletError(res, "invalid_user");
+  if (!Number.isInteger(delta) || delta === 0) return walletError(res, "invalid_amount");
+
+  try {
+    const result = await getWallet().adminAdjust(userId, delta, body.note);
+    if (!result || !result.ok) return walletError(res, result?.error || "invalid_amount");
+    await notifyWalletUser(userId, [
+      delta > 0 ? "💰 <b>Balansingizga mablag' qo'shildi</b>" : "💰 <b>Balansingizdan mablag' yechildi</b>",
+      "",
+      `${delta > 0 ? "➕" : "➖"} Summa: <b>${formatSomText(Math.abs(delta))}</b>`,
+      body.note ? `📝 Izoh: ${escapeHtml(String(body.note).slice(0, 300))}` : "",
+      `💳 Joriy balans: <b>${formatSomText(result.balance)}</b>`,
+    ].filter(Boolean).join("\n"));
+    return json(res, 200, { ok: true, data: { balance: result.balance } });
+  } catch (e) {
+    return walletFailure(res, "ADJUST", e);
+  }
+}
+
+async function handleWalletRefund(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const orderId = String(body.order_id || "").trim();
+  if (!/^\d{1,19}$/.test(orderId)) return walletError(res, "not_found");
+
+  try {
+    const result = await getWallet().refundOrder(orderId, body.reason, body.reverse === true || body.reverse === "true");
+    if (!result || !result.ok) return walletError(res, result?.error || "not_found");
+    if (result.status === "refunded") {
+      await notifyWalletUser(result.user_id, [
+        "↩️ <b>Xarid puli qaytarildi</b>",
+        "",
+        `🧾 Buyurtma: <code>#${escapeHtml(orderId)}</code>`,
+        `➕ Summa: <b>${formatSomText(result.amount)}</b>`,
+        body.reason ? `📝 Sabab: ${escapeHtml(String(body.reason).slice(0, 300))}` : "",
+        `💳 Joriy balans: <b>${formatSomText(result.balance)}</b>`,
+      ].filter(Boolean).join("\n"));
+    }
+    return json(res, 200, { ok: true, data: { status: result.status, balance: result.balance ?? null } });
+  } catch (e) {
+    return walletFailure(res, "REFUND", e);
+  }
+}
+
+// ELDER PAY ishlamay qolsa yoki boshqa summa tushsa — admin chekka qarab qo'lda
+// tasdiqlaydi. Summa sukut bo'yicha so'rovdagi aniq summa.
+async function handleWalletTopupConfirm(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const topupId = String(body.id || "").trim();
+  const amount = Number(String(body.amount ?? "").replace(/\s+/g, ""));
+  if (!/^\d{1,19}$/.test(topupId)) return walletError(res, "not_matched");
+  if (!Number.isInteger(amount) || amount <= 0) return walletError(res, "invalid_amount");
+
+  try {
+    const result = await getWallet().creditIncoming(
+      { id: `manual-${topupId}`, amount, paid_at: new Date().toISOString() },
+      { topupId, confirmedBy: "admin", provider: "manual" }
+    );
+    if (!result || !result.ok) return walletError(res, result?.error || "not_matched");
+    if (result.status === "credited") {
+      await notifyWalletUser(result.user_id, [
+        "✅ <b>Balans to'ldirildi</b>",
+        "",
+        `➕ Tushgan summa: <b>${formatSomText(result.amount)}</b>`,
+        `💳 Joriy balans: <b>${formatSomText(result.balance)}</b>`,
+      ].join("\n"));
+    }
+    return json(res, 200, { ok: true, data: { status: result.status, balance: result.balance ?? null } });
+  } catch (e) {
+    return walletFailure(res, "TOPUP_CONFIRM", e);
   }
 }
 

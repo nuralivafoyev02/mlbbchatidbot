@@ -16,7 +16,13 @@ const arena = require("./_mlbb-arena.js");
 const shop = require("./_shop.js");
 const limitPrices = require("./_limit-prices.js");
 const shopOrders = require("./_shop-orders.js");
-const { createShopNotifier, buildFirstmailBuyText, buildLimitBuyText } = require("./_shop-notify.js");
+const walletLib = require("./_wallet.js");
+const {
+  createShopNotifier,
+  buildFirstmailBuyText,
+  buildWalletSaleText,
+  buildTopupCreditedText,
+} = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
@@ -107,6 +113,15 @@ module.exports = async function handler(req, res) {
         return await handleBuyLimit(res, ctx);
       case "buy_firstmail":
         return await handleBuyFirstmail(res, ctx);
+      // Balans
+      case "wallet":
+        return await handleWallet(res, ctx);
+      case "topup_create":
+        return await handleTopupCreate(res, ctx);
+      case "topup_check":
+        return await handleTopupCheck(res, ctx);
+      case "topup_cancel":
+        return await handleTopupCancel(res, ctx);
       default:
         return json(res, 400, { ok: false, error: "unknown_action" });
     }
@@ -311,8 +326,10 @@ async function loadPreferredLanguage(config, user) {
 //
 // Botdagi "Mening profilim" postidagi web_app tugmasi ochadi: limitlar,
 // akkauntlar, kimlar tekshirgani, limitlar tarixi, MLBB'ga ulash, limit
-// narxlari va Firstmail xaridi. To'lov hozircha qo'lda — xarid so'rovi
-// do'kon egasiga boradi (api/_shop-notify.js).
+// narxlari va Firstmail xaridi. Xaridlar balansdan (api/_wallet.js,
+// supabase/020_wallet.sql); balans karta orqali to'ldiriladi va to'lov
+// ELDER PAY orqali tekshiriladi (api/_elderpay.js). Narxi kelishiladigan pochta —
+// eski yo'l: so'rov do'kon egasiga boradi (api/_shop-notify.js).
 // ---------------------------------------------------------------------------
 const CABINET_HISTORY_LIMIT = 50;
 const CABINET_FIRSTMAIL_PAGE = 30; // Do'kon: pastga aylantirganda 30 tadan
@@ -412,7 +429,10 @@ async function handleCabinet(res, { config, user }) {
     limit: String(CABINET_HISTORY_LIMIT),
   });
 
-  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders] = await Promise.all([
+  const wallet = createWalletFor(config);
+  // Oyna yopilib qolgan to'lovlar — balansni ko'rsatishdan oldin yoziladi.
+  await settle(syncUserTopups(config, wallet, user), "TOPUP_SYNC");
+  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup] = await Promise.all([
     loadPreferredLanguage(config, user),
     settle(listUserAccounts(config, userId), "ACCOUNTS"),
     settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
@@ -424,6 +444,10 @@ async function handleCabinet(res, { config, user }) {
     settle(loadFirstmailPage(config, 0), "FIRSTMAIL"),
     // 019 migratsiyasi qo'llanmagan bo'lsa — null, UI "tarix hali yo'q" deydi.
     settle(shopOrders.listUserShopOrders(storeRequest(config), userId, CABINET_HISTORY_LIMIT), "ORDERS"),
+    // 020 migratsiyasi qo'llanmagan bo'lsa — null, UI balansni ko'rsatmaydi.
+    settle(wallet.getBalance(userId), "WALLET"),
+    settle(wallet.getConfig(), "WALLET_CONFIG"),
+    settle(wallet.getActiveTopup(userId), "TOPUP"),
   ]);
 
   return json(res, 200, {
@@ -454,6 +478,9 @@ async function handleCabinet(res, { config, user }) {
     firstmailHasMore: firstmails ? firstmails.hasMore : false,
     orders: orders || [],
     ordersAvailable: Array.isArray(orders),
+    wallet: typeof balance === "number" && walletConfig
+      ? { balance, config: wallet.publicConfig(walletConfig), topup: topup || null }
+      : null,
   });
 }
 
@@ -651,32 +678,183 @@ async function handleMlVerify(res, { config, user, body }) {
   return json(res, 200, { ok: true, accounts: await listUserAccounts(config, user.id) });
 }
 
+// ---------------------------------------------------------------------------
+// 💰 Balans: to'ldirish va balansdan xarid
+// ---------------------------------------------------------------------------
+function createWalletFor(config) {
+  return walletLib.createWallet(storeRequest(config));
+}
+
+// Pul bilan bog'liq RPC xatosi (masalan 020 migratsiyasi yo'q) — 503.
+function walletUnavailable(res, error, label) {
+  console.error(`[WALLET_${label}]`, error?.message);
+  return json(res, 503, { ok: false, error: "wallet_unavailable" });
+}
+
+// To'lab, kabinetni yopib qo'ygan foydalanuvchi pulini yo'qotmasin.
+async function syncUserTopups(config, wallet, user) {
+  const credited = await wallet.syncRecentTopups({ userId: user.id, limit: 5 });
+  for (const item of credited) {
+    await notifyTopupCredited(config, user, { pay_amount: item.amount }, item.balance);
+  }
+}
+
+async function handleWallet(res, { config, user }) {
+  const wallet = createWalletFor(config);
+  try {
+    await settle(syncUserTopups(config, wallet, user), "TOPUP_SYNC");
+    const [balance, walletConfig, topup, transactions] = await Promise.all([
+      wallet.getBalance(user.id),
+      wallet.getConfig(),
+      wallet.getActiveTopup(user.id),
+      wallet.listTransactions(user.id),
+    ]);
+    return json(res, 200, { ok: true, balance, config: wallet.publicConfig(walletConfig), topup, transactions });
+  } catch (error) {
+    return walletUnavailable(res, error, "GET");
+  }
+}
+
+async function handleTopupCreate(res, { config, user, body }) {
+  try {
+    const result = await createWalletFor(config).createTopup(user.id, body.amount);
+    return json(res, result.ok ? 200 : 400, result);
+  } catch (error) {
+    return walletUnavailable(res, error, "TOPUP_CREATE");
+  }
+}
+
+async function handleTopupCancel(res, { config, user, body }) {
+  try {
+    return json(res, 200, await createWalletFor(config).cancelTopup(user.id, body.id));
+  } catch (error) {
+    return walletUnavailable(res, error, "TOPUP_CANCEL");
+  }
+}
+
+async function handleTopupCheck(res, { config, user, body }) {
+  let result;
+  try {
+    result = await createWalletFor(config).checkTopup(user.id, body.id);
+  } catch (error) {
+    return walletUnavailable(res, error, "TOPUP_CHECK");
+  }
+
+  if (result.credited) {
+    await notifyTopupCredited(config, user, result.topup, result.balance);
+  }
+  return json(res, result.ok ? 200 : result.error === "not_found" ? 404 : 502, result);
+}
+
+// Foydalanuvchiga bot orqali "balans to'ldirildi" xabari (best effort).
+async function notifyTopupCredited(config, user, topup, balance) {
+  if (!config.botToken) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: String(user.id),
+        text: buildTopupCreditedText(topup.paid_amount || topup.pay_amount, balance),
+        parse_mode: "HTML",
+      }),
+    });
+  } catch (error) {
+    console.error("[WALLET_NOTIFY_USER]", error?.message);
+  }
+}
+
+// Sotuv haqida do'kon egasiga xabar (best effort — xarid allaqachon bajarilgan).
+async function notifyWalletSale(config, user, details) {
+  try {
+    const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+    await notifier.notify(buildWalletSaleText(user, details), user.id);
+  } catch (error) {
+    console.error("[WALLET_NOTIFY_SALE]", error?.message);
+  }
+}
+
+function purchaseFailure(res, result) {
+  const error = ["insufficient_funds", "not_available"].includes(result?.error) ? result.error : "purchase_failed";
+  const status = error === "insufficient_funds" ? 402 : error === "not_available" ? 404 : 500;
+  return json(res, status, {
+    ok: false,
+    error,
+    balance: typeof result?.balance === "number" ? result.balance : undefined,
+    price: typeof result?.price === "number" ? result.price : undefined,
+  });
+}
+
+async function loadOrder(config, userId, orderId) {
+  const orders = await shopOrders.listUserShopOrders(storeRequest(config), userId, 5).catch(() => []);
+  return orders.find((order) => String(order.id) === String(orderId)) || null;
+}
+
 async function handleBuyLimit(res, { config, user, body }) {
   const item = await limitPrices.createLimitPriceStore(storeRequest(config)).get(String(body.id || ""));
   if (!item) {
     return json(res, 404, { ok: false, error: "not_available" });
   }
 
-  const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
-  const delivered = await notifier.notify(buildLimitBuyText(user, item), user.id);
-  const order = delivered
-    ? await shopOrders.recordShopOrder(storeRequest(config), {
-      userId: user.id,
-      kind: "limit",
-      itemId: item.id,
-      title: `${item.kind}:${item.amount}`,
-      price: item.price,
-    })
-    : null;
-  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername, order });
+  let result;
+  try {
+    result = await createWalletFor(config).buyLimit(user.id, item.id);
+  } catch (error) {
+    return walletUnavailable(res, error, "BUY_LIMIT");
+  }
+
+  if (!result || result.ok !== true) {
+    return purchaseFailure(res, result);
+  }
+
+  await notifyWalletSale(config, user, { kind: "limit", item, orderId: result.order_id, price: result.price });
+
+  return json(res, 200, {
+    ok: true,
+    balance: result.balance,
+    limit: { kind: result.kind, amount: result.amount, remaining: result.remaining },
+    order: await loadOrder(config, user.id, result.order_id),
+  });
 }
 
 async function handleBuyFirstmail(res, { config, user, body }) {
-  const item = await shop.createFirstmailStore(storeRequest(config)).get(String(body.id || ""));
+  const store = shop.createFirstmailStore(storeRequest(config));
+  const item = await store.get(String(body.id || ""));
   if (!item || item.status !== shop.SHOP_FM_STATUS_AVAILABLE) {
     return json(res, 404, { ok: false, error: "not_available" });
   }
 
+  // Narxi kelishiladigan pochta — balansdan sotib bo'lmaydi, eski so'rov yo'li.
+  if (!shop.parseShopPriceNumber(item.price)) {
+    return requestFirstmailManually(res, config, user, item);
+  }
+
+  let result;
+  try {
+    result = await createWalletFor(config).buyFirstmail(user.id, item.id);
+  } catch (error) {
+    return walletUnavailable(res, error, "BUY_FIRSTMAIL");
+  }
+
+  if (result && result.error === "price_not_set") {
+    return requestFirstmailManually(res, config, user, item);
+  }
+
+  if (!result || result.ok !== true) {
+    return purchaseFailure(res, result);
+  }
+
+  await notifyWalletSale(config, user, { kind: "firstmail", item, orderId: result.order_id, price: result.price });
+
+  return json(res, 200, {
+    ok: true,
+    balance: result.balance,
+    delivery: { email: result.email, password: result.password },
+    order: await loadOrder(config, user.id, result.order_id),
+  });
+}
+
+async function requestFirstmailManually(res, config, user, item) {
   const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
   const text = buildFirstmailBuyText(user, item, shop.formatShopPrice(item.price) || "kelishiladi");
   const delivered = await notifier.notify(text, user.id);
@@ -690,7 +868,13 @@ async function handleBuyFirstmail(res, { config, user, body }) {
       priceText: shop.formatShopPrice(item.price),
     })
     : null;
-  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername, order });
+  return json(res, delivered ? 200 : 502, {
+    ok: delivered,
+    manual: true,
+    error: delivered ? undefined : "notify_failed",
+    supportUsername: notifier.supportUsername,
+    order,
+  });
 }
 
 // ---------------------------------------------------------------------------

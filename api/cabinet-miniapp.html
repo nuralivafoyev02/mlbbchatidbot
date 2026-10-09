@@ -242,6 +242,39 @@
     .state h2 { font-size: 18px; margin-bottom: 8px; }
     .state p { color: var(--text2); line-height: 1.5; margin-bottom: 18px; }
 
+    /* ------------------------------------------------------------ balans (hamyon) */
+    .pill.red { background: rgba(244, 63, 94, .15); color: var(--red); }
+    .wallet {
+      position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px;
+      padding: 14px; border-radius: 18px; margin-bottom: 14px; border: 1px solid rgba(16, 185, 129, .32);
+      background: linear-gradient(135deg, rgba(16, 185, 129, .20), rgba(99, 102, 241, .12));
+    }
+    .wallet .w-ico { width: 40px; height: 40px; border-radius: 13px; flex: none; display: grid; place-items: center; font-size: 19px; color: #fff; background: linear-gradient(135deg, var(--green), #059669); }
+    .wallet .w-label { font-size: 11.5px; color: var(--text2); font-weight: 600; }
+    .wallet .grow { min-width: 0; }
+    .wallet .w-sum { font-size: 21px; font-weight: 800; line-height: 1.15; letter-spacing: -.2px; white-space: nowrap; }
+    .wallet .w-sum small { font-size: 12px; color: var(--text2); font-weight: 700; }
+    .wallet .w-actions { display: flex; gap: 6px; flex: none; }
+    .wallet .w-btn { height: 36px; padding: 0 12px; border-radius: 12px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); }
+    .wallet .w-btn.main { background: linear-gradient(135deg, var(--green), #059669); border-color: transparent; color: #fff; }
+    .wallet .w-pending { position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(245, 158, 11, .25); }
+    .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+    .chip { padding: 12px 8px; border-radius: 13px; font-weight: 800; font-size: 15px; background: var(--surface2); border: 1px solid var(--border); }
+    .chip.active { border-color: var(--green); background: rgba(16, 185, 129, .14); color: #6ee7b7; }
+    .hint { font-size: 12px; color: var(--text2); margin: -4px 2px 14px; line-height: 1.45; }
+    .paybox { border-radius: 16px; padding: 14px; background: rgba(255, 255, 255, .04); border: 1px solid var(--border); margin-bottom: 12px; }
+    .payrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+    .payrow + .payrow { border-top: 1px dashed var(--border); }
+    .payrow .k { font-size: 11.5px; color: var(--text2); font-weight: 600; }
+    .payrow .v { font-size: 16px; font-weight: 800; letter-spacing: .3px; word-break: break-all; }
+    .payrow .v.big { font-size: 24px; color: #6ee7b7; }
+    .copy { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--surface2); border: 1px solid var(--border); font-size: 16px; }
+    .warnbox { font-size: 12.5px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; margin-bottom: 12px; color: #fcd34d; background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .28); }
+    .waiting { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; color: var(--text2); margin: 4px 0 12px; }
+    .waiting .spinner { width: 16px; height: 16px; border-width: 2px; }
+    .creds { text-align: left; }
+    .link-btn { display: block; margin: 10px auto 0; font-size: 13px; color: var(--text2); text-decoration: underline; }
+
     /* ------------------------------------------------------------ dock: tablar + alohida do'kon/asosiy tugmasi */
     .dock {
       position: fixed; left: 12px; right: 12px; bottom: calc(10px + var(--safe-bottom, 0px)); z-index: 20;
@@ -383,7 +416,7 @@
           not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «Mening profilim» → «Shaxsiy kabinet» tugmasi orqali ochiladi.",
           error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
           limits: "Limitlarim", lim_full_info: "To'liq ma'lumot", lim_reset_pw: "Parolni tiklash",
-          unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Ulgurchi narxlarda paketlarni sotib oling",
+          unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Balansdan — limit darhol qo'shiladi",
           st_accounts: "Akkaunt", st_viewers: "Tekshirishgan", st_used: "Ishlatilgan",
           recent: "So'nggi harakatlar", see_all: "Hammasi",
           accounts_title: "Akkauntlarim", add_account: "Akkaunt qo'shish", no_accounts: "Hali akkaunt qo'shilmagan.\nAkkaunt qo'shsangiz, uni kim tekshirganini ko'rib turasiz.",
@@ -406,9 +439,9 @@
           src_admin: "Admin", src_purchase: "Xarid", left_n: "qoldi {n}",
           act_server_check: "Server tekshirdi", act_full_info: "To'liq ma'lumot oldi", act_bind_info: "Ulanmalarini ko'rdi",
           someone: "Foydalanuvchi",
-          shop_fm: "Firstmail pochtalar", shop_fm_lead: "To'liq manzil va parol to'lovdan keyin admin tomonidan beriladi.",
+          shop_fm: "Firstmail pochtalar", shop_fm_lead: "Balansdan to'lanadi — pochta va parol darhol shu yerda ochiladi.",
           no_fm: "Hozircha sotuvda pochta yo'q.", buy: "Sotib olish", price_agreed: "kelishiladi",
-          prices_title: "Limit narxlari", prices_lead: "Paketni tanlang — so'rov adminga boradi, to'lovdan so'ng limit hisobingizga qo'shiladi.",
+          prices_title: "Limit narxlari", prices_lead: "Paketni tanlang — narx balansingizdan yechiladi va limit darhol qo'shiladi.",
           no_prices: "Narxlar hali qo'shilmagan. Admin bilan bog'laning.", per_unit: "1 tasi {p}", hit: "Mashhur",
           buy_confirm: "{what} — {price}. So'rov yuborilsinmi?",
           sent_title: "So'rov yuborildi!", sent_text: "Admin tez orada siz bilan bog'lanadi. Kutmasdan yozish uchun pastdagi tugmani bosing.",
@@ -418,14 +451,38 @@
           soon: "Tez kunda!", soon_text: "Donat bo'limi ustida ishlayapmiz. Tez orada shu yerda olmos sotib olishingiz mumkin bo'ladi.",
           orders_title: "Xaridlarim", no_orders: "Hali xarid qilinmagan.\nDo'kondan sotib olganlaringiz shu yerda ko'rinadi.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
           ord_pending: "Kutilmoqda", ord_done: "Bajarildi", ord_cancelled: "Bekor qilindi",
-          ord_firstmail: "Firstmail pochta", ord_limit: "Limit paketi", ord_donat: "Donat"
+          ord_firstmail: "Firstmail pochta", ord_limit: "Limit paketi", ord_donat: "Donat",
+          ord_refunded: "Qaytarildi",
+          w_balance: "Balans", w_topup: "To'ldirish", w_history: "Balans tarixi", w_orders: "Xaridlar",
+          w_pending: "To'lov kutilmoqda", w_disabled: "Balansni to'ldirish vaqtincha o'chirilgan. Admin bilan bog'laning.",
+          tp_title: "Balansni to'ldirish", tp_lead: "Summani tanlang yoki kiriting. Keyingi qadamda karta raqami va aniq o'tkaziladigan summa ko'rsatiladi.",
+          tp_amount: "Summa (so'm)", tp_range: "Eng kami {min}, eng ko'pi {max}", tp_next: "Davom etish",
+          tp_pay_title: "Kartaga o'tkazing", tp_card: "Karta raqami", tp_holder: "Karta egasi", tp_exact: "O'tkaziladigan summa",
+          tp_warn: "Aynan {sum} o'tkazing — yaxlitlamang. Summa boshqacha bo'lsa to'lov avtomatik aniqlanmaydi.",
+          tp_expires: "So'rov muddati: {t}", tp_expired: "So'rov muddati tugadi. Yangisini yarating.", tp_new: "Yangi so'rov",
+          tp_waiting: "To'lov kutilmoqda — avtomatik tekshirilyapti", tp_open_page: "To'lov sahifasini ochish", tp_check: "To'ladim — tekshirish", tp_cancel: "So'rovni bekor qilish",
+          tp_manual: "To'lov admin tomonidan tasdiqlanadi. O'tkazgandan keyin chekni adminga yuboring.",
+          tp_not_yet: "To'lov hali kelmadi. Bir-ikki daqiqadan keyin yana tekshiring.",
+          tp_done_title: "Balans to'ldirildi!", tp_done_text: "+{sum} hisobingizga qo'shildi. Joriy balans: {bal}",
+          copied: "Nusxa olindi",
+          pay_confirm: "{what} — {price}. Balansingizdan yechiladi. Tasdiqlaysizmi?",
+          no_money_title: "Mablag' yetarli emas", no_money_text: "Narx: {price}. Balansingiz: {bal}. Yana {need} kerak.", no_money_btn: "Balansni to'ldirish",
+          lim_done_title: "Limit qo'shildi!", lim_done_text: "{what} hisobingizga qo'shildi. Balansdan {price} yechildi.",
+          fm_done_title: "Pochta sizniki!", fm_done_text: "Ma'lumotlarni saqlab qo'ying — ular «Do'kon → Tarix» bo'limida ham turadi.",
+          fm_email: "Pochta", fm_password: "Parol", fm_open: "Ma'lumotni ko'rish",
+          refund_note: "Pul balansingizga qaytarildi",
+          tx_topup: "Balans to'ldirildi", tx_purchase: "Xarid", tx_refund: "Qaytarildi", tx_admin: "Admin tuzatishi",
+          no_tx: "Balansda hali harakat yo'q.",
+          err_insufficient_funds: "Balansda mablag' yetarli emas", err_invalid_amount: "Summa noto'g'ri", err_topup_disabled: "To'ldirish vaqtincha o'chirilgan",
+          err_wallet_unavailable: "Balans xizmati vaqtincha ishlamayapti", err_provider_unavailable: "To'lov tizimi javob bermadi. Birozdan keyin tekshiring",
+          err_purchase_failed: "Xarid amalga oshmadi — pul yechilmadi"
         },
         ru: {
           title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
           not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте: «Мой профиль» → «Личный кабинет».",
           error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
           limits: "Мои лимиты", lim_full_info: "Полная инфо", lim_reset_pw: "Сброс пароля",
-          unlimited: "Безлимит", buy_more: "Купить дополнительные лимиты", buy_more_sub: "Прайс-лист — кнопка $ вверху",
+          unlimited: "Безлимит", buy_more: "Купить дополнительные лимиты", buy_more_sub: "С баланса — лимит зачислится сразу",
           st_accounts: "Аккаунты", st_viewers: "Проверяли", st_used: "Использовано",
           recent: "Последние действия", see_all: "Все",
           accounts_title: "Мои аккаунты", add_account: "Добавить аккаунт", no_accounts: "Аккаунтов пока нет.\nДобавьте аккаунт — и вы увидите, кто его проверял.",
@@ -448,9 +505,9 @@
           src_admin: "Админ", src_purchase: "Покупка", left_n: "осталось {n}",
           act_server_check: "Проверил сервер", act_full_info: "Получил полную инфо", act_bind_info: "Смотрел привязки",
           someone: "Пользователь",
-          shop_fm: "Почты Firstmail", shop_fm_lead: "Полный адрес и пароль выдаёт админ после оплаты.",
+          shop_fm: "Почты Firstmail", shop_fm_lead: "Оплата с баланса — почта и пароль откроются сразу.",
           no_fm: "Сейчас почт в продаже нет.", buy: "Купить", price_agreed: "договорная",
-          prices_title: "Цены на лимиты", prices_lead: "Выберите пакет — запрос уйдёт админу, после оплаты лимит будет зачислен.",
+          prices_title: "Цены на лимиты", prices_lead: "Выберите пакет — сумма спишется с баланса, лимит зачислится сразу.",
           no_prices: "Цены ещё не добавлены. Свяжитесь с админом.", per_unit: "1 шт — {p}", hit: "Хит",
           buy_confirm: "{what} — {price}. Отправить запрос?",
           sent_title: "Запрос отправлен!", sent_text: "Админ скоро свяжется с вами. Чтобы написать сразу, нажмите кнопку ниже.",
@@ -460,14 +517,38 @@
           soon: "Скоро!", soon_text: "Мы работаем над разделом доната. Скоро здесь можно будет купить алмазы.",
           orders_title: "Мои покупки", no_orders: "Покупок пока нет.\nЗдесь появится всё, что вы купите в магазине.", no_orders_setup: "История покупок скоро появится здесь.",
           ord_pending: "Ожидает", ord_done: "Выполнено", ord_cancelled: "Отменено",
-          ord_firstmail: "Почта Firstmail", ord_limit: "Пакет лимитов", ord_donat: "Донат"
+          ord_firstmail: "Почта Firstmail", ord_limit: "Пакет лимитов", ord_donat: "Донат",
+          ord_refunded: "Возврат",
+          w_balance: "Баланс", w_topup: "Пополнить", w_history: "История баланса", w_orders: "Покупки",
+          w_pending: "Ожидается оплата", w_disabled: "Пополнение временно отключено. Свяжитесь с админом.",
+          tp_title: "Пополнение баланса", tp_lead: "Выберите или введите сумму. Далее покажем номер карты и точную сумму перевода.",
+          tp_amount: "Сумма (сум)", tp_range: "Минимум {min}, максимум {max}", tp_next: "Продолжить",
+          tp_pay_title: "Переведите на карту", tp_card: "Номер карты", tp_holder: "Владелец карты", tp_exact: "Сумма перевода",
+          tp_warn: "Переведите ровно {sum}. Если сумма будет другой, платёж не определится автоматически.",
+          tp_expires: "Заявка действует: {t}", tp_expired: "Срок заявки истёк. Создайте новую.", tp_new: "Новая заявка",
+          tp_waiting: "Ожидаем оплату — проверяем автоматически", tp_open_page: "Открыть страницу оплаты", tp_check: "Я оплатил — проверить", tp_cancel: "Отменить заявку",
+          tp_manual: "Платёж подтверждает админ. После перевода отправьте ему чек.",
+          tp_not_yet: "Платёж ещё не поступил. Проверьте через минуту-другую.",
+          tp_done_title: "Баланс пополнен!", tp_done_text: "+{sum} зачислено. Текущий баланс: {bal}",
+          copied: "Скопировано",
+          pay_confirm: "{what} — {price}. Списать с баланса?",
+          no_money_title: "Недостаточно средств", no_money_text: "Цена: {price}. Ваш баланс: {bal}. Не хватает {need}.", no_money_btn: "Пополнить баланс",
+          lim_done_title: "Лимит добавлен!", lim_done_text: "{what} зачислено. С баланса списано {price}.",
+          fm_done_title: "Почта ваша!", fm_done_text: "Сохраните данные — они также доступны в «Магазин → История».",
+          fm_email: "Почта", fm_password: "Пароль", fm_open: "Показать данные",
+          refund_note: "Деньги возвращены на баланс",
+          tx_topup: "Пополнение", tx_purchase: "Покупка", tx_refund: "Возврат", tx_admin: "Корректировка админом",
+          no_tx: "Операций по балансу пока нет.",
+          err_insufficient_funds: "Недостаточно средств на балансе", err_invalid_amount: "Неверная сумма", err_topup_disabled: "Пополнение временно отключено",
+          err_wallet_unavailable: "Сервис баланса временно недоступен", err_provider_unavailable: "Платёжная система не ответила. Проверьте чуть позже",
+          err_purchase_failed: "Покупка не прошла — деньги не списаны"
         },
         en: {
           title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
           not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot: “My profile” → “Personal cabinet”.",
           error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
           limits: "My limits", lim_full_info: "Full info", lim_reset_pw: "Password reset",
-          unlimited: "Unlimited", buy_more: "Buy extra limits", buy_more_sub: "Price list — the $ button at the top",
+          unlimited: "Unlimited", buy_more: "Buy extra limits", buy_more_sub: "From your balance — added instantly",
           st_accounts: "Accounts", st_viewers: "Checked by", st_used: "Used",
           recent: "Recent activity", see_all: "All",
           accounts_title: "My accounts", add_account: "Add account", no_accounts: "No accounts yet.\nAdd one to see who checks it.",
@@ -490,9 +571,9 @@
           src_admin: "Admin", src_purchase: "Purchase", left_n: "{n} left",
           act_server_check: "Checked server", act_full_info: "Got full info", act_bind_info: "Viewed bindings",
           someone: "User",
-          shop_fm: "Firstmail mailboxes", shop_fm_lead: "The full address and password are sent by the admin after payment.",
+          shop_fm: "Firstmail mailboxes", shop_fm_lead: "Paid from your balance — the email and password open instantly.",
           no_fm: "No mailboxes for sale right now.", buy: "Buy", price_agreed: "negotiable",
-          prices_title: "Limit prices", prices_lead: "Pick a pack — the request goes to the admin and the limit is added after payment.",
+          prices_title: "Limit prices", prices_lead: "Pick a pack — it's paid from your balance and the limit is added instantly.",
           no_prices: "No prices yet. Contact the admin.", per_unit: "{p} each", hit: "Popular",
           buy_confirm: "{what} — {price}. Send the request?",
           sent_title: "Request sent!", sent_text: "The admin will contact you soon. Tap below to message them right away.",
@@ -502,7 +583,31 @@
           soon: "Coming soon!", soon_text: "We're working on the donate section. Soon you'll be able to buy diamonds here.",
           orders_title: "My purchases", no_orders: "No purchases yet.\nEverything you buy in the shop will appear here.", no_orders_setup: "Your purchase history will appear here soon.",
           ord_pending: "Pending", ord_done: "Completed", ord_cancelled: "Cancelled",
-          ord_firstmail: "Firstmail mailbox", ord_limit: "Limit pack", ord_donat: "Donate"
+          ord_firstmail: "Firstmail mailbox", ord_limit: "Limit pack", ord_donat: "Donate",
+          ord_refunded: "Refunded",
+          w_balance: "Balance", w_topup: "Top up", w_history: "Balance history", w_orders: "Purchases",
+          w_pending: "Awaiting payment", w_disabled: "Top-ups are temporarily disabled. Contact the admin.",
+          tp_title: "Top up balance", tp_lead: "Pick or enter an amount. Next you'll see the card number and the exact amount to send.",
+          tp_amount: "Amount (UZS)", tp_range: "Min {min}, max {max}", tp_next: "Continue",
+          tp_pay_title: "Transfer to the card", tp_card: "Card number", tp_holder: "Card holder", tp_exact: "Amount to send",
+          tp_warn: "Send exactly {sum}. A different amount won't be detected automatically.",
+          tp_expires: "Request valid for: {t}", tp_expired: "This request has expired. Create a new one.", tp_new: "New request",
+          tp_waiting: "Waiting for payment — checking automatically", tp_open_page: "Open the payment page", tp_check: "I've paid — check", tp_cancel: "Cancel request",
+          tp_manual: "The admin confirms the payment. Send them the receipt after transferring.",
+          tp_not_yet: "Payment hasn't arrived yet. Check again in a minute or two.",
+          tp_done_title: "Balance topped up!", tp_done_text: "+{sum} added. Current balance: {bal}",
+          copied: "Copied",
+          pay_confirm: "{what} — {price}. Pay from your balance?",
+          no_money_title: "Not enough funds", no_money_text: "Price: {price}. Your balance: {bal}. You need {need} more.", no_money_btn: "Top up balance",
+          lim_done_title: "Limit added!", lim_done_text: "{what} added. {price} charged from your balance.",
+          fm_done_title: "The mailbox is yours!", fm_done_text: "Save these details — they're also in “Shop → History”.",
+          fm_email: "Email", fm_password: "Password", fm_open: "Show details",
+          refund_note: "Money returned to your balance",
+          tx_topup: "Top-up", tx_purchase: "Purchase", tx_refund: "Refund", tx_admin: "Admin adjustment",
+          no_tx: "No balance activity yet.",
+          err_insufficient_funds: "Not enough funds", err_invalid_amount: "Invalid amount", err_topup_disabled: "Top-ups are temporarily disabled",
+          err_wallet_unavailable: "Balance service is temporarily unavailable", err_provider_unavailable: "The payment system didn't respond. Check again shortly",
+          err_purchase_failed: "Purchase failed — nothing was charged"
         }
       };
 
@@ -542,6 +647,9 @@
       function som(value) {
         var n = Math.round(Number(value) || 0);
         return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " " + L("som");
+      }
+      function num(value) {
+        return String(Math.round(Number(value) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
       }
       function acc(a) { return a.account_id + " (" + a.zone_id + ")"; }
 
@@ -625,6 +733,7 @@
         document.getElementById("sheetRoot").innerHTML = "";
         syncBackButton();
         stopCountdown();
+        stopTopupTimers();
       }
       function setSheet(sheet, html) {
         sheet.innerHTML = '<div class="sheet-handle"></div>' + html;
@@ -808,7 +917,7 @@
       function renderHome() {
         var d = state.data;
         var used = d.history.filter(function (h) { return h.delta < 0 && h.source === "use"; }).length;
-        var html = "" +
+        var html = walletCardHtml() +
           '<div class="section-title">' + esc(L("limits")) + "</div>" +
           '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + "</div>" +
           '<div class="stats">' +
@@ -824,6 +933,7 @@
             recent.map(historyItemHtml).join("");
         }
         app.innerHTML = html;
+        bindWalletCard();
         document.getElementById("ctaBuy").addEventListener("click", openPrices);
         var more = app.querySelector("[data-goto]");
         if (more) more.addEventListener("click", function () { goToTab("history"); });
@@ -901,13 +1011,14 @@
 
       function renderShop() {
         var d = state.data;
-        var html = '<div class="section-title" style="margin-top:8px">' + esc(L("shop_fm")) + " · " + esc(d.firstmailTotal || d.firstmails.length) + "</div>" +
+        var html = walletCardHtml() + '<div class="section-title" style="margin-top:8px">' + esc(L("shop_fm")) + " · " + esc(d.firstmailTotal || d.firstmails.length) + "</div>" +
           '<div class="item-sub" style="margin:-4px 2px 12px">' + esc(L("shop_fm_lead")) + "</div>";
         html += d.firstmails.length
           ? '<div id="fmList">' + d.firstmails.map(fmItemHtml).join("") + "</div>" +
             '<div class="fm-more' + (d.firstmailHasMore ? "" : " hidden") + '" id="fmMore"><div class="spinner"></div></div>'
           : '<div class="empty">' + icon("inbox") + esc(L("no_fm")) + "</div>";
         app.innerHTML = html;
+        bindWalletCard();
         bindFmItems(app);
 
         var more = document.getElementById("fmMore");
@@ -928,7 +1039,7 @@
         limit: { icon: "lightning-charge", tone: "" },
         donat: { icon: "gem", tone: "gold" }
       };
-      var ORDER_STATUS = { pending: "gold", done: "green", cancelled: "red" };
+      var ORDER_STATUS = { pending: "gold", done: "green", cancelled: "red", refunded: "accent" };
 
       function orderTitle(o) {
         // Limit paketi: "full_info:10" → "To'liq ma'lumot × 10 ta"
@@ -940,21 +1051,31 @@
       function orderItemHtml(o) {
         var k = ORDER_KINDS[o.kind] || ORDER_KINDS.limit;
         var price = o.price ? som(o.price) : (o.price_text || L("price_agreed"));
-        return '<div class="item"><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
+        // Balansdan olingan pochta — bosilsa login/parol ochiladi.
+        var creds = o.kind === "firstmail" && o.delivery && o.delivery.email;
+        var sub = esc(L("ord_" + o.kind)) + " · " + esc(timeAgo(o.created_at));
+        if (o.status === "refunded") sub += '<br><span style="color:#a5b4fc">' + esc(L("refund_note")) + (o.note ? ": " + esc(o.note) : "") + "</span>";
+        if (creds) sub += ' · <span style="color:#6ee7b7">' + icon("key") + " " + esc(L("fm_open")) + "</span>";
+        return "<" + (creds ? 'button data-order="' + esc(o.id) + '"' : "div") + ' class="item"><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
           '<div class="grow"><div class="item-title ellipsis">' + esc(orderTitle(o)) + "</div>" +
-          '<div class="item-sub">' + esc(L("ord_" + o.kind)) + " · " + esc(timeAgo(o.created_at)) + "</div></div>" +
+          '<div class="item-sub">' + sub + "</div></div>" +
           '<div class="item-right"><div class="price-sum" style="font-size:14px">' + esc(price) + "</div>" +
-          '<div style="margin-top:5px"><span class="pill ' + (ORDER_STATUS[o.status] || "gold") + '">' + esc(L("ord_" + o.status)) + "</span></div></div></div>";
+          '<div style="margin-top:5px"><span class="pill ' + (ORDER_STATUS[o.status] || "gold") + '">' + esc(L("ord_" + o.status)) + "</span></div></div></" + (creds ? "button" : "div") + ">";
       }
 
       function renderOrders() {
         var d = state.data;
         var orders = d.orders || [];
-        var html = '<div class="section-title" style="margin-top:8px">' + esc(L("orders_title")) + (orders.length ? " · " + orders.length : "") + "</div>";
+        var html = walletCardHtml() + '<div class="section-title" style="margin-top:8px">' + esc(L("orders_title")) + (orders.length ? " · " + orders.length : "") + "</div>";
         html += orders.length
           ? orders.map(orderItemHtml).join("")
           : '<div class="empty">' + icon("receipt") + esc(L(d.ordersAvailable === false ? "no_orders_setup" : "no_orders")).replace(/\n/g, "<br>") + "</div>";
         app.innerHTML = html;
+        bindWalletCard();
+        bindAll("[data-order]", function (el) {
+          var o = (state.data.orders || []).filter(function (x) { return String(x.id) === el.dataset.order; })[0];
+          if (o && o.delivery) showCreds(openSheet(""), o.delivery, orderTitle(o), "");
+        });
       }
 
       function rememberOrder(result) {
@@ -1016,6 +1137,7 @@
       function openPrices() {
         var prices = state.data.prices;
         var html = "<h2>" + esc(L("prices_title")) + '</h2><p class="lead">' + esc(L("prices_lead")) + "</p>";
+        if (wallet()) html += '<div style="margin:-6px 0 14px"><span class="pill green">' + icon("wallet2") + " " + esc(L("w_balance")) + ": " + esc(som(wallet().balance)) + "</span></div>";
         if (!prices.length) {
           html += '<div class="empty">' + icon("tag") + esc(L("no_prices")) + "</div>" +
             (state.data.supportUsername ? '<button class="btn primary" id="sheetContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "");
@@ -1049,7 +1171,8 @@
             '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
         } else {
           haptic("error");
-          var text = result.error === "not_available" ? L("not_available") : L("notify_failed");
+          var text = result.error === "not_available" ? L("not_available")
+            : result.error === "notify_failed" ? L("notify_failed") : errText(result.error);
           setSheet(sheet, '<div class="result"><div class="big warn">' + icon("exclamation-lg") + "</div><h2>" + esc(L("error_title")) + "</h2><p>" + esc(text) + "</p>" +
             (state.data.supportUsername ? '<button class="btn primary" id="resContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "") +
             '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
@@ -1068,12 +1191,26 @@
         if (!item) return;
         haptic("medium");
         var what = L("lim_" + item.kind).replace(/ ·.*$/, "") + " × " + kindAmountText(item);
-        confirmAction(L("buy_confirm", { what: what, price: som(item.price) })).then(function (ok) {
+        if (lacksMoney(item.price)) { showNoMoney(sheet, item.price, wallet().balance); return; }
+        confirmAction(L("pay_confirm", { what: what, price: som(item.price) })).then(function (ok) {
           if (!ok || !sheet.isConnected) return;
           sheetLoading(sheet);
           api("buy_limit", { id: id }).then(function (result) {
             rememberOrder(result);
-            if (sheet.isConnected) showBuyResult(sheet, result);
+            if (typeof result.balance === "number") setBalance(result.balance);
+            if (result.ok && result.limit && state.data.limits[result.limit.kind]) {
+              state.data.limits[result.limit.kind].remaining = result.limit.remaining;
+              render();
+            }
+            if (!sheet.isConnected) return;
+            if (result.ok) {
+              haptic("success");
+              showDone(sheet, L("lim_done_title"), L("lim_done_text", { what: what, price: som(item.price) }));
+            } else if (result.error === "insufficient_funds") {
+              showNoMoney(sheet, result.price || item.price, result.balance);
+            } else {
+              showBuyResult(sheet, result);
+            }
           });
         });
       }
@@ -1082,20 +1219,318 @@
         var fm = state.data.firstmails.filter(function (f) { return f.id === id; })[0];
         if (!fm) return;
         haptic("medium");
+        // Narxi kelishiladigan pochta — eski yo'l: so'rov adminga.
+        var paid = Boolean(fm.price) && Boolean(wallet());
         var price = fm.price ? som(fm.price) : (fm.price_text || L("price_agreed"));
-        confirmAction(L("buy_confirm", { what: "Firstmail " + fm.email, price: price })).then(function (ok) {
+        if (paid && lacksMoney(fm.price)) { showNoMoney(openSheet(""), fm.price, wallet().balance); return; }
+        var question = paid ? L("pay_confirm", { what: "Firstmail " + fm.email, price: price }) : L("buy_confirm", { what: "Firstmail " + fm.email, price: price });
+        confirmAction(question).then(function (ok) {
           if (!ok) return;
           var sheet = openSheet('<div class="skeleton" style="height:120px"></div>');
           api("buy_firstmail", { id: id }).then(function (result) {
             rememberOrder(result);
-            if (!sheet.isConnected) return;
-            showBuyResult(sheet, result);
-            if (!result.ok && result.error === "not_available") {
+            if (typeof result.balance === "number") setBalance(result.balance);
+            var gone = (result.ok && result.delivery) || result.error === "not_available";
+            if (gone) {
               state.data.firstmails = state.data.firstmails.filter(function (f) { return f.id !== id; });
               state.data.firstmailTotal = Math.max(0, (state.data.firstmailTotal || 1) - 1);
               render();
             }
+            if (!sheet.isConnected) return;
+            if (result.ok && result.delivery) {
+              haptic("success");
+              showCreds(sheet, result.delivery, L("fm_done_title"), L("fm_done_text"));
+            } else if (result.error === "insufficient_funds") {
+              showNoMoney(sheet, result.price || fm.price, result.balance);
+            } else {
+              showBuyResult(sheet, result);
+            }
           });
+        });
+      }
+
+      // ---------------------------------------------------------------- wallet
+      function wallet() { return state.data && state.data.wallet; }
+
+      function lacksMoney(price) {
+        var w = wallet();
+        return Boolean(w) && Number(price) > 0 && w.balance < Number(price);
+      }
+
+      function walletCardHtml() {
+        var w = wallet();
+        if (!w) return "";
+        var pending = w.topup && w.topup.status === "pending";
+        return '<div class="wallet">' + (pending ? '<span class="w-pending"></span>' : "") +
+          '<div class="w-ico">' + icon("wallet2") + "</div>" +
+          '<div class="grow"><div class="w-label">' + esc(L("w_balance")) + (pending ? " · " + esc(L("w_pending")) : "") + "</div>" +
+          '<div class="w-sum">' + esc(num(w.balance)) + " <small>" + esc(L("som")) + "</small></div></div>" +
+          '<div class="w-actions"><button class="w-btn" data-wallet-history aria-label="' + esc(L("w_history")) + '">' + icon("clock-history") + "</button>" +
+          '<button class="w-btn main" data-wallet-topup>' + icon("plus-lg") + esc(L("w_topup")) + "</button></div></div>";
+      }
+
+      function bindWalletCard() {
+        bindAll("[data-wallet-topup]", function () { openTopup(); });
+        bindAll("[data-wallet-history]", openWalletHistory);
+      }
+
+      // Balans o'zgarganda faqat kartalarni yangilaymiz (ro'yxat/scroll joyida qoladi).
+      function refreshWalletCards() {
+        Array.prototype.forEach.call(app.querySelectorAll(".wallet"), function (el) {
+          el.outerHTML = walletCardHtml();
+        });
+        bindWalletCard();
+      }
+
+      function setBalance(balance) {
+        var w = wallet();
+        if (!w || typeof balance !== "number") return;
+        w.balance = balance;
+        refreshWalletCards();
+      }
+
+      function copyText(text) {
+        var done = function () { haptic("select"); toast(L("copied")); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () { legacyCopy(text); done(); });
+        } else {
+          legacyCopy(text);
+          done();
+        }
+      }
+      function legacyCopy(text) {
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand("copy"); } catch (e) { /* noop */ }
+        document.body.removeChild(area);
+      }
+      function bindCopy(root) {
+        Array.prototype.forEach.call(root.querySelectorAll("[data-copy]"), function (el) {
+          el.addEventListener("click", function () { copyText(el.dataset.copy); });
+        });
+      }
+
+      function payRow(label, value, copy, big) {
+        return '<div class="payrow"><div class="grow"><div class="k">' + esc(label) + '</div><div class="v' + (big ? " big" : "") + '">' + esc(value) + "</div></div>" +
+          (copy ? '<button class="copy" data-copy="' + esc(copy) + '" aria-label="copy">' + icon("copy") + "</button>" : "") + "</div>";
+      }
+
+      function showDone(sheet, title, text) {
+        setSheet(sheet, '<div class="result"><div class="big">' + icon("check2") + "</div><h2>" + esc(title) + "</h2><p>" + esc(text) + "</p>" +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      function showCreds(sheet, d, title, text) {
+        setSheet(sheet, '<div class="result creds"><div class="big">' + icon("envelope-check") + '</div><h2 style="text-align:center">' + esc(title) + "</h2>" +
+          (text ? '<p style="text-align:center">' + esc(text) + "</p>" : "") +
+          '<div class="paybox">' + payRow(L("fm_email"), d.email, d.email) + (d.password ? payRow(L("fm_password"), d.password, d.password) : "") + "</div>" +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
+        bindCopy(sheet);
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      function showNoMoney(sheet, price, balance) {
+        haptic("warning");
+        var need = Math.max(0, Number(price) - Number(balance || 0));
+        setSheet(sheet, '<div class="result"><div class="big warn">' + icon("wallet2") + "</div><h2>" + esc(L("no_money_title")) + "</h2><p>" +
+          esc(L("no_money_text", { price: som(price), bal: som(balance), need: som(need) })) + "</p>" +
+          '<button class="btn green" id="resTopup">' + icon("plus-lg") + esc(L("no_money_btn")) + "</button>" +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
+        sheet.querySelector("#resTopup").addEventListener("click", function () { openTopup(need); });
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      // ---- to'ldirish
+      var topupPoll = null;
+      var topupClock = null;
+      function stopTopupTimers() {
+        clearInterval(topupPoll); topupPoll = null;
+        clearInterval(topupClock); topupClock = null;
+      }
+
+      function openTopup(shortfall) {
+        var w = wallet();
+        if (!w) { toast(errText("wallet_unavailable")); return; }
+        var cfg = w.config;
+        if (!cfg.enabled) {
+          var off = openSheet("<h2>" + esc(L("tp_title")) + '</h2><p class="lead">' + esc(L("w_disabled")) + "</p>" +
+            (state.data.supportUsername ? '<button class="btn primary" id="sheetContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : ""));
+          var c = off.querySelector("#sheetContact");
+          if (c) c.addEventListener("click", contactAdmin);
+          return;
+        }
+        if (w.topup && w.topup.status === "pending" && !shortfall) {
+          showPayStep(openSheet(""), w.topup);
+          return;
+        }
+
+        // Yetishmagan summa 1 000 ga yaxlitlanadi va chegaraga keltiriladi.
+        var preset = shortfall ? Math.min(cfg.max, Math.max(cfg.min, Math.ceil(shortfall / 1000) * 1000)) : "";
+        var sheet = openSheet("<h2>" + esc(L("tp_title")) + '</h2><p class="lead">' + esc(L("tp_lead")) + "</p>" +
+          '<div class="chips">' + cfg.presets.map(function (p) {
+            return '<button class="chip' + (p === preset ? " active" : "") + '" data-chip="' + p + '">' + esc(num(p)) + "</button>";
+          }).join("") + "</div>" +
+          '<div class="field"><label>' + esc(L("tp_amount")) + '</label><input id="tpAmount" inputmode="numeric" maxlength="12" placeholder="' + esc(num(cfg.min)) + '" value="' + esc(preset ? num(preset) : "") + '"></div>' +
+          '<div class="hint">' + esc(L("tp_range", { min: som(cfg.min), max: som(cfg.max) })) + "</div>" +
+          '<button class="btn green" id="tpNext">' + icon("arrow-right") + esc(L("tp_next")) + "</button>");
+        var input = sheet.querySelector("#tpAmount");
+        var chips = sheet.querySelectorAll("[data-chip]");
+        Array.prototype.forEach.call(chips, function (el) {
+          el.addEventListener("click", function () {
+            haptic("select");
+            Array.prototype.forEach.call(chips, function (x) { x.classList.toggle("active", x === el); });
+            input.value = num(el.dataset.chip);
+          });
+        });
+        input.addEventListener("input", function () {
+          var digits = input.value.replace(/\D/g, "").slice(0, 10);
+          input.value = digits ? num(digits) : "";
+          Array.prototype.forEach.call(chips, function (x) { x.classList.toggle("active", x.dataset.chip === digits); });
+        });
+        sheet.querySelector("#tpNext").addEventListener("click", function () {
+          var btn = this;
+          var amount = Number(input.value.replace(/\D/g, ""));
+          if (!amount || amount < cfg.min || amount > cfg.max) {
+            haptic("error");
+            toast(L("tp_range", { min: som(cfg.min), max: som(cfg.max) }));
+            input.focus();
+            return;
+          }
+          btn.disabled = true;
+          api("topup_create", { amount: amount }).then(function (result) {
+            btn.disabled = false;
+            if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
+            haptic("success");
+            w.topup = result.topup;
+            refreshWalletCards();
+            if (sheet.isConnected) showPayStep(sheet, result.topup);
+          });
+        });
+      }
+
+      function showPayStep(sheet, topup) {
+        var cfg = wallet().config;
+        stopTopupTimers();
+        var sum = som(topup.pay_amount);
+        setSheet(sheet, "<h2>" + esc(L("tp_pay_title")) + "</h2>" +
+          '<div class="paybox">' +
+          (cfg.card ? payRow(L("tp_card"), cfg.card + (cfg.bank ? " · " + cfg.bank : ""), cfg.card.replace(/\s/g, "")) : "") +
+          (cfg.card && cfg.holder ? payRow(L("tp_holder"), cfg.holder) : "") +
+          payRow(L("tp_exact"), sum, String(topup.pay_amount), true) + "</div>" +
+          '<div class="warnbox">' + icon("exclamation-triangle") + " " + esc(L("tp_warn", { sum: sum })) + "</div>" +
+          (cfg.auto
+            ? '<div class="waiting"><div class="spinner"></div><span>' + esc(L("tp_waiting")) + "</span></div>"
+            : '<div class="hint" style="text-align:center">' + esc(L("tp_manual")) + "</div>") +
+          '<div class="hint" style="text-align:center" id="tpClock"></div>' +
+          (topup.pay_url ? '<button class="btn primary" id="tpPage">' + icon("box-arrow-up-right") + esc(L("tp_open_page")) + "</button>" : "") +
+          '<button class="btn green" id="tpCheck">' + icon("arrow-repeat") + esc(L("tp_check")) + "</button>" +
+          (!cfg.auto && state.data.supportUsername ? '<button class="btn" id="tpContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "") +
+          '<button class="link-btn" id="tpCancel">' + esc(L("tp_cancel")) + "</button>");
+        bindCopy(sheet);
+
+        var clock = sheet.querySelector("#tpClock");
+        var expires = new Date(topup.expires_at).getTime();
+        function tick() {
+          if (!clock.isConnected) { stopTopupTimers(); return; }
+          var left = Math.max(0, Math.round((expires - Date.now()) / 1000));
+          if (!left) { showExpired(sheet); return; }
+          clock.textContent = L("tp_expires", { t: Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") });
+        }
+        tick();
+        topupClock = setInterval(tick, 1000);
+        // ELDER PAY tavsiyasi: 3–5 s oralig'ida tekshirish.
+        if (cfg.auto) topupPoll = setInterval(function () { checkTopup(sheet, topup, true); }, 5000);
+        var page = sheet.querySelector("#tpPage");
+        if (page) page.addEventListener("click", function () {
+          if (tg && tg.openLink) { try { tg.openLink(topup.pay_url); return; } catch (e) { /* fallback */ } }
+          window.open(topup.pay_url, "_blank");
+        });
+
+        sheet.querySelector("#tpCheck").addEventListener("click", function () { checkTopup(sheet, topup, false, this); });
+        var contact = sheet.querySelector("#tpContact");
+        if (contact) contact.addEventListener("click", contactAdmin);
+        sheet.querySelector("#tpCancel").addEventListener("click", function () {
+          api("topup_cancel", { id: topup.id });
+          wallet().topup = null;
+          refreshWalletCards();
+          closeSheet();
+        });
+      }
+
+      function showExpired(sheet) {
+        stopTopupTimers();
+        wallet().topup = null;
+        refreshWalletCards();
+        setSheet(sheet, '<div class="result"><div class="big warn">' + icon("hourglass-bottom") + "</div><h2>" + esc(L("tp_title")) + "</h2><p>" + esc(L("tp_expired")) + "</p>" +
+          '<button class="btn green" id="tpRenew">' + icon("plus-lg") + esc(L("tp_new")) + "</button>" +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
+        sheet.querySelector("#tpRenew").addEventListener("click", function () { openTopup(); });
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      var topupChecking = false;
+      function checkTopup(sheet, topup, silent, btn) {
+        if (topupChecking) return;
+        topupChecking = true;
+        if (btn) btn.disabled = true;
+        api("topup_check", { id: topup.id }).then(function (result) {
+          topupChecking = false;
+          if (btn) btn.disabled = false;
+          if (!sheet.isConnected) return;
+          var status = result.topup && result.topup.status;
+          if (status === "paid") {
+            stopTopupTimers();
+            haptic("success");
+            wallet().topup = null;
+            setBalance(result.balance);
+            showDone(sheet, L("tp_done_title"), L("tp_done_text", { sum: som(result.topup.paid_amount || topup.pay_amount), bal: som(result.balance) }));
+            return;
+          }
+          if (status === "expired" || status === "cancelled") { showExpired(sheet); return; }
+          if (!silent) {
+            haptic(result.ok ? "warning" : "error");
+            toast(result.ok ? L("tp_not_yet") : errText(result.error));
+          }
+        });
+      }
+
+      // ---- balans tarixi
+      var TX = {
+        topup: { icon: "plus-circle", tone: "green" },
+        purchase: { icon: "bag", tone: "pink" },
+        refund: { icon: "arrow-counterclockwise", tone: "green" },
+        admin: { icon: "person-gear", tone: "" }
+      };
+
+      function txItemHtml(t) {
+        var k = TX[t.kind] || TX.admin;
+        var plus = t.delta > 0;
+        var note = t.kind === "refund" || t.kind === "admin" ? t.note : "";
+        return '<div class="item"><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(L("tx_" + t.kind)) + "</div>" +
+          '<div class="item-sub">' + esc(timeAgo(t.created_at)) + (note ? " · " + esc(note) : "") + "</div></div>" +
+          '<div class="item-right"><div class="delta ' + (plus ? "plus" : "minus") + '">' + (plus ? "+" : "−") + esc(num(Math.abs(t.delta))) + "</div>" +
+          '<div class="price-unit">' + esc(som(t.balance_after)) + "</div></div></div>";
+      }
+
+      function openWalletHistory() {
+        var sheet = openSheet("<h2>" + esc(L("w_history")) + '</h2><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>');
+        api("wallet").then(function (result) {
+          if (!sheet.isConnected) return;
+          if (!result.ok) { setSheet(sheet, "<h2>" + esc(L("w_history")) + '</h2><p class="lead">' + esc(errText(result.error)) + "</p>"); return; }
+          var w = wallet();
+          if (w) { w.topup = result.topup; w.config = result.config; }
+          setBalance(result.balance);
+          var list = result.transactions || [];
+          setSheet(sheet, "<h2>" + esc(L("w_history")) + "</h2>" +
+            '<div style="margin:-4px 0 14px"><span class="pill green">' + icon("wallet2") + " " + esc(L("w_balance")) + ": " + esc(som(result.balance)) + "</span></div>" +
+            (list.length ? list.map(txItemHtml).join("") : '<div class="empty">' + icon("wallet2") + esc(L("no_tx")) + "</div>"));
         });
       }
 

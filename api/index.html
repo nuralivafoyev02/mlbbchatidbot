@@ -2267,6 +2267,115 @@
       box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35)
     }
 
+    .shop-cat.wallet {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(14, 165, 233, 0.08)), var(--surface);
+      border-color: rgba(16, 185, 129, 0.34)
+    }
+
+    .shop-cat.wallet .shop-cat-icon {
+      background: linear-gradient(135deg, #10b981, #0ea5e9);
+      box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35)
+    }
+
+    .wl-card {
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .wl-card h3 {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px
+    }
+
+    .wl-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px
+    }
+
+    .wl-grid .modal-field {
+      margin-bottom: 0
+    }
+
+    .wl-status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px
+    }
+
+    .wl-pill {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text2)
+    }
+
+    .wl-pill.on {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green)
+    }
+
+    .wl-pill.off {
+      background: rgba(239, 68, 68, 0.13);
+      color: var(--red)
+    }
+
+    .wl-btn {
+      flex-shrink: 0;
+      padding: 7px 10px;
+      border-radius: 9px;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font: inherit;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer
+    }
+
+    .wl-btn.green {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.35);
+      color: var(--green)
+    }
+
+    .wl-btn.red {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: var(--red)
+    }
+
+    .wl-row-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px
+    }
+
+    .wl-row-actions button {
+      flex: 1
+    }
+
+    .wl-balance {
+      font-size: 24px;
+      font-weight: 800;
+      margin: 2px 0 10px
+    }
+
+    .wl-delta-plus { color: var(--green) }
+    .wl-delta-minus { color: var(--red) }
+
     .lp-group-title {
       display: flex;
       align-items: center;
@@ -2772,6 +2881,14 @@
             </div>
             <i class="bi bi-chevron-right shop-cat-arrow"></i>
           </div>
+          <div class="shop-cat wallet" onclick="openWalletAdmin()">
+            <div class="shop-cat-icon"><i class="bi bi-wallet2"></i></div>
+            <div class="shop-cat-body">
+              <div class="shop-cat-title">Balans va to'lovlar</div>
+              <div class="shop-cat-meta" id="shopWlMeta">To'ldirishlar, qaytarish, karta</div>
+            </div>
+            <i class="bi bi-chevron-right shop-cat-arrow"></i>
+          </div>
           <div class="shop-cat limits" onclick="openLimitPrices()">
             <div class="shop-cat-icon"><i class="bi bi-currency-dollar"></i></div>
             <div class="shop-cat-body">
@@ -2818,6 +2935,55 @@
           <div id="fmSentinel" style="height:1px"></div>
           <div class="empty" id="fmLoader" style="display:none;padding:12px">
             <div class="spinner"></div>
+          </div>
+          <div style="height:70px"></div>
+        </div>
+
+        <!-- Balans va to'lovlar -->
+        <div id="shopWallet" style="display:none">
+          <div class="shop-title-row">
+            <button class="shop-back" onclick="closeWalletAdmin()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
+            <h2><i class="bi bi-wallet2"></i> Balans</h2>
+            <button class="refresh-btn" style="margin:0" onclick="loadWalletAdmin()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+
+          <div class="wl-card">
+            <h3><i class="bi bi-hourglass-split"></i> Kutilayotgan to'ldirishlar</h3>
+            <div class="wl-status" id="wlStatus"></div>
+            <div id="wlPending"></div>
+          </div>
+
+          <div class="wl-card">
+            <h3><i class="bi bi-person-badge"></i> Foydalanuvchi balansi</h3>
+            <div style="display:flex;gap:8px">
+              <div class="modal-field" style="flex:1;margin-bottom:0"><input type="text" id="wlUserId" inputmode="numeric" placeholder="Telegram user ID"></div>
+              <button class="wl-btn green" onclick="loadWalletUser()"><i class="bi bi-search"></i> Ko'rish</button>
+            </div>
+            <div id="wlUser"></div>
+          </div>
+
+          <div class="wl-card">
+            <h3><i class="bi bi-receipt"></i> Balansdan xaridlar</h3>
+            <div id="wlOrders"></div>
+          </div>
+
+          <div class="wl-card">
+            <h3><i class="bi bi-credit-card-2-front"></i> Karta va sozlamalar</h3>
+            <div class="modal-field"><label>Karta raqami</label><input type="text" id="wlCard" inputmode="numeric" placeholder="8600 0000 0000 0000"></div>
+            <div class="wl-grid">
+              <div class="modal-field"><label>Karta egasi</label><input type="text" id="wlHolder" maxlength="60" placeholder="ISM FAMILIYA"></div>
+              <div class="modal-field"><label>Bank / tur</label><input type="text" id="wlBank" maxlength="40" placeholder="Uzcard, Humo..."></div>
+              <div class="modal-field"><label>Eng kam (so'm)</label><input type="text" id="wlMin" inputmode="numeric" placeholder="5000"></div>
+              <div class="modal-field"><label>Eng ko'p (so'm)</label><input type="text" id="wlMax" inputmode="numeric" placeholder="5000000"></div>
+            </div>
+            <div class="modal-field" style="margin-top:8px"><label>Tez summalar (vergul bilan)</label><input type="text" id="wlPresets" placeholder="10000, 20000, 50000, 100000"></div>
+            <div class="modal-field lp-hit-row">
+              <span><i class="bi bi-toggle-on" style="color:var(--green)"></i> To'ldirish yoqilgan</span>
+              <label class="switch"><input type="checkbox" id="wlEnabled"><span class="slider"></span></label>
+            </div>
+            <div class="modal-actions" style="margin-top:6px">
+              <button class="btn-save" id="wlSaveBtn" onclick="saveWalletConfig()"><i class="bi bi-floppy"></i> Saqlash</button>
+            </div>
           </div>
           <div style="height:70px"></div>
         </div>
@@ -3156,6 +3322,19 @@
     </div>
   </div>
 
+  <!-- Balans: tasdiqlash / qaytarish / tuzatish -->
+  <div class="modal-overlay" id="wlModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="wlModalTitle"></h2>
+      <div id="wlModalBody"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeWlModal()">Bekor qilish</button>
+        <button class="btn-save" id="wlModalOk"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- Limit narxi: qo'shish / tahrirlash -->
   <div class="modal-overlay" id="lpModal">
     <div class="modal">
@@ -3451,6 +3630,7 @@
           if (fmView === "list") reloadFirstmailsKeepingPosition();
           else if (dnView !== "none") loadDonat();
           else if (lpView) loadLimitPrices();
+          else if (wlView) loadWalletAdmin();
           else loadShopSummary();
         }
         updateShopFab();
@@ -4320,6 +4500,7 @@
       var fmView = "home";
       var dnView = "none"; // "none" | "games" | "game" — Donat bo'limi
       var lpView = false; // Limit narxlari bo'limi ochiqmi
+      var wlView = false; // Balans va to'lovlar bo'limi ochiqmi
       var fmLoading = false;
       var fmHasMore = false;
       var fmRequestSeq = 0;
@@ -5178,6 +5359,261 @@
         if (e.target === e.currentTarget) { hapticLight(); closeDnPackForm(); }
       });
 
+
+      /* -----------------------------------------------------------------------
+         Do'kon → Balans va to'lovlar (supabase/020_wallet.sql)
+      ----------------------------------------------------------------------- */
+      var wlData = null;
+      var wlUserData = null;
+      var wlModalAction = null;
+      var WL_TOPUP_STATUS = { pending: "Kutilmoqda", paid: "To'landi", expired: "Muddati o'tdi", cancelled: "Bekor qilindi" };
+      var WL_ORDER_STATUS = { pending: "Kutilmoqda", done: "Bajarildi", cancelled: "Bekor", refunded: "Qaytarildi" };
+      var WL_TX = { topup: "To'ldirish", purchase: "Xarid", refund: "Qaytarish", admin: "Admin" };
+
+      function wlTime(iso) {
+        if (!iso) return "";
+        var d = new Date(iso);
+        return isNaN(d) ? "" : d.toLocaleString("uz-UZ", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      }
+
+      function wlOrderTitle(o) {
+        var m = o.kind === "limit" && /^(full_info|reset_pw):(\d+)$/.exec(o.title || "");
+        if (m) return (LP_KINDS[m[1]] ? LP_KINDS[m[1]].label : m[1]) + " × " + m[2];
+        return o.title || o.kind;
+      }
+
+      function showWalletView(open) {
+        wlView = open;
+        document.getElementById("shopHome").style.display = open ? "none" : "block";
+        document.getElementById("shopWallet").style.display = open ? "block" : "none";
+        updateShopFab();
+      }
+
+      function openWalletAdmin() {
+        hapticLight();
+        showWalletView(true);
+        loadWalletAdmin();
+      }
+      window.openWalletAdmin = openWalletAdmin;
+
+      function closeWalletAdmin() {
+        hapticLight();
+        showWalletView(false);
+      }
+      window.closeWalletAdmin = closeWalletAdmin;
+
+      function loadWalletAdmin() {
+        document.getElementById("wlPending").innerHTML = buildFmSkeleton();
+        api("wallet_overview", {}).then(function (result) {
+          if (!result.ok || !result.data) {
+            document.getElementById("wlPending").innerHTML = '<div class="empty"><div class="empty-text">' + esc(result.message || "Yuklab bo'lmadi") + "</div></div>";
+            return;
+          }
+          wlData = result.data;
+          renderWalletAdmin();
+          if (wlUserData) loadWalletUser(true);
+        }).catch(function () {
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.loadWalletAdmin = loadWalletAdmin;
+
+      function renderWalletAdmin() {
+        var d = wlData;
+        var c = d.config;
+        document.getElementById("wlStatus").innerHTML =
+          '<span class="wl-pill ' + (c.enabled && c.cardNumber ? "on" : "off") + '">To\'ldirish ' + (c.enabled && c.cardNumber ? "yoqilgan" : "o'chiq") + "</span>" +
+          '<span class="wl-pill ' + (d.auto ? "on" : "off") + '">ElderPay ' + (d.auto ? "ulangan" : "ulanmagan") + "</span>" +
+          (d.synced ? '<span class="wl-pill on">' + d.synced + " ta to'lov yozildi</span>" : "");
+
+        document.getElementById("wlPending").innerHTML = d.pending.length
+          ? d.pending.map(wlTopupHtml).join("")
+          : '<div class="hint" style="font-size:12px;color:var(--text2)">Kutilayotgan to\'lov yo\'q.' + (d.auto ? " ElderPay avtomatik tekshiradi." : " ElderPay ulanmagan — to'lovlarni shu yerda qo'lda tasdiqlang.") + "</div>";
+
+        document.getElementById("wlOrders").innerHTML = d.orders.length
+          ? d.orders.map(wlOrderHtml).join("")
+          : '<div class="hint" style="font-size:12px;color:var(--text2)">Hali balansdan xarid bo\'lmagan.</div>';
+
+        document.getElementById("wlCard").value = c.cardNumber ? c.cardNumber.replace(/(\d{4})(?=\d)/g, "$1 ") : "";
+        document.getElementById("wlHolder").value = c.cardHolder || "";
+        document.getElementById("wlBank").value = c.cardBank || "";
+        document.getElementById("wlMin").value = c.min || "";
+        document.getElementById("wlMax").value = c.max || "";
+        document.getElementById("wlPresets").value = (c.presets || []).join(", ");
+        document.getElementById("wlEnabled").checked = c.enabled !== false;
+        document.getElementById("shopWlMeta").textContent = d.pending.length ? d.pending.length + " ta to'lov kutilmoqda" : "To'ldirishlar, qaytarish, karta";
+        bindWalletButtons(document.getElementById("shopWallet"));
+      }
+
+      function wlTopupHtml(t) {
+        var canConfirm = t.status !== "paid";
+        return '<div class="fm-item" style="cursor:default"><div class="fm-avatar"><i class="bi bi-arrow-down-circle"></i></div>' +
+          '<div class="fm-body"><div class="fm-email">' + esc(formatSom(t.pay_amount)) + ' <span style="color:var(--text2);font-weight:500">· ID ' + esc(t.user_id) + "</span></div>" +
+          '<div class="fm-meta">' + esc(WL_TOPUP_STATUS[t.status] || t.status) + " · " + esc(wlTime(t.created_at)) + (t.provider_order ? " · " + esc(t.provider_order) : t.provider ? " · " + esc(t.provider) : "") + "</div></div>" +
+          (canConfirm ? '<button class="wl-btn green" data-wl-confirm="' + esc(t.id) + '" data-amount="' + esc(t.pay_amount) + '" data-user="' + esc(t.user_id) + '">Tasdiqlash</button>' : "") + "</div>";
+      }
+
+      function wlOrderHtml(o) {
+        var refundable = o.paid_amount > 0 && o.status !== "refunded";
+        return '<div class="fm-item" style="cursor:default"><div class="fm-avatar"><i class="bi bi-' + (o.kind === "firstmail" ? "envelope-at" : "lightning-charge") + '"></i></div>' +
+          '<div class="fm-body"><div class="fm-email">#' + esc(o.id) + " · " + esc(wlOrderTitle(o)) + "</div>" +
+          '<div class="fm-meta">ID ' + esc(o.user_id) + " · " + esc(WL_ORDER_STATUS[o.status] || o.status) + " · " + esc(wlTime(o.created_at)) + (o.note ? " · " + esc(o.note) : "") + "</div></div>" +
+          '<div class="fm-price">' + esc(formatSom(o.paid_amount || o.price || 0)) + "</div>" +
+          (refundable ? '<button class="wl-btn red" data-wl-refund="' + esc(o.id) + '" data-amount="' + esc(o.paid_amount) + '" data-kind="' + esc(o.kind) + '">Qaytarish</button>' : "") + "</div>";
+      }
+
+      function wlTxHtml(t) {
+        var plus = t.delta > 0;
+        return '<div class="fm-item" style="cursor:default"><div class="fm-avatar"><i class="bi bi-' + (plus ? "plus-lg" : "dash-lg") + '"></i></div>' +
+          '<div class="fm-body"><div class="fm-email">' + esc(WL_TX[t.kind] || t.kind) + (t.note ? ' <span style="color:var(--text2);font-weight:500">· ' + esc(t.note) + "</span>" : "") + "</div>" +
+          '<div class="fm-meta">' + esc(wlTime(t.created_at)) + " · qoldiq " + esc(formatSom(t.balance_after)) + "</div></div>" +
+          '<div class="fm-price ' + (plus ? "wl-delta-plus" : "wl-delta-minus") + '">' + (plus ? "+" : "−") + esc(formatSom(Math.abs(t.delta))) + "</div></div>";
+      }
+
+      function bindWalletButtons(root) {
+        root.querySelectorAll("[data-wl-confirm]:not([data-bound])").forEach(function (el) {
+          el.setAttribute("data-bound", "1");
+          el.addEventListener("click", function () {
+            openTopupConfirm(el.getAttribute("data-wl-confirm"), el.getAttribute("data-amount"), el.getAttribute("data-user"));
+          });
+        });
+        root.querySelectorAll("[data-wl-refund]:not([data-bound])").forEach(function (el) {
+          el.setAttribute("data-bound", "1");
+          el.addEventListener("click", function () {
+            openRefund(el.getAttribute("data-wl-refund"), el.getAttribute("data-amount"), el.getAttribute("data-kind"));
+          });
+        });
+      }
+
+      function loadWalletUser(silent) {
+        var id = document.getElementById("wlUserId").value.replace(/\D/g, "");
+        var box = document.getElementById("wlUser");
+        if (!id) { if (!silent) showToast("❌ User ID kiriting", "error"); return; }
+        if (!silent) box.innerHTML = buildFmSkeleton();
+        api("wallet_user", { user_id: id }).then(function (result) {
+          if (!result.ok || !result.data) {
+            box.innerHTML = "";
+            showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
+            return;
+          }
+          wlUserData = result.data;
+          var d = result.data;
+          box.innerHTML = '<div style="margin-top:10px;font-size:11px;color:var(--text2);font-weight:700">BALANS · ID ' + esc(d.user_id) + "</div>" +
+            '<div class="wl-balance">' + esc(formatSom(d.balance)) + "</div>" +
+            '<div class="wl-row-actions" style="margin-top:0"><button class="wl-btn green" id="wlAddBtn"><i class="bi bi-plus-lg"></i> Qo\'shish</button>' +
+            '<button class="wl-btn red" id="wlSubBtn"><i class="bi bi-dash-lg"></i> Ayirish</button></div>' +
+            (d.transactions.length ? '<div style="margin:12px 0 6px;font-size:11px;color:var(--text2);font-weight:700">HARAKATLAR</div>' + d.transactions.map(wlTxHtml).join("") : "") +
+            (d.orders.length ? '<div style="margin:12px 0 6px;font-size:11px;color:var(--text2);font-weight:700">XARIDLAR</div>' + d.orders.map(wlOrderHtml).join("") : "");
+          document.getElementById("wlAddBtn").addEventListener("click", function () { openAdjust(d.user_id, 1); });
+          document.getElementById("wlSubBtn").addEventListener("click", function () { openAdjust(d.user_id, -1); });
+          bindWalletButtons(box);
+        }).catch(function () {
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.loadWalletUser = loadWalletUser;
+
+      function openWlModal(title, bodyHtml, okLabel, action) {
+        document.getElementById("wlModalTitle").textContent = title;
+        document.getElementById("wlModalBody").innerHTML = bodyHtml;
+        var ok = document.getElementById("wlModalOk");
+        ok.innerHTML = okLabel;
+        ok.disabled = false;
+        wlModalAction = action;
+        document.getElementById("wlModal").classList.add("open");
+      }
+
+      function closeWlModal() {
+        document.getElementById("wlModal").classList.remove("open");
+        wlModalAction = null;
+      }
+      window.closeWlModal = closeWlModal;
+
+      document.getElementById("wlModalOk").addEventListener("click", function () {
+        if (!wlModalAction) return;
+        var btn = this;
+        btn.disabled = true;
+        wlModalAction().then(function (done) {
+          btn.disabled = false;
+          if (done) closeWlModal();
+        });
+      });
+      document.getElementById("wlModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) { hapticLight(); closeWlModal(); }
+      });
+
+      function wlCall(action, body, okText) {
+        return api(action, body).then(function (result) {
+          if (!result.ok) { showToast("❌ " + (result.message || "Xatolik"), "error"); return false; }
+          showToast("✅ " + okText, "success");
+          loadWalletAdmin();
+          return true;
+        }).catch(function () {
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+          return false;
+        });
+      }
+
+      function openTopupConfirm(id, amount, userId) {
+        openWlModal("To'lovni tasdiqlash",
+          '<div class="hint" style="font-size:12px;color:var(--text2);margin-bottom:10px">Chekni tekshirib, kartaga haqiqatan tushgan summani kiriting. Foydalanuvchi (ID ' + esc(userId) + ") balansiga shu summa yoziladi.</div>" +
+          '<div class="modal-field"><label>Tushgan summa (so\'m)</label><input type="text" id="wlConfirmAmount" inputmode="numeric" value="' + esc(amount) + '"></div>',
+          '<i class="bi bi-check2"></i> Tasdiqlash',
+          function () {
+            return wlCall("wallet_topup_confirm", { id: id, amount: document.getElementById("wlConfirmAmount").value.replace(/\D/g, "") }, "Balansga yozildi");
+          });
+      }
+
+      function openRefund(orderId, amount, kind) {
+        var goods = kind === "firstmail" ? "Pochtani yana sotuvga qaytarish" : "Berilgan limitni olib qo'yish";
+        openWlModal("Pulni qaytarish · #" + orderId,
+          '<div class="hint" style="font-size:12px;color:var(--text2);margin-bottom:10px">' + esc(formatSom(amount)) + " xaridor balansiga qaytariladi. Ikkinchi marta qaytarib bo'lmaydi.</div>" +
+          '<div class="modal-field"><label>Sabab (xaridorga ko\'rinadi)</label><input type="text" id="wlRefundReason" maxlength="300" placeholder="Masalan: pochta ochilmadi"></div>' +
+          '<div class="modal-field lp-hit-row"><span>' + esc(goods) + '</span><label class="switch"><input type="checkbox" id="wlRefundReverse"><span class="slider"></span></label></div>',
+          '<i class="bi bi-arrow-counterclockwise"></i> Qaytarish',
+          function () {
+            return wlCall("wallet_refund", {
+              order_id: orderId,
+              reason: document.getElementById("wlRefundReason").value.trim(),
+              reverse: document.getElementById("wlRefundReverse").checked
+            }, "Pul qaytarildi");
+          });
+      }
+
+      function openAdjust(userId, sign) {
+        openWlModal(sign > 0 ? "Balansga qo'shish" : "Balansdan ayirish",
+          '<div class="modal-field"><label>Summa (so\'m)</label><input type="text" id="wlAdjustAmount" inputmode="numeric" placeholder="Masalan: 10000"></div>' +
+          '<div class="modal-field"><label>Izoh (foydalanuvchiga ko\'rinadi)</label><input type="text" id="wlAdjustNote" maxlength="300" placeholder="Masalan: bonus"></div>',
+          sign > 0 ? '<i class="bi bi-plus-lg"></i> Qo\'shish' : '<i class="bi bi-dash-lg"></i> Ayirish',
+          function () {
+            var amount = Number(document.getElementById("wlAdjustAmount").value.replace(/\D/g, ""));
+            if (!amount) { showToast("❌ Summani kiriting", "error"); return Promise.resolve(false); }
+            return wlCall("wallet_adjust", { user_id: userId, delta: sign * amount, note: document.getElementById("wlAdjustNote").value.trim() }, "Balans yangilandi");
+          });
+      }
+
+      function saveWalletConfig() {
+        var btn = document.getElementById("wlSaveBtn");
+        btn.disabled = true;
+        api("wallet_config_save", {
+          cardNumber: document.getElementById("wlCard").value,
+          cardHolder: document.getElementById("wlHolder").value,
+          cardBank: document.getElementById("wlBank").value,
+          min: document.getElementById("wlMin").value.replace(/\s+/g, ""),
+          max: document.getElementById("wlMax").value.replace(/\s+/g, ""),
+          presets: document.getElementById("wlPresets").value,
+          enabled: document.getElementById("wlEnabled").checked
+        }).then(function (result) {
+          btn.disabled = false;
+          if (!result.ok) { showToast("❌ " + (result.message || "Xatolik"), "error"); return; }
+          showToast("✅ Saqlandi", "success");
+          if (wlData) { wlData.config = result.data.config; renderWalletAdmin(); }
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.saveWalletConfig = saveWalletConfig;
 
       /* -----------------------------------------------------------------------
          Do'kon → Limit narxlari (shaxsiy kabinetdagi "$" tugmasi)
