@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const shop = require("./_shop.js");
+const donat = require("./_donat.js");
 const adminAuth = require("./_admin-auth.js");
 
 // ---------------------------------------------------------------------------
@@ -131,6 +132,16 @@ module.exports = async function handler(req, res) {
           return handleShopFmSetSold(req, res, body);
         case "shop_fm_delete":
           return handleShopFmDelete(req, res, body);
+        case "shop_dn_list":
+          return handleShopDnList(req, res, body);
+        case "shop_dn_game_save":
+          return handleShopDnGameSave(req, res, body);
+        case "shop_dn_game_delete":
+          return handleShopDnGameDelete(req, res, body);
+        case "shop_dn_pack_save":
+          return handleShopDnPackSave(req, res, body);
+        case "shop_dn_pack_delete":
+          return handleShopDnPackDelete(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -1061,6 +1072,120 @@ async function handleShopFmDelete(req, res, body) {
     return json(res, 200, { ok: true });
   } catch (e) {
     console.error("[SHOP_FM_DELETE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Do'kon → Donat (bot_settings: shop_dn:<id>) — hozircha faqat admin panelda
+// ---------------------------------------------------------------------------
+const DONAT_ERROR_TEXTS = {
+  game_name_required: "O'yin nomini kiriting",
+  game_exists: "Bu nomli o'yin allaqachon bor",
+  game_not_found: "O'yin topilmadi",
+  pack_name_required: "Paket nomini kiriting",
+  pack_exists: "Bu nomli paket allaqachon bor",
+  pack_not_found: "Paket topilmadi",
+  pack_limit: `Bitta o'yinda ko'pi bilan ${donat.SHOP_DN_MAX_PACKS} ta paket bo'ladi`,
+  cost_invalid: "Tannarx musbat butun son bo'lishi kerak (so'm)",
+  markup_invalid: "Foiz 0–1000 oralig'ida bo'lishi kerak (masalan: 15 yoki 12.5)",
+};
+
+function donatErrorResponse(res, error) {
+  const status = /_not_found$/.test(error) ? 404 : 400;
+  return json(res, status, { ok: false, error, message: DONAT_ERROR_TEXTS[error] || error });
+}
+
+function getDonatStore() {
+  return donat.createDonatStore((reqPath, options) => supabaseRequest(reqPath, options));
+}
+
+async function handleShopDnList(req, res) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const games = await getDonatStore().list();
+    return json(res, 200, { ok: true, data: { games, summary: donat.summarizeGames(games) } });
+  } catch (e) {
+    console.error("[SHOP_DN_LIST]", e.message);
+    return json(res, 500, { ok: false, error: "shop_list_failed", message: "Ro'yxatni yuklab bo'lmadi" });
+  }
+}
+
+async function handleShopDnGameSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getDonatStore().saveGame({
+      id: body.id || "",
+      name: body.name,
+      markup: body.markup,
+      note: body.note,
+    });
+
+    if (!result.ok) {
+      return donatErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true, data: { game: result.game } });
+  } catch (e) {
+    console.error("[SHOP_DN_GAME_SAVE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_update_failed", message: "Saqlashda xatolik" });
+  }
+}
+
+async function handleShopDnGameDelete(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getDonatStore().removeGame(String(body.id || ""));
+
+    if (!result.ok) {
+      return donatErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true });
+  } catch (e) {
+    console.error("[SHOP_DN_GAME_DELETE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
+  }
+}
+
+async function handleShopDnPackSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getDonatStore().savePack(String(body.game_id || ""), {
+      id: body.id || "",
+      name: body.name,
+      cost: body.cost,
+      markup: body.markup,
+    });
+
+    if (!result.ok) {
+      return donatErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true, data: { game: result.game } });
+  } catch (e) {
+    console.error("[SHOP_DN_PACK_SAVE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_update_failed", message: "Saqlashda xatolik" });
+  }
+}
+
+async function handleShopDnPackDelete(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getDonatStore().removePack(String(body.game_id || ""), String(body.id || ""));
+
+    if (!result.ok) {
+      return donatErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true, data: { game: result.game } });
+  } catch (e) {
+    console.error("[SHOP_DN_PACK_DELETE]", e.message);
     return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
   }
 }

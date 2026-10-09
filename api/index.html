@@ -2243,6 +2243,141 @@
       color: #fff
     }
 
+    /* Do'kon → Donat */
+    .shop-cat.donat {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(236, 72, 153, 0.08)), var(--surface);
+      border-color: rgba(245, 158, 11, 0.28)
+    }
+
+    .shop-cat.donat .shop-cat-icon {
+      background: linear-gradient(135deg, #f59e0b, var(--pink));
+      box-shadow: 0 6px 18px rgba(245, 158, 11, 0.35)
+    }
+
+    .dn-admin-tag {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 5px;
+      margin-left: 6px;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      background: rgba(245, 158, 11, 0.16);
+      color: #f59e0b
+    }
+
+    .dn-badge {
+      display: inline-block;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 5px;
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent3);
+      white-space: nowrap
+    }
+
+    .dn-badge.custom {
+      background: rgba(245, 158, 11, 0.16);
+      color: #f59e0b
+    }
+
+    .dn-head {
+      padding: 14px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      margin-bottom: 12px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .dn-head-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text2)
+    }
+
+    .dn-head-note {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 6px
+    }
+
+    .dn-head .fm-actions {
+      grid-template-columns: 1fr 1fr;
+      margin-top: 12px
+    }
+
+    .dn-head .fm-action {
+      flex-direction: row;
+      justify-content: center;
+      padding: 9px 6px
+    }
+
+    .dn-head .fm-action i {
+      font-size: 15px
+    }
+
+    .dn-price-line {
+      font-size: 10.5px;
+      color: var(--text2);
+      margin-top: 2px;
+      white-space: nowrap
+    }
+
+    .dn-preview {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 4px 0 14px
+    }
+
+    .dn-preview div {
+      padding: 9px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      text-align: center;
+      min-width: 0
+    }
+
+    .dn-preview span {
+      display: block;
+      font-size: 10px;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: .4px
+    }
+
+    .dn-preview b {
+      display: block;
+      font-size: 13px;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .dn-delete-row {
+      margin-top: 4px
+    }
+
+    .dn-delete-row .fm-action {
+      width: 100%;
+      flex-direction: row;
+      justify-content: center;
+      padding: 10px 6px
+    }
+
+    .dn-delete-row .fm-action i {
+      font-size: 15px
+    }
+
     .fm-tabs {
       display: flex;
       gap: 6px;
@@ -2570,9 +2705,18 @@
             </div>
             <i class="bi bi-chevron-right shop-cat-arrow"></i>
           </div>
+          <div class="shop-cat donat" onclick="openDonat()">
+            <div class="shop-cat-icon"><i class="bi bi-controller"></i></div>
+            <div class="shop-cat-body">
+              <div class="shop-cat-title">Donat <span class="dn-admin-tag">BETA</span></div>
+              <div class="shop-cat-meta" id="shopDnMeta">Yuklanmoqda...</div>
+            </div>
+            <i class="bi bi-chevron-right shop-cat-arrow"></i>
+          </div>
           <div class="hint" style="font-size:11px;color:var(--text2);margin-top:6px;padding:0 4px">
-            Bu yerga qo'shilgan pochtalar botdagi <b>🛒 Do'kon → 📧 Firstmail sotib olish</b> bo'limida ko'rinadi.
+            Firstmail'ga qo'shilgan pochtalar botdagi <b>🛒 Do'kon → 📧 Firstmail sotib olish</b> bo'limida ko'rinadi.
             «Sotildi» deb belgilanganlari botda ustidan chizilgan holda turadi.
+            <b>Donat</b> hozircha faqat shu panelda — botda ko'rinmaydi.
           </div>
         </div>
 
@@ -2607,6 +2751,35 @@
           <div class="empty" id="fmLoader" style="display:none;padding:12px">
             <div class="spinner"></div>
           </div>
+          <div style="height:70px"></div>
+        </div>
+
+        <!-- Donat: o'yinlar ro'yxati -->
+        <div id="shopDonat" style="display:none">
+          <div class="shop-title-row">
+            <button class="shop-back" onclick="closeDonat()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
+            <h2><i class="bi bi-controller"></i> Donat</h2>
+            <button class="refresh-btn" style="margin:0" onclick="loadDonat()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+          <div id="dnGameList"></div>
+          <div style="height:70px"></div>
+        </div>
+
+        <!-- Donat: bitta o'yin paketlari -->
+        <div id="shopDonatGame" style="display:none">
+          <div class="shop-title-row">
+            <button class="shop-back" onclick="closeDonatGame()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
+            <h2 id="dnGameTitle" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></h2>
+          </div>
+          <div class="dn-head">
+            <div class="dn-head-row"><i class="bi bi-percent"></i><span>Standart ustama:</span><span class="dn-badge" id="dnGameMarkup"></span></div>
+            <div class="dn-head-note" id="dnGameNote"></div>
+            <div class="fm-actions">
+              <button class="fm-action edit" onclick="editCurrentDnGame()"><i class="bi bi-pencil-square"></i><span>Tahrirlash</span></button>
+              <button class="fm-action delete" id="dnGameDeleteBtn" onclick="deleteCurrentDnGame()"><i class="bi bi-trash3"></i><span>O'chirish</span></button>
+            </div>
+          </div>
+          <div id="dnPackList"></div>
           <div style="height:70px"></div>
         </div>
       </div>
@@ -2846,8 +3019,66 @@
     </div>
   </div>
 
-  <!-- Firstmail qo'shish tugmasi -->
-  <button class="shop-fab" id="shopFab" onclick="openFmForm()" aria-label="Firstmail qo'shish"><span style="margin-top:-3px;font-weight:300">+</span></button>
+  <!-- Donat: o'yin qo'shish / tahrirlash -->
+  <div class="modal-overlay" id="dnGameModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="dnGameFormTitle">O'yin qo'shish</h2>
+      <div class="modal-field">
+        <label>O'yin nomi</label>
+        <input type="text" id="dnGameName" placeholder="Masalan: Mobile Legends" autocomplete="off">
+      </div>
+      <div class="modal-field">
+        <label>Standart ustama (%)</label>
+        <input type="text" id="dnGameMarkupInput" inputmode="decimal" placeholder="Masalan: 15">
+        <div class="hint">Paketda alohida foiz berilmasa, shu foiz qo'llanadi.</div>
+      </div>
+      <div class="modal-field">
+        <label>Izoh (ixtiyoriy)</label>
+        <input type="text" id="dnGameNoteInput" placeholder="Masalan: ID + server orqali">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeDnGameForm()">Bekor qilish</button>
+        <button class="btn-save" id="dnGameSaveBtn" onclick="saveDnGame()"><i class="bi bi-floppy"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Donat: paket qo'shish / tahrirlash -->
+  <div class="modal-overlay" id="dnPackModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="dnPackFormTitle">Paket qo'shish</h2>
+      <div class="modal-field">
+        <label>Paket nomi</label>
+        <input type="text" id="dnPackName" placeholder="Masalan: 86 diamonds" autocomplete="off">
+      </div>
+      <div class="modal-field">
+        <label>Tannarx (so'm)</label>
+        <input type="text" id="dnPackCost" inputmode="numeric" placeholder="Masalan: 15000">
+      </div>
+      <div class="modal-field">
+        <label>Ustama (%)</label>
+        <input type="text" id="dnPackMarkup" inputmode="decimal" placeholder="Bo'sh — o'yin foizi">
+        <div class="hint" id="dnPackMarkupHint"></div>
+      </div>
+      <div class="dn-preview">
+        <div><span>Ustama</span><b id="dnPrevMarkup">—</b></div>
+        <div><span>Sotuv narxi</span><b id="dnPrevPrice" style="color:var(--green)">—</b></div>
+        <div><span>Foyda</span><b id="dnPrevProfit" style="color:var(--accent3)">—</b></div>
+      </div>
+      <div class="dn-delete-row" id="dnPackDeleteRow">
+        <button class="fm-action delete" id="dnPackDeleteBtn" onclick="deleteCurrentDnPack()"><i class="bi bi-trash3"></i><span>Paketni o'chirish</span></button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeDnPackForm()">Bekor qilish</button>
+        <button class="btn-save" id="dnPackSaveBtn" onclick="saveDnPack()"><i class="bi bi-floppy"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Do'kon qo'shish tugmasi (Firstmail / o'yin / paket) -->
+  <button class="shop-fab" id="shopFab" onclick="onShopFab()" aria-label="Qo'shish"><span style="margin-top:-3px;font-weight:300">+</span></button>
 
   <!-- Scroll to top -->
   <button class="scroll-top" id="scrollTop" onclick="scrollToTop()"><i class="bi bi-arrow-up"></i></button>
@@ -3085,7 +3316,11 @@
         moveNavIndicator(document.getElementById("bottomNav"), changed);
         if (name === "Users" && allUsers.length === 0) loadUsers();
         if (name === "Settings") { loadSettings(); loadMandatorySettings(); }
-        if (name === "Shop") { if (fmView === "list") reloadFirstmailsKeepingPosition(); else loadShopSummary(); }
+        if (name === "Shop") {
+          if (fmView === "list") reloadFirstmailsKeepingPosition();
+          else if (dnView !== "none") loadDonat();
+          else loadShopSummary();
+        }
         updateShopFab();
       }
       window.switchTab = switchTab;
@@ -3951,6 +4186,7 @@
       var fmSums = { available: 0, sold: 0 };
       var fmFilter = "all";
       var fmView = "home";
+      var dnView = "none"; // "none" | "games" | "game" — Donat bo'limi
       var fmLoading = false;
       var fmHasMore = false;
       var fmRequestSeq = 0;
@@ -3964,8 +4200,15 @@
       function updateShopFab() {
         var fab = document.getElementById("shopFab");
         if (!fab) return;
-        fab.classList.toggle("visible", currentTab === "Shop" && fmView === "list");
+        fab.classList.toggle("visible", currentTab === "Shop" && (fmView === "list" || dnView !== "none"));
       }
+
+      function onShopFab() {
+        if (fmView === "list") openFmForm();
+        else if (dnView === "game") openDnPackForm();
+        else if (dnView === "games") openDnGameForm();
+      }
+      window.onShopFab = onShopFab;
 
       function updateShopMeta() {
         var meta = document.getElementById("shopFmMeta");
@@ -3998,6 +4241,7 @@
       }
 
       function loadShopSummary() {
+        loadDonat();
         api("shop_fm_list", { limit: 0 }).then(function (result) {
           if (result.ok && result.data) {
             applyFmSummary(result.data);
@@ -4409,6 +4653,394 @@
       });
       document.getElementById("fmFormModal").addEventListener("click", function (e) {
         if (e.target === e.currentTarget) { hapticLight(); closeFmForm(); }
+      });
+
+      /* -----------------------------------------------------------------------
+         Do'kon → Donat (o'yinlar + paketlar, foiz ustama). Hozircha faqat panel.
+      ----------------------------------------------------------------------- */
+      var dnGames = [];
+      var dnLoaded = false;
+      var dnCurrentGameId = null;
+      var dnEditingGameId = null;
+      var dnEditingPackId = null;
+      var dnRequestSeq = 0;
+      var dnGameDeleteArmed = false;
+      var dnGameDeleteTimer = null;
+      var dnPackDeleteArmed = false;
+      var dnPackDeleteTimer = null;
+
+      function formatPercent(value) {
+        var n = Number(value) || 0;
+        return (Math.round(n * 100) / 100) + "%";
+      }
+
+      function formatSom(value) {
+        return formatPrice(String(Math.round(Number(value) || 0)));
+      }
+
+      function findDnGame(id) {
+        for (var i = 0; i < dnGames.length; i++) if (dnGames[i].id === id) return dnGames[i];
+        return null;
+      }
+
+      function updateDonatMeta(summary) {
+        var meta = document.getElementById("shopDnMeta");
+        if (!meta) return;
+        meta.textContent = summary.games
+          ? summary.games + " ta o'yin · " + summary.packs + " ta paket"
+          : "Hali o'yin qo'shilmagan";
+      }
+
+      function loadDonat() {
+        var seq = ++dnRequestSeq;
+        if (!dnLoaded && dnView === "games") document.getElementById("dnGameList").innerHTML = buildFmSkeleton();
+        api("shop_dn_list", {}).then(function (result) {
+          if (seq !== dnRequestSeq) return;
+          if (!result.ok || !result.data) {
+            document.getElementById("shopDnMeta").textContent = "Ma'lumotni yuklab bo'lmadi";
+            if (dnView !== "none") showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
+            return;
+          }
+          dnLoaded = true;
+          dnGames = result.data.games || [];
+          updateDonatMeta(result.data.summary || { games: 0, packs: 0 });
+          renderDonat();
+        }).catch(function () {
+          if (seq !== dnRequestSeq) return;
+          document.getElementById("shopDnMeta").textContent = "Server bilan bog'lanishda xatolik";
+          if (dnView !== "none") showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.loadDonat = loadDonat;
+
+      function renderDonat() {
+        if (dnView === "games") renderDnGames();
+        if (dnView === "game") {
+          if (findDnGame(dnCurrentGameId)) renderDnGame();
+          else showDnView("games");
+        }
+      }
+
+      function showDnView(view) {
+        dnView = view;
+        document.getElementById("shopHome").style.display = view === "none" ? "block" : "none";
+        document.getElementById("shopDonat").style.display = view === "games" ? "block" : "none";
+        document.getElementById("shopDonatGame").style.display = view === "game" ? "block" : "none";
+        updateShopFab();
+        renderDonat();
+      }
+
+      function openDonat() {
+        hapticLight();
+        showDnView("games");
+        loadDonat();
+      }
+      window.openDonat = openDonat;
+
+      function closeDonat() {
+        hapticLight();
+        showDnView("none");
+      }
+      window.closeDonat = closeDonat;
+
+      function openDonatGame(id) {
+        hapticLight();
+        dnCurrentGameId = id;
+        resetDnGameDelete();
+        showDnView("game");
+      }
+
+      function closeDonatGame() {
+        hapticLight();
+        dnCurrentGameId = null;
+        showDnView("games");
+      }
+      window.closeDonatGame = closeDonatGame;
+
+      function renderDnGames() {
+        var list = document.getElementById("dnGameList");
+        if (!dnGames.length) {
+          list.innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-controller"></i></div><div class="empty-text">' +
+            (dnLoaded ? "Hali o'yin qo'shilmagan.<br>Pastdagi <b>+</b> tugmasini bosing." : "Yuklanmoqda...") + "</div></div>";
+          return;
+        }
+        list.innerHTML = dnGames.map(function (game) {
+          var meta = game.packs.length + " ta paket";
+          if (game.note) meta += " · " + game.note;
+          return '<div class="fm-item" data-gid="' + esc(game.id) + '">' +
+            '<div class="fm-avatar"><i class="bi bi-controller"></i></div>' +
+            '<div class="fm-body"><div class="fm-email">' + esc(game.name) + '</div>' +
+            '<div class="fm-meta">' + esc(meta) + "</div></div>" +
+            '<span class="dn-badge">+' + esc(formatPercent(game.markup)) + "</span>" +
+            '<i class="bi bi-chevron-right" style="color:var(--text2)"></i></div>';
+        }).join("");
+        list.querySelectorAll(".fm-item[data-gid]").forEach(function (el) {
+          el.addEventListener("click", function () { openDonatGame(el.getAttribute("data-gid")); });
+        });
+      }
+
+      function renderDnGame() {
+        var game = findDnGame(dnCurrentGameId);
+        if (!game) return;
+        document.getElementById("dnGameTitle").textContent = game.name;
+        document.getElementById("dnGameMarkup").textContent = "+" + formatPercent(game.markup);
+        var note = document.getElementById("dnGameNote");
+        note.textContent = game.note || "";
+        note.style.display = game.note ? "block" : "none";
+        var list = document.getElementById("dnPackList");
+        if (!game.packs.length) {
+          list.innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-gem"></i></div><div class="empty-text">Hali paket qo\'shilmagan.<br>Pastdagi <b>+</b> tugmasini bosing.</div></div>';
+          return;
+        }
+        list.innerHTML = game.packs.map(function (pack) {
+          var custom = typeof pack.markup === "number";
+          return '<div class="fm-item" data-pid="' + esc(pack.id) + '">' +
+            '<div class="fm-avatar"><i class="bi bi-gem"></i></div>' +
+            '<div class="fm-body"><div class="fm-email">' + esc(pack.name) + '</div>' +
+            '<div class="dn-price-line">Tannarx ' + esc(formatSom(pack.cost)) + " · foyda " + esc(formatSom(pack.profit)) + "</div></div>" +
+            '<div style="text-align:right;flex-shrink:0"><div class="fm-price">' + esc(formatSom(pack.price)) + "</div>" +
+            '<span class="dn-badge' + (custom ? " custom" : "") + '" title="' + (custom ? "Alohida foiz" : "O'yin foizi") + '">+' +
+            esc(formatPercent(pack.effective_markup)) + "</span></div></div>";
+        }).join("");
+        list.querySelectorAll(".fm-item[data-pid]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var pid = el.getAttribute("data-pid");
+            for (var i = 0; i < game.packs.length; i++) if (game.packs[i].id === pid) openDnPackForm(game.packs[i]);
+          });
+        });
+      }
+
+      // Server javobidagi yangilangan o'yinni ro'yxatga joylaydi.
+      function applyDnGame(game) {
+        var replaced = false;
+        dnGames = dnGames.map(function (g) {
+          if (g.id === game.id) { replaced = true; return game; }
+          return g;
+        });
+        if (!replaced) dnGames.push(game);
+        dnGames.sort(function (a, b) { return a.name.localeCompare(b.name, "uz", { sensitivity: "base" }); });
+        var packs = dnGames.reduce(function (sum, g) { return sum + g.packs.length; }, 0);
+        updateDonatMeta({ games: dnGames.length, packs: packs });
+        renderDonat();
+      }
+
+      function setSaveBusy(btn, busy) {
+        btn.disabled = busy;
+        btn.innerHTML = busy ? '<span class="btn-spinner"></span>Saqlanmoqda...' : '<i class="bi bi-floppy"></i> Saqlash';
+      }
+
+      // ---- O'yin formasi ----
+      function openDnGameForm(game) {
+        dnEditingGameId = game && game.id ? game.id : null;
+        document.getElementById("dnGameFormTitle").textContent = dnEditingGameId ? "O'yinni tahrirlash" : "O'yin qo'shish";
+        document.getElementById("dnGameName").value = dnEditingGameId ? game.name : "";
+        document.getElementById("dnGameMarkupInput").value = dnEditingGameId ? String(game.markup) : "";
+        document.getElementById("dnGameNoteInput").value = dnEditingGameId ? (game.note || "") : "";
+        document.getElementById("dnGameModal").classList.add("open");
+        setTimeout(function () { document.getElementById("dnGameName").focus(); }, 320);
+      }
+
+      function closeDnGameForm() {
+        document.getElementById("dnGameModal").classList.remove("open");
+        dnEditingGameId = null;
+      }
+      window.closeDnGameForm = closeDnGameForm;
+
+      function saveDnGame() {
+        var btn = document.getElementById("dnGameSaveBtn");
+        var body = {
+          id: dnEditingGameId || "",
+          name: document.getElementById("dnGameName").value.trim(),
+          markup: document.getElementById("dnGameMarkupInput").value.trim(),
+          note: document.getElementById("dnGameNoteInput").value.trim()
+        };
+        if (!body.name) { showToast("⚠️ O'yin nomini kiriting", "warning"); return; }
+        var editing = Boolean(dnEditingGameId);
+        setSaveBusy(btn, true);
+        api("shop_dn_game_save", body).then(function (result) {
+          setSaveBusy(btn, false);
+          if (!result.ok || !result.data) {
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+            return;
+          }
+          closeDnGameForm();
+          applyDnGame(result.data.game);
+          showToast(editing ? "✅ O'yin saqlandi" : "✅ O'yin qo'shildi", "success");
+          if (!editing) openDonatGame(result.data.game.id);
+        }).catch(function () {
+          setSaveBusy(btn, false);
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.saveDnGame = saveDnGame;
+
+      function editCurrentDnGame() {
+        var game = findDnGame(dnCurrentGameId);
+        if (game) openDnGameForm(game);
+      }
+      window.editCurrentDnGame = editCurrentDnGame;
+
+      function resetDnGameDelete() {
+        dnGameDeleteArmed = false;
+        clearTimeout(dnGameDeleteTimer);
+        var btn = document.getElementById("dnGameDeleteBtn");
+        btn.classList.remove("confirm");
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-trash3"></i><span>O\'chirish</span>';
+      }
+
+      function deleteCurrentDnGame() {
+        var game = findDnGame(dnCurrentGameId);
+        if (!game) return;
+        var btn = document.getElementById("dnGameDeleteBtn");
+        if (!dnGameDeleteArmed) {
+          dnGameDeleteArmed = true;
+          btn.classList.add("confirm");
+          btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i><span>' + (game.packs.length ? game.packs.length + " ta paket bilan o'chadi" : "Tasdiqlang") + "</span>";
+          dnGameDeleteTimer = setTimeout(resetDnGameDelete, 3500);
+          return;
+        }
+        clearTimeout(dnGameDeleteTimer);
+        btn.disabled = true;
+        api("shop_dn_game_delete", { id: game.id }).then(function (result) {
+          resetDnGameDelete();
+          if (!result.ok) {
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+            return;
+          }
+          dnGames = dnGames.filter(function (g) { return g.id !== game.id; });
+          dnCurrentGameId = null;
+          showDnView("games");
+          loadDonat();
+          showToast("✅ O'yin o'chirildi", "success");
+        }).catch(function () {
+          resetDnGameDelete();
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.deleteCurrentDnGame = deleteCurrentDnGame;
+
+      // ---- Paket formasi ----
+      function parseMarkupInput(text) {
+        var v = String(text || "").replace(/\s+/g, "").replace(/%$/, "").replace(",", ".");
+        if (!v) return null;
+        return /^\d+(\.\d{1,2})?$/.test(v) ? Number(v) : NaN;
+      }
+
+      function updateDnPackPreview() {
+        var game = findDnGame(dnCurrentGameId);
+        var cost = Number(document.getElementById("dnPackCost").value.replace(/\s+/g, ""));
+        var custom = parseMarkupInput(document.getElementById("dnPackMarkup").value);
+        var markup = custom === null ? (game ? game.markup : 0) : custom;
+        var validCost = /^\d+$/.test(document.getElementById("dnPackCost").value.replace(/\s+/g, "")) && cost > 0;
+        document.getElementById("dnPrevMarkup").textContent = isNaN(markup) ? "—" : "+" + formatPercent(markup);
+        if (!validCost || isNaN(markup)) {
+          document.getElementById("dnPrevPrice").textContent = "—";
+          document.getElementById("dnPrevProfit").textContent = "—";
+          return;
+        }
+        var price = Math.round(cost * (1 + markup / 100));
+        document.getElementById("dnPrevPrice").textContent = formatSom(price);
+        document.getElementById("dnPrevProfit").textContent = formatSom(price - cost);
+      }
+      document.getElementById("dnPackCost").addEventListener("input", updateDnPackPreview);
+      document.getElementById("dnPackMarkup").addEventListener("input", updateDnPackPreview);
+
+      function resetDnPackDelete() {
+        dnPackDeleteArmed = false;
+        clearTimeout(dnPackDeleteTimer);
+        var btn = document.getElementById("dnPackDeleteBtn");
+        btn.classList.remove("confirm");
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-trash3"></i><span>Paketni o\'chirish</span>';
+      }
+
+      function openDnPackForm(pack) {
+        var game = findDnGame(dnCurrentGameId);
+        if (!game) return;
+        dnEditingPackId = pack && pack.id ? pack.id : null;
+        document.getElementById("dnPackFormTitle").textContent = dnEditingPackId ? "Paketni tahrirlash" : "Paket qo'shish";
+        document.getElementById("dnPackName").value = dnEditingPackId ? pack.name : "";
+        document.getElementById("dnPackCost").value = dnEditingPackId ? String(pack.cost) : "";
+        document.getElementById("dnPackMarkup").value = dnEditingPackId && typeof pack.markup === "number" ? String(pack.markup) : "";
+        document.getElementById("dnPackMarkup").placeholder = "Bo'sh — o'yin foizi (" + formatPercent(game.markup) + ")";
+        document.getElementById("dnPackMarkupHint").textContent = "Bo'sh qoldirilsa «" + game.name + "» uchun standart +" + formatPercent(game.markup) + " qo'llanadi.";
+        document.getElementById("dnPackDeleteRow").style.display = dnEditingPackId ? "block" : "none";
+        resetDnPackDelete();
+        updateDnPackPreview();
+        document.getElementById("dnPackModal").classList.add("open");
+        if (!dnEditingPackId) setTimeout(function () { document.getElementById("dnPackName").focus(); }, 320);
+      }
+
+      function closeDnPackForm() {
+        document.getElementById("dnPackModal").classList.remove("open");
+        resetDnPackDelete();
+        dnEditingPackId = null;
+      }
+      window.closeDnPackForm = closeDnPackForm;
+
+      function saveDnPack() {
+        var btn = document.getElementById("dnPackSaveBtn");
+        var body = {
+          game_id: dnCurrentGameId,
+          id: dnEditingPackId || "",
+          name: document.getElementById("dnPackName").value.trim(),
+          cost: document.getElementById("dnPackCost").value.trim(),
+          markup: document.getElementById("dnPackMarkup").value.trim()
+        };
+        if (!body.name) { showToast("⚠️ Paket nomini kiriting", "warning"); return; }
+        if (!body.cost) { showToast("⚠️ Tannarxni kiriting", "warning"); return; }
+        var editing = Boolean(dnEditingPackId);
+        setSaveBusy(btn, true);
+        api("shop_dn_pack_save", body).then(function (result) {
+          setSaveBusy(btn, false);
+          if (!result.ok || !result.data) {
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+            return;
+          }
+          closeDnPackForm();
+          applyDnGame(result.data.game);
+          showToast(editing ? "✅ Paket saqlandi" : "✅ Paket qo'shildi", "success");
+        }).catch(function () {
+          setSaveBusy(btn, false);
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.saveDnPack = saveDnPack;
+
+      function deleteCurrentDnPack() {
+        if (!dnEditingPackId) return;
+        var btn = document.getElementById("dnPackDeleteBtn");
+        if (!dnPackDeleteArmed) {
+          dnPackDeleteArmed = true;
+          btn.classList.add("confirm");
+          btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i><span>Tasdiqlang</span>';
+          dnPackDeleteTimer = setTimeout(resetDnPackDelete, 3500);
+          return;
+        }
+        clearTimeout(dnPackDeleteTimer);
+        btn.disabled = true;
+        api("shop_dn_pack_delete", { game_id: dnCurrentGameId, id: dnEditingPackId }).then(function (result) {
+          if (!result.ok || !result.data) {
+            resetDnPackDelete();
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+            return;
+          }
+          closeDnPackForm();
+          applyDnGame(result.data.game);
+          showToast("✅ Paket o'chirildi", "success");
+        }).catch(function () {
+          resetDnPackDelete();
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.deleteCurrentDnPack = deleteCurrentDnPack;
+
+      document.getElementById("dnGameModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) { hapticLight(); closeDnGameForm(); }
+      });
+      document.getElementById("dnPackModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) { hapticLight(); closeDnPackForm(); }
       });
 
       /* -----------------------------------------------------------------------
