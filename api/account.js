@@ -13,6 +13,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const arena = require("./_mlbb-arena.js");
+const shop = require("./_shop.js");
+const limitPrices = require("./_limit-prices.js");
+const { createShopNotifier, buildFirstmailBuyText, buildLimitBuyText } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
@@ -37,7 +40,7 @@ function getConfig() {
 module.exports = async function handler(req, res) {
   try {
     if (req.method === "GET") {
-      return serveApp(res);
+      return isCabinetRequest(req) ? serveCabinet(res) : serveApp(res);
     }
 
     if (req.method !== "POST") {
@@ -82,6 +85,21 @@ module.exports = async function handler(req, res) {
         return await withSession(res, ctx, handlePrivacySet);
       case "logout":
         return await handleLogout(res, ctx);
+      // Shaxsiy kabinet (?view=cabinet)
+      case "cabinet":
+        return await handleCabinet(res, ctx);
+      case "account_add":
+        return await handleAccountAdd(res, ctx);
+      case "account_remove":
+        return await handleAccountRemove(res, ctx);
+      case "ml_send_code":
+        return await handleMlSendCode(res, ctx);
+      case "ml_verify":
+        return await handleMlVerify(res, ctx);
+      case "buy_limit":
+        return await handleBuyLimit(res, ctx);
+      case "buy_firstmail":
+        return await handleBuyFirstmail(res, ctx);
       default:
         return json(res, 400, { ok: false, error: "unknown_action" });
     }
@@ -282,34 +300,409 @@ async function loadPreferredLanguage(config, user) {
 }
 
 // ---------------------------------------------------------------------------
+// 👤 Shaxsiy kabinet (?view=cabinet)
+//
+// Botdagi "Mening profilim" postidagi web_app tugmasi ochadi: limitlar,
+// akkauntlar, kimlar tekshirgani, limitlar tarixi, MLBB'ga ulash, limit
+// narxlari va Firstmail xaridi. To'lov hozircha qo'lda — xarid so'rovi
+// do'kon egasiga boradi (api/_shop-notify.js).
+// ---------------------------------------------------------------------------
+const BIND_INFO_DEFAULT_LIMIT = 10; // bot.js dagi check_and_consume_bind_limit bilan bir xil
+const CABINET_HISTORY_LIMIT = 50;
+const CABINET_FIRSTMAIL_LIMIT = 50;
+const ACCOUNT_MAX_COUNT = 5;
+const ML_VC_KEY_PREFIX = "ml_vc:";
+const ML_CODE_MAX_ATTEMPTS = 5;
+const ML_CODE_TTL_MS = 5 * 60 * 1000;
+const ML_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
+const DEFAULT_ADMIN_IDS = "5081175125,8500085987,7396686285";
+
+function storeRequest(config) {
+  return (urlPath, options) => supabaseRequest(config, urlPath, options);
+}
+
+function isAdminUser(userId) {
+  return String(process.env.ADMIN_IDS || DEFAULT_ADMIN_IDS)
+    .split(/[\s,]+/)
+    .includes(String(userId));
+}
+
+// Bitta bo'lim yiqilsa butun kabinet yiqilmasin — o'rniga null.
+async function settle(promise, label) {
+  try {
+    return await promise;
+  } catch (error) {
+    console.error(`[CABINET_${label}]`, error?.message);
+    return null;
+  }
+}
+
+function quotaNumber(result) {
+  return result && typeof result.remaining === "number" ? result.remaining : null;
+}
+
+function publicAccount(acc) {
+  return {
+    id: String(acc.id),
+    account_id: String(acc.account_id),
+    zone_id: String(acc.zone_id),
+    created_at: acc.created_at || null,
+    ml_linked: Boolean(acc.ml_linked),
+    ml_nickname: acc.ml_nickname || null,
+    ml_linked_at: acc.ml_linked_at || null,
+  };
+}
+
+function publicViewer(event) {
+  return {
+    id: String(event.id),
+    account_id: String(event.account_id || ""),
+    zone_id: String(event.zone_id || ""),
+    checker_id: event.checker_user_id ? String(event.checker_user_id) : null,
+    checker_username: event.checker_username || null,
+    checker_name: event.checker_first_name || null,
+    action: event.action || "server_check",
+    created_at: event.created_at || null,
+  };
+}
+
+function publicHistory(row) {
+  return {
+    id: String(row.id),
+    kind: row.kind,
+    delta: Number(row.delta) || 0,
+    source: row.source || "use",
+    account_id: row.account_id || null,
+    zone_id: row.zone_id || null,
+    target: row.target || null,
+    remaining: typeof row.remaining === "number" ? row.remaining : null,
+    created_at: row.created_at || null,
+  };
+}
+
+function publicFirstmail(item) {
+  return {
+    id: item.id,
+    email: shop.maskShopEmail(item.email),
+    price: shop.parseShopPriceNumber(item.price) || null,
+    price_text: shop.formatShopPrice(item.price) || "",
+    note: item.note || "",
+  };
+}
+
+async function listUserAccounts(config, userId) {
+  const rows = await supabaseRpc(config, "list_user_accounts", { p_user_id: String(userId) });
+  return (Array.isArray(rows) ? rows : []).map(publicAccount);
+}
+
+async function handleCabinet(res, { config, user }) {
+  const userId = String(user.id);
+  const historyParams = new URLSearchParams({
+    user_id: `eq.${userId}`,
+    select: "id,kind,delta,source,account_id,zone_id,target,remaining,created_at",
+    order: "created_at.desc",
+    limit: String(CABINET_HISTORY_LIMIT),
+  });
+
+  const [lang, accounts, fullInfo, resetPw, bindInfo, viewers, history, prices, firstmails] = await Promise.all([
+    loadPreferredLanguage(config, user),
+    settle(listUserAccounts(config, userId), "ACCOUNTS"),
+    settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
+    settle(supabaseRpc(config, "get_reset_pw_quota", { p_user_id: userId }), "RESET_PW"),
+    settle(supabaseRpc(config, "check_bind_limit_only", { p_user_id: userId, p_limit: BIND_INFO_DEFAULT_LIMIT }), "BIND_INFO"),
+    settle(supabaseRpc(config, "get_account_check_history", { p_user_id: userId, p_limit: CABINET_HISTORY_LIMIT }), "VIEWERS"),
+    // 018 migratsiyasi qo'llanmagan bo'lsa — null, UI "tarix hali yo'q" deydi.
+    settle(supabaseRequest(config, `/quota_usage_events?${historyParams.toString()}`), "HISTORY"),
+    settle(limitPrices.createLimitPriceStore(storeRequest(config)).list(), "PRICES"),
+    settle(shop.createFirstmailStore(storeRequest(config)).list(), "FIRSTMAIL"),
+  ]);
+
+  return json(res, 200, {
+    ok: true,
+    lang,
+    botUsername: config.botUsername || null,
+    supportUsername: createShopNotifier({}).supportUsername,
+    user: {
+      id: userId,
+      first_name: user.first_name || "",
+      last_name: user.last_name || "",
+      username: user.username || null,
+      photo_url: user.photo_url || null,
+    },
+    unlimited: isAdminUser(userId),
+    limits: {
+      full_info: { remaining: quotaNumber(fullInfo) },
+      reset_pw: { remaining: quotaNumber(resetPw) },
+      bind_info: {
+        remaining: quotaNumber(bindInfo),
+        total: bindInfo && typeof bindInfo.total_limit === "number" ? bindInfo.total_limit : BIND_INFO_DEFAULT_LIMIT,
+      },
+    },
+    accounts: accounts || [],
+    accountMax: ACCOUNT_MAX_COUNT,
+    viewers: (Array.isArray(viewers) ? viewers : []).map(publicViewer),
+    history: Array.isArray(history) ? history.map(publicHistory) : [],
+    historyAvailable: Array.isArray(history),
+    prices: (prices || []).map(limitPrices.toPublicLimitPrice),
+    firstmails: (firstmails || [])
+      .filter((item) => item.status === shop.SHOP_FM_STATUS_AVAILABLE)
+      .slice(0, CABINET_FIRSTMAIL_LIMIT)
+      .map(publicFirstmail),
+  });
+}
+
+async function handleAccountAdd(res, { config, user, body }) {
+  const accountId = String(body.account_id ?? "").replace(/\D/g, "");
+  const zoneId = String(body.zone_id ?? "").replace(/\D/g, "");
+
+  if (!/^\d{5,12}$/.test(accountId) || !/^\d{1,8}$/.test(zoneId)) {
+    return json(res, 400, { ok: false, error: "invalid_input" });
+  }
+
+  const result = await supabaseRpc(config, "add_user_account", {
+    p_user_id: String(user.id),
+    p_account_id: accountId,
+    p_zone_id: zoneId,
+  });
+
+  if (!result || result.ok !== true) {
+    const error = ["limit_reached", "already_exists", "invalid_input"].includes(result?.error) ? result.error : "add_failed";
+    return json(res, 400, { ok: false, error });
+  }
+
+  return json(res, 200, { ok: true, accounts: await listUserAccounts(config, user.id) });
+}
+
+async function handleAccountRemove(res, { config, user, body }) {
+  const rowId = parseRowId(body.rowId);
+  const accounts = await listUserAccounts(config, user.id);
+  const target = accounts.find((acc) => acc.id === rowId);
+
+  if (!target) {
+    return json(res, 404, { ok: false, error: "not_found" });
+  }
+
+  // Bot kabi: ulangan bo'lsa avval Arena sessiyasini yopamiz.
+  if (target.ml_linked) {
+    try {
+      const link = await supabaseRpc(config, "get_user_account_ml_link", { p_user_id: String(user.id), p_row_id: rowId });
+      const token = arena.openArenaToken(link?.ml_token, config.linkSecret);
+      if (token) await createClient(config).logout(token);
+    } catch (error) {
+      console.error("[CABINET_REMOVE_LOGOUT]", error?.message);
+    }
+  }
+
+  const result = await supabaseRpc(config, "remove_user_account", {
+    p_user_id: String(user.id),
+    p_account_id: target.account_id,
+    p_zone_id: target.zone_id,
+  });
+
+  if (!result || result.ok !== true) {
+    return json(res, 404, { ok: false, error: "not_found" });
+  }
+
+  return json(res, 200, { ok: true, accounts: accounts.filter((acc) => acc.id !== rowId) });
+}
+
+// Tasdiqlash kodi holati: bot_settings → ml_vc:<userId> = { rowId, sentAt, attempts }.
+// Urinishlar serverda sanaladi — kod tanlab topishning (brute force) oldi olinadi.
+function mlVcKey(userId) {
+  return `${ML_VC_KEY_PREFIX}${userId}`;
+}
+
+async function readMlVcState(config, userId) {
+  const rows = await supabaseRequest(
+    config,
+    `/bot_settings?key=eq.${encodeURIComponent(mlVcKey(userId))}&select=value&limit=1`
+  );
+  const value = Array.isArray(rows) && rows[0] ? rows[0].value : null;
+  return value && typeof value === "object" ? value : null;
+}
+
+function writeMlVcState(config, userId, value) {
+  return supabaseRequest(config, "/bot_settings?on_conflict=key", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: { key: mlVcKey(userId), value, updated_at: new Date().toISOString() },
+  });
+}
+
+function clearMlVcState(config, userId) {
+  return supabaseRequest(config, `/bot_settings?key=eq.${encodeURIComponent(mlVcKey(userId))}`, { method: "DELETE" });
+}
+
+function arenaErrorCode(error) {
+  return ["send_failed", "rate_limit", "invalid_input", "invalid_code", "timeout"].includes(error?.reason)
+    ? error.reason
+    : "service_down";
+}
+
+async function findUnlinkedAccount(config, user, rowIdRaw) {
+  const rowId = parseRowId(rowIdRaw);
+  const accounts = await listUserAccounts(config, user.id);
+  const account = accounts.find((acc) => acc.id === rowId);
+
+  if (!account) return { error: "not_found" };
+  if (account.ml_linked) return { error: "already_linked" };
+  return { account };
+}
+
+async function handleMlSendCode(res, { config, user, body }) {
+  const { account, error } = await findUnlinkedAccount(config, user, body.rowId);
+  if (!account) {
+    return json(res, error === "not_found" ? 404 : 409, { ok: false, error });
+  }
+
+  const previous = await readMlVcState(config, user.id).catch(() => null);
+  const since = previous && previous.rowId === account.id ? Date.now() - Number(previous.sentAt || 0) : Infinity;
+
+  if (since < ML_CODE_RESEND_COOLDOWN_MS) {
+    return json(res, 429, { ok: false, error: "cooldown", wait: Math.ceil((ML_CODE_RESEND_COOLDOWN_MS - since) / 1000) });
+  }
+
+  try {
+    await createClient(config).sendVerificationCode(account.account_id, account.zone_id);
+  } catch (sendError) {
+    console.error("[CABINET_ML_SEND]", sendError?.message);
+    return json(res, 502, { ok: false, error: arenaErrorCode(sendError) });
+  }
+
+  await writeMlVcState(config, user.id, { rowId: account.id, sentAt: Date.now(), attempts: 0 });
+  return json(res, 200, { ok: true, ttl: ML_CODE_TTL_MS / 1000, cooldown: ML_CODE_RESEND_COOLDOWN_MS / 1000 });
+}
+
+async function handleMlVerify(res, { config, user, body }) {
+  const code = String(body.code ?? "").replace(/[\s-]/g, "");
+  if (!arena.isValidVerificationCode(code)) {
+    return json(res, 400, { ok: false, error: "invalid_format" });
+  }
+
+  const { account, error } = await findUnlinkedAccount(config, user, body.rowId);
+  if (!account) {
+    return json(res, error === "not_found" ? 404 : 409, { ok: false, error });
+  }
+
+  const vc = await readMlVcState(config, user.id);
+  if (!vc || vc.rowId !== account.id || Date.now() - Number(vc.sentAt || 0) > ML_CODE_TTL_MS) {
+    return json(res, 410, { ok: false, error: "code_expired" });
+  }
+
+  const attempts = Number(vc.attempts || 0);
+  if (attempts >= ML_CODE_MAX_ATTEMPTS) {
+    return json(res, 429, { ok: false, error: "too_many" });
+  }
+
+  const client = createClient(config);
+  let session;
+  try {
+    session = await client.login(account.account_id, account.zone_id, code);
+  } catch (loginError) {
+    if (loginError?.reason === "invalid_code") {
+      const used = attempts + 1;
+      await writeMlVcState(config, user.id, { ...vc, attempts: used });
+      return json(res, 400, { ok: false, error: used >= ML_CODE_MAX_ATTEMPTS ? "too_many" : "wrong_code", left: ML_CODE_MAX_ATTEMPTS - used });
+    }
+    console.error("[CABINET_ML_LOGIN]", loginError?.message);
+    return json(res, 502, { ok: false, error: arenaErrorCode(loginError) });
+  }
+
+  const lang = SUPPORTED_LANGS.includes(body.lang) ? body.lang : "en";
+  const info = await client.getInfo(session.jwt, lang).catch(() => ({}));
+  const saved = await supabaseRpc(config, "set_user_account_ml_link", {
+    p_user_id: String(user.id),
+    p_row_id: account.id,
+    p_token: arena.sealArenaToken(session.jwt, config.linkSecret),
+    p_nickname: info && info.name ? String(info.name).slice(0, 64) : null,
+  }).catch((saveError) => {
+    console.error("[CABINET_ML_SAVE]", saveError?.message);
+    return null;
+  });
+
+  await clearMlVcState(config, user.id).catch(() => {});
+
+  if (!saved || saved.ok !== true) {
+    void client.logout(session.jwt).catch(() => {});
+    return json(res, 500, { ok: false, error: "save_failed" });
+  }
+
+  return json(res, 200, { ok: true, accounts: await listUserAccounts(config, user.id) });
+}
+
+async function handleBuyLimit(res, { config, user, body }) {
+  const item = await limitPrices.createLimitPriceStore(storeRequest(config)).get(String(body.id || ""));
+  if (!item) {
+    return json(res, 404, { ok: false, error: "not_available" });
+  }
+
+  const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+  const delivered = await notifier.notify(buildLimitBuyText(user, item), user.id);
+  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername });
+}
+
+async function handleBuyFirstmail(res, { config, user, body }) {
+  const item = await shop.createFirstmailStore(storeRequest(config)).get(String(body.id || ""));
+  if (!item || item.status !== shop.SHOP_FM_STATUS_AVAILABLE) {
+    return json(res, 404, { ok: false, error: "not_available" });
+  }
+
+  const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+  const text = buildFirstmailBuyText(user, item, shop.formatShopPrice(item.price) || "kelishiladi");
+  const delivered = await notifier.notify(text, user.id);
+  return json(res, delivered ? 200 : 502, { ok: delivered, error: delivered ? undefined : "notify_failed", supportUsername: notifier.supportUsername });
+}
+
+// ---------------------------------------------------------------------------
 // HTML
 // ---------------------------------------------------------------------------
+// Yo'llar literal yoziladi — Vercel (nft) HTML fayllarni bundle'ga shundan topadi.
 function serveApp(res) {
+  return serveHtml(res, path.join(__dirname, "account-miniapp.html"), "#0b1020");
+}
+
+function serveCabinet(res) {
+  return serveHtml(res, path.join(__dirname, "cabinet-miniapp.html"), "#0a0e1a");
+}
+
+// /api/account?view=cabinet — shaxsiy kabinet; boshqasi — "Mening akkauntim".
+function isCabinetRequest(req) {
+  const fromQuery = req.query && req.query.view;
+  if (fromQuery) return String(fromQuery) === "cabinet";
+
   try {
-    const html = injectTelegramShell(fs.readFileSync(path.join(__dirname, "account-miniapp.html"), "utf8"), {
-      color: "#0b1020",
-    });
+    return new URL(String(req.url || ""), "http://local").searchParams.get("view") === "cabinet";
+  } catch {
+    return false;
+  }
+}
+
+function serveHtml(res, filePath, color) {
+  const fileName = path.basename(filePath);
+  try {
+    const html = injectTelegramShell(fs.readFileSync(filePath, "utf8"), { color });
     return res
       .status(200)
       .setHeader("Content-Type", "text/html; charset=utf-8")
       .setHeader("Cache-Control", "no-store")
       .send(html);
   } catch (error) {
-    console.error("[ACCOUNT_APP_HTML]", error?.message);
-    return res.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").send("account-miniapp.html topilmadi");
+    console.error("[ACCOUNT_APP_HTML]", fileName, error?.message);
+    return res.status(500).setHeader("Content-Type", "text/plain; charset=utf-8").send(`${fileName} topilmadi`);
   }
 }
 
 // ---------------------------------------------------------------------------
 // Supabase / util
 // ---------------------------------------------------------------------------
-async function supabaseRequest(config, urlPath, { method = "GET", body } = {}) {
+async function supabaseRequest(config, urlPath, { method = "GET", body, prefer } = {}) {
   const headers = {
     apikey: config.supabaseKey,
     Authorization: `Bearer ${config.supabaseKey}`,
     Accept: "application/json",
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (prefer) headers.Prefer = prefer;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);

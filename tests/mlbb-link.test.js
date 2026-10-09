@@ -397,13 +397,11 @@ test("bot: Ha → in-game code → login stores sealed token and shows account s
     assert.equal(webApp.web_app.url, MINIAPP);
     assert.equal(webApp.text, "🎮 Mening akkauntim");
 
-    // Profil: "Mening akkauntim" web_app tugmasi paydo bo'ladi, ulanmagan akkaunt yo'q.
+    // Profil: ulangan akkaunt postda belgilanadi; tugma — faqat shaxsiy kabinet.
     await sendUpdate(bot, callbackUpdate(12, userId, "my_profile"));
     const profile = lastText(net.telegram);
     assert.match(profile.payload.text, /ulangan Lily•°/);
-    const profileButtons = buttonsOf(profile);
-    assert.ok(profileButtons.some((b) => b.web_app?.url === MINIAPP));
-    assert.ok(!profileButtons.some((b) => b.callback_data === "ml_link_menu"));
+    assert.deepEqual(buttonsOf(profile).map((b) => b.web_app?.url), [`${MINIAPP}?view=cabinet`]);
   } finally {
     net.restore();
   }
@@ -463,7 +461,7 @@ test("bot: text that is not a code leaves code mode; unknown accounts cannot be 
   }
 });
 
-test("bot: send-vc failure shows a friendly error with retry; profile offers linking for unlinked accounts", async () => {
+test("bot: send-vc failure shows a friendly error with retry; old ml_link_menu callback still works", async () => {
   const supabase = createFakeSupabase();
   const net = installFetch({
     supabase,
@@ -476,9 +474,8 @@ test("bot: send-vc failure shows a friendly error with retry; profile offers lin
     const rowId = supabase.rpc("add_user_account", { p_user_id: userId, p_account_id: "66667777", p_zone_id: "5003" }).id;
 
     await sendUpdate(bot, callbackUpdate(60, userId, "my_profile"));
-    const profileButtons = buttonsOf(lastText(net.telegram));
-    assert.ok(profileButtons.some((b) => b.callback_data === "ml_link_menu"));
-    assert.ok(!profileButtons.some((b) => b.web_app), "no Mening akkauntim before linking");
+    // Profil postida faqat kabinet tugmasi; eski "ml_link_menu" callback'i baribir ishlaydi.
+    assert.deepEqual(buttonsOf(lastText(net.telegram)).map((b) => b.web_app?.url), [`${MINIAPP}?view=cabinet`]);
 
     await sendUpdate(bot, callbackUpdate(61, userId, "ml_link_menu"));
     assert.ok(buttonsOf(lastText(net.telegram)).some((b) => b.callback_data === `ml_link:${rowId}`));

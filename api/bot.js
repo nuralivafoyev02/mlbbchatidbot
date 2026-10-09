@@ -107,6 +107,8 @@ const BUTTON_ADMIN_PANEL = "🎛️ Admin Panel";
 const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/miniapp`;
 // Foydalanuvchining shaxsiy Mini App'i ("🎮 Mening akkauntim") — api/account.js.
 const ACCOUNT_MINIAPP_URL = cleanEnv(process.env.ACCOUNT_MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/account`;
+// Shaxsiy kabinet — o'sha Vercel funksiyasi, ?view=cabinet bilan.
+const CABINET_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=cabinet`;
 const BOT_LOGO_URL =
   cleanEnv(process.env.BOT_LOGO_URL) ||
   `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/logo.jpg`;
@@ -140,6 +142,7 @@ function getDailyReportActionLabel(action, lang) {
 const EMOJIS = require("./emojis.json");
 const shop = require("./_shop.js");
 const arena = require("./_mlbb-arena.js");
+const quotaLog = require("./_quota-log.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze(EMOJIS.bindProviders || {});
@@ -1682,28 +1685,22 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
   await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), buildMyProfileKeyboard(lang, accounts, chatId));
 }
 
+// Profil postida faqat "Shaxsiy kabinet" tugmasi — akkaunt qo'shish/uzish,
+// MLBB'ga ulash, kimlar tekshirgani va h.k. hammasi kabinetning ichida.
+// Eski postlardagi callback tugmalari (profile_add, ml_link_menu, ...) baribir
+// ishlab turadi.
 function buildMyProfileKeyboard(lang, accounts = [], chatId = null) {
-  const rows = [];
-  const hasLinked = accounts.some((acc) => acc.ml_linked);
-  const hasUnlinked = accounts.some((acc) => !acc.ml_linked);
-
-  // web_app inline tugmasi faqat shaxsiy chatda ishlaydi.
-  if (hasLinked && Number(chatId) > 0) {
-    rows.push([{ text: t("ml_my_account_btn", lang), web_app: { url: ACCOUNT_MINIAPP_URL } }]);
+  // web_app inline tugmasi faqat shaxsiy chatda ishlaydi — guruhda botning
+  // shaxsiy chatiga havola beriladi.
+  if (Number(chatId) > 0) {
+    return { inline_keyboard: [[{ text: t("profile_cabinet_btn", lang), web_app: { url: CABINET_MINIAPP_URL } }]] };
   }
 
-  rows.push([{ text: t("profile_add_account_btn", lang), callback_data: "profile_add" }]);
-
-  if (hasUnlinked) {
-    rows.push([{ text: t("ml_link_btn", lang), callback_data: "ml_link_menu" }]);
+  if (TELEGRAM_BOT_USERNAME) {
+    return { inline_keyboard: [[{ text: t("profile_cabinet_btn", lang), url: `https://t.me/${TELEGRAM_BOT_USERNAME}` }]] };
   }
 
-  rows.push([
-    { text: t("profile_unlink_account_btn", lang), callback_data: "profile_unlink" },
-    { text: t("profile_viewers_btn", lang), callback_data: "profile_viewers" },
-  ]);
-
-  return { inline_keyboard: rows };
+  return { inline_keyboard: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -2950,6 +2947,17 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   await safeDeleteBindWaitMessage(chatId, waitMessage);
   runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
 
+  if (limitData) {
+    await recordQuotaEvent({
+      userId: user.id,
+      kind: "bind_info",
+      delta: -1,
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+      remaining: limitData.remaining,
+    });
+  }
+
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
     const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni ulanmalarini tekshirdi.`;
@@ -3300,6 +3308,15 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
     } catch (error) {
       console.error("[FULL_INFO_QUOTA_CONSUME_ERROR]", error);
     }
+
+    await recordQuotaEvent({
+      userId: user.id,
+      kind: "full_info",
+      delta: -1,
+      accountId: parsed.accountId,
+      zoneId: parsed.zoneId,
+      remaining: remainingAfter,
+    });
   }
 
   const lang = getUserLang(user.id);
@@ -3385,6 +3402,14 @@ async function handleLimitFullInfoCommand(chatId, user, input) {
     if (!result || (result.ok !== true && result.error)) {
       throw new Error(result?.error || "limit o'zgartirishda xatolik");
     }
+
+    await recordQuotaEvent({
+      userId: targetUserId,
+      kind: "full_info",
+      delta: amount,
+      source: "admin",
+      remaining: typeof result.remaining === "number" ? result.remaining : null,
+    });
 
     const absAmount = Math.abs(amount);
     const lines = [
@@ -3487,6 +3512,14 @@ async function handleLimitResetPwCommand(chatId, user, input) {
     if (!result || (result.ok !== true && result.error)) {
       throw new Error(result?.error || "limit o'zgartirishda xatolik");
     }
+
+    await recordQuotaEvent({
+      userId: targetUserId,
+      kind: "reset_pw",
+      delta: amount,
+      source: "admin",
+      remaining: typeof result.remaining === "number" ? result.remaining : null,
+    });
 
     const absAmount = Math.abs(amount);
     const lines = [
@@ -3645,6 +3678,14 @@ async function handleResetPwRequest(chatId, input, user = {}, options = {}) {
     } catch (error) {
       console.error("[RESET_PW_QUOTA_CONSUME_ERROR]", error);
     }
+
+    await recordQuotaEvent({
+      userId: user.id,
+      kind: "reset_pw",
+      delta: -1,
+      target: quotaLog.maskEmail(resetResult.data?.email || email),
+      remaining: remainingAfter,
+    });
   }
 
   const lang = getUserLang(user.id);
@@ -8898,6 +8939,20 @@ async function setMandatoryChannel(value) {
   } catch (err) {
     console.error("[SET_SETTINGS_ERROR]", err);
     throw err;
+  }
+}
+
+// Limitlar tarixi (018 migratsiyasi) — shaxsiy kabinet "qaysi limit qaysi
+// akkauntga ketgani"ni shundan ko'rsatadi. Xato asosiy ishni to'xtatmaydi.
+async function recordQuotaEvent(event) {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return;
+  }
+
+  try {
+    await quotaLog.logQuotaEvent((path, options) => supabaseRequest(path, options), event);
+  } catch (error) {
+    console.error("[QUOTA_EVENT_LOG_ERROR]", error.message);
   }
 }
 

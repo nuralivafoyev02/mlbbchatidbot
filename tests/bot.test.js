@@ -5756,11 +5756,10 @@ test("profile: my_profile shows accounts section with inline actions", async () 
     assert.match(sent.payload.text, /Mening profilim|My profile/, "profile title expected");
     assert.match(sent.payload.text, /Akkauntlarim|My accounts/, "accounts section expected");
 
+    // Postda faqat "Shaxsiy kabinet" web_app tugmasi qoladi.
     const buttons = sent.payload.reply_markup?.inline_keyboard?.flat() || [];
-    const datas = buttons.map((b) => b.callback_data);
-    assert.ok(datas.includes("profile_add"), "add account action expected");
-    assert.ok(datas.includes("profile_unlink"), "unlink action expected");
-    assert.ok(datas.includes("profile_viewers"), "viewers action expected");
+    assert.equal(buttons.length, 1, "only the cabinet button expected");
+    assert.match(buttons[0].web_app?.url || "", /view=cabinet/);
   } finally {
     global.fetch = originalFetch;
   }

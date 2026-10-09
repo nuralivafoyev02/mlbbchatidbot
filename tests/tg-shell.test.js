@@ -26,8 +26,8 @@ test("tg-shell: ignores invalid colors and pages without the marker", () => {
   assert.equal(injectTelegramShell("<head></head>"), "<head></head>");
 });
 
-test("tg-shell: both mini apps carry the marker and never force exitFullscreen", () => {
-  for (const file of ["index.html", "account-miniapp.html"]) {
+test("tg-shell: all mini apps carry the marker and never force exitFullscreen", () => {
+  for (const file of ["index.html", "account-miniapp.html", "cabinet-miniapp.html"]) {
     const source = fs.readFileSync(path.join(__dirname, "..", "api", file), "utf8");
     assert.ok(source.includes(SHELL_MARKER), `${file}: marker yo'q`);
     assert.ok(!source.includes("exitFullscreen"), `${file}: exitFullscreen qolib ketgan`);

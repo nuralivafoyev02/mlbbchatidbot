@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Shaxsiy kabinet</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Fullscreen + safe area + MLBBBOT yorlig'i: api/_tg-shell.js server tomonda qo'yadi -->
+  <!-- tg-shell -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    /* Admin panel bilan bir xil palitra (api/index.html) */
+    :root {
+      --bg: #0a0e1a;
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface2: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8ecf5;
+      --text2: #8b95ab;
+      --accent: #6366f1;
+      --accent2: #8b5cf6;
+      --pink: #ec4899;
+      --green: #10b981;
+      --red: #f43f5e;
+      --gold: #f59e0b;
+      --sheet: #121729;
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      min-height: 100%;
+      overflow-x: hidden;
+    }
+
+    body {
+      background:
+        radial-gradient(90% 50% at 100% 0%, rgba(99, 102, 241, 0.16), transparent 60%),
+        radial-gradient(70% 40% at 0% 10%, rgba(236, 72, 153, 0.08), transparent 60%),
+        var(--bg);
+      background-attachment: fixed;
+      padding: calc(14px + var(--top-space, 0px)) calc(16px + var(--safe-right, 0px))
+        calc(104px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px));
+    }
+
+    #app { transition: opacity .25s; max-width: 560px; margin: 0 auto; }
+    html.tg-shell-pending #app { opacity: 0; }
+
+    button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+    input { font: inherit; }
+    .hidden { display: none !important; }
+    .muted { color: var(--text2); }
+    .row { display: flex; align-items: center; gap: 12px; }
+    .grow { flex: 1; min-width: 0; }
+    .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ------------------------------------------------------------ header */
+    .head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .avatar {
+      width: 52px; height: 52px; border-radius: 16px; flex: none; object-fit: cover;
+      display: grid; place-items: center; font-weight: 800; font-size: 20px; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--pink));
+      box-shadow: 0 8px 22px rgba(99, 102, 241, 0.35);
+    }
+    .head-name { font-size: 18px; font-weight: 800; line-height: 1.2; }
+    .head-sub { font-size: 12.5px; color: var(--text2); margin-top: 3px; }
+    .head-sub code { font-family: inherit; color: var(--text); opacity: .8; }
+
+    /* "$" — narxlar ro'yxati. Ikonka tanga kabi aylanib turadi. */
+    .price-btn {
+      position: relative; width: 46px; height: 46px; flex: none; border-radius: 15px;
+      display: grid; place-items: center; color: #fff; font-size: 22px;
+      background: linear-gradient(135deg, var(--green), #059669);
+      box-shadow: 0 8px 22px rgba(16, 185, 129, 0.38), inset 0 1px 0 rgba(255, 255, 255, .2);
+      perspective: 200px;
+    }
+    .price-btn::after {
+      content: ""; position: absolute; inset: -3px; border-radius: 18px; pointer-events: none;
+      border: 1.5px solid rgba(16, 185, 129, .45); animation: pulseRing 2.4s ease-out infinite;
+    }
+    .price-btn i { display: block; animation: coinSpin 2.6s cubic-bezier(.45, .05, .55, .95) infinite; }
+    .price-btn:active { transform: scale(.93); }
+    @keyframes coinSpin { 0%, 35% { transform: rotateY(0) } 65%, 100% { transform: rotateY(360deg) } }
+    @keyframes pulseRing { 0% { opacity: .9; transform: scale(1) } 100% { opacity: 0; transform: scale(1.22) } }
+    @media (prefers-reduced-motion: reduce) {
+      .price-btn i, .price-btn::after { animation: none; }
+    }
+
+    /* ------------------------------------------------------------ blocks */
+    .section-title {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+      color: var(--text2); margin: 20px 2px 10px;
+    }
+    .section-title .link { text-transform: none; letter-spacing: 0; font-size: 13px; color: #a5b4fc; font-weight: 600; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+
+    .limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .limit {
+      position: relative; overflow: hidden; border-radius: 16px; padding: 12px 11px 11px;
+      background: var(--surface); border: 1px solid var(--border);
+    }
+    .limit-ico { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; color: #fff; margin-bottom: 10px; }
+    .limit.k-fi .limit-ico { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+    .limit.k-rp .limit-ico { background: linear-gradient(135deg, var(--pink), #f43f5e); }
+    .limit.k-bd .limit-ico { background: linear-gradient(135deg, var(--green), #0ea5e9); }
+    .limit-value { font-size: 24px; font-weight: 800; line-height: 1; }
+    .limit-value small { font-size: 12px; font-weight: 600; color: var(--text2); }
+    .limit-label { font-size: 11px; color: var(--text2); margin-top: 5px; line-height: 1.3; }
+    .limit.zero .limit-value { color: var(--red); }
+    .bar { height: 4px; border-radius: 99px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-top: 9px; }
+    .bar > div { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--green), #34d399); }
+
+    .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+    .stat { padding: 11px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+    .stat b { display: block; font-size: 17px; font-weight: 800; }
+    .stat span { font-size: 11px; color: var(--text2); }
+
+    .cta {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; margin-top: 10px;
+      padding: 13px 14px; border-radius: 16px; border: 1px solid rgba(16, 185, 129, .3);
+      background: linear-gradient(135deg, rgba(16, 185, 129, .14), rgba(99, 102, 241, .08));
+    }
+    .cta .ico { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; color: #fff; background: linear-gradient(135deg, var(--green), #059669); flex: none; }
+    .cta b { display: block; font-size: 14px; }
+    .cta span { font-size: 12px; color: var(--text2); }
+
+    /* ------------------------------------------------------------ lists */
+    .item {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+      padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px;
+    }
+    .item-ico { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 17px; flex: none; background: var(--surface2); color: #c4b5fd; }
+    .item-ico.green { background: rgba(16, 185, 129, .14); color: var(--green); }
+    .item-ico.red { background: rgba(244, 63, 94, .14); color: var(--red); }
+    .item-ico.gold { background: rgba(245, 158, 11, .14); color: var(--gold); }
+    .item-ico.pink { background: rgba(236, 72, 153, .14); color: var(--pink); }
+    .item-title { font-weight: 700; font-size: 14.5px; }
+    .item-sub { font-size: 12px; color: var(--text2); margin-top: 3px; }
+    .item-right { text-align: right; flex: none; }
+    .delta { font-weight: 800; font-size: 15px; }
+    .delta.minus { color: var(--red); }
+    .delta.plus { color: var(--green); }
+    .pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 3px 7px; border-radius: 7px; background: var(--surface2); color: var(--text2); }
+    .pill.green { background: rgba(16, 185, 129, .15); color: var(--green); }
+    .pill.gold { background: rgba(245, 158, 11, .16); color: var(--gold); }
+    .pill.accent { background: rgba(99, 102, 241, .18); color: #a5b4fc; }
+
+    .acc { padding: 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 10px; }
+    .acc.linked { border-color: rgba(99, 102, 241, .35); background: linear-gradient(135deg, rgba(99, 102, 241, .12), rgba(139, 92, 246, .05)); }
+    .acc-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .acc-actions .btn { flex: 1; padding: 10px; font-size: 13px; }
+
+    .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 12px; }
+    .seg button { padding: 9px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--text2); transition: background .2s, color .2s; }
+    .seg button.active { color: #fff; background: linear-gradient(135deg, rgba(99, 102, 241, .5), rgba(139, 92, 246, .4)); }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+      padding: 13px; border-radius: 14px; font-weight: 700; background: var(--surface2); border: 1px solid var(--border);
+    }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; color: #fff; }
+    .btn.green { background: linear-gradient(135deg, var(--green), #059669); border-color: transparent; color: #fff; }
+    .btn.danger { background: rgba(244, 63, 94, .12); border-color: rgba(244, 63, 94, .32); color: var(--red); }
+    .btn:disabled { opacity: .55; }
+    .btn + .btn { margin-top: 8px; }
+
+    .empty { text-align: center; padding: 30px 16px; color: var(--text2); font-size: 13.5px; line-height: 1.5; }
+    .empty .bi { display: block; font-size: 30px; margin-bottom: 8px; opacity: .6; }
+
+    .skeleton { border-radius: 14px; height: 62px; margin-bottom: 8px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    /* ------------------------------------------------------------ sheet */
+    .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 30; animation: fade .2s both; }
+    .sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; overflow-y: auto;
+      max-height: min(88vh, calc(100vh - var(--top-space, 0px) - 12px));
+      background: var(--sheet); border-radius: 24px 24px 0 0; border-top: 1px solid var(--border);
+      padding: 10px 16px calc(22px + var(--safe-bottom, 0px)); animation: sheetUp .32s cubic-bezier(.22, .8, .3, 1) both;
+    }
+    .sheet-inner { max-width: 560px; margin: 0 auto; }
+    .sheet-handle { width: 40px; height: 5px; border-radius: 99px; background: var(--border); margin: 0 auto 14px; }
+    .sheet h2 { font-size: 19px; font-weight: 800; margin-bottom: 4px; }
+    .sheet .lead { font-size: 13px; color: var(--text2); margin-bottom: 16px; line-height: 1.45; }
+    @keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
+    @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+    .field input {
+      width: 100%; padding: 13px; border-radius: 12px; outline: none; color: var(--text);
+      background: rgba(255, 255, 255, .05); border: 1px solid var(--border); font-size: 16px;
+    }
+    .field input:focus { border-color: var(--accent); }
+    .field input.code { text-align: center; letter-spacing: .4em; font-size: 22px; font-weight: 800; }
+    .fields2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; }
+
+    .price-group { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 16px 2px 8px; }
+    .price {
+      position: relative; display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+      padding: 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px;
+    }
+    .price.hit { border-color: rgba(245, 158, 11, .45); background: linear-gradient(135deg, rgba(245, 158, 11, .12), rgba(236, 72, 153, .05)); }
+    .price-amount { font-size: 20px; font-weight: 800; line-height: 1; }
+    .price-amount small { font-size: 12px; color: var(--text2); font-weight: 600; }
+    .price-sum { font-weight: 800; font-size: 15px; color: var(--green); }
+    .price-unit { font-size: 11px; color: var(--text2); margin-top: 3px; }
+
+    .result { text-align: center; padding: 8px 4px 4px; }
+    .result .big { width: 72px; height: 72px; border-radius: 24px; margin: 4px auto 14px; display: grid; place-items: center; font-size: 32px; color: #fff; background: linear-gradient(135deg, var(--green), #059669); }
+    .result .big.warn { background: linear-gradient(135deg, var(--gold), var(--red)); }
+    .result h2 { margin-bottom: 8px; }
+    .result p { color: var(--text2); font-size: 13.5px; line-height: 1.5; margin-bottom: 18px; }
+
+    .state { text-align: center; padding: 64px 12px; }
+    .state .big { width: 76px; height: 76px; margin: 0 auto 16px; border-radius: 24px; display: grid; place-items: center; font-size: 34px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+    .state h2 { font-size: 18px; margin-bottom: 8px; }
+    .state p { color: var(--text2); line-height: 1.5; margin-bottom: 18px; }
+
+    /* ------------------------------------------------------------ nav (admin panel uslubi) */
+    .nav {
+      position: fixed; left: 12px; right: 12px; bottom: calc(10px + var(--safe-bottom, 0px)); z-index: 20;
+      max-width: 520px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 6px;
+      border-radius: 28px; background: rgba(22, 28, 48, .74); border: 1px solid rgba(255, 255, 255, .10);
+      -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06);
+    }
+    .nav button {
+      position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 7px 0 6px; border-radius: 22px; font-size: 10.5px; font-weight: 600; color: var(--text2);
+      transition: color .2s, transform .15s; -webkit-user-select: none; user-select: none;
+    }
+    .nav button:active { transform: scale(.94); }
+    .nav button .bi { font-size: 20px; line-height: 1; }
+    .nav button.active { color: #fff; }
+    .nav button.active .bi { color: #c4b5fd; }
+    .nav-indicator {
+      position: absolute; top: 6px; bottom: 6px; left: 0; width: 0; border-radius: 22px; opacity: 0; pointer-events: none; z-index: 0;
+      background: linear-gradient(135deg, rgba(99, 102, 241, .34), rgba(139, 92, 246, .26));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 4px 14px rgba(99, 102, 241, .25);
+    }
+    .nav-indicator.ready { opacity: 1; transition: transform .42s cubic-bezier(.34, 1.36, .5, 1), width .42s cubic-bezier(.34, 1.36, .5, 1), opacity .2s; }
+
+    @keyframes slideFromRight { from { opacity: 0; transform: translate3d(28px, 0, 0) } to { opacity: 1; transform: none } }
+    @keyframes slideFromLeft { from { opacity: 0; transform: translate3d(-28px, 0, 0) } to { opacity: 1; transform: none } }
+    .slide-from-right { animation: slideFromRight .3s cubic-bezier(.22, .8, .3, 1) both; }
+    .slide-from-left { animation: slideFromLeft .3s cubic-bezier(.22, .8, .3, 1) both; }
+    @media (prefers-reduced-motion: reduce) {
+      .slide-from-right, .slide-from-left, .sheet, .sheet-backdrop { animation: none; }
+      .nav-indicator.ready { transition: none; }
+    }
+
+    .toast {
+      /* Tepada — pastdagi oyna (sheet) tugmalari va input'larini yopmasin */
+      position: fixed; left: 16px; right: 16px; top: calc(10px + var(--top-space, 0px)); z-index: 40;
+      max-width: 520px; margin: 0 auto; padding: 12px 14px; border-radius: 14px;
+      background: #1e2540; border: 1px solid var(--border); font-weight: 600; font-size: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .45); animation: fade .2s both;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <nav class="nav hidden" id="nav"></nav>
+  <div id="sheetRoot"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var tg = window.Telegram && window.Telegram.WebApp;
+      var API_URL = location.pathname;
+
+      var I18N = {
+        uz: {
+          title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_history: "Tarix", tab_shop: "Do'kon",
+          not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «Mening profilim» → «Shaxsiy kabinet» tugmasi orqali ochiladi.",
+          error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
+          limits: "Limitlarim", lim_full_info: "To'liq ma'lumot", lim_reset_pw: "Parolni tiklash", lim_bind_info: "Ulanmalar · bugun",
+          unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Narxlar ro'yxati — yuqoridagi $ tugmasi",
+          st_accounts: "Akkaunt", st_viewers: "Tekshirishgan", st_used: "Ishlatilgan",
+          recent: "So'nggi harakatlar", see_all: "Hammasi",
+          accounts_title: "Akkauntlarim", add_account: "Akkaunt qo'shish", no_accounts: "Hali akkaunt qo'shilmagan.\nAkkaunt qo'shsangiz, uni kim tekshirganini ko'rib turasiz.",
+          ml_linked: "MLBB'ga ulangan", ml_not_linked: "Ulanmagan", ml_open: "Mening akkauntim", ml_link: "MLBB'ga ulash", remove: "Uzish",
+          remove_confirm: "{acc} akkauntini ro'yxatdan uzasizmi?", removed: "Akkaunt uzildi", added: "Akkaunt qo'shildi",
+          add_title: "Akkaunt qo'shish", add_lead: "MLBB akkauntingiz ID va Zone (server) raqamini kiriting. Boshqalar tekshirganda sizga xabar boradi.",
+          f_account: "User ID", f_zone: "Zone ID", save: "Saqlash", cancel: "Bekor qilish",
+          err_invalid_input: "ID 5–12, Zone 1–8 raqamdan iborat bo'lishi kerak", err_limit_reached: "Ko'pi bilan 5 ta akkaunt qo'shish mumkin",
+          err_already_exists: "Bu akkaunt allaqachon ro'yxatda — u boshqa foydalanuvchiga tegishli", err_add_failed: "Akkaunt qo'shib bo'lmadi",
+          link_title: "Mobile Legends'ga ulash", link_lead: "O'yin ichidagi pochtangizga tasdiqlash kodi yuboriladi. Kodni shu yerga kiriting.",
+          send_code: "Kod yuborish", resend: "Qayta yuborish", resend_in: "Qayta yuborish: {s} s", f_code: "Tasdiqlash kodi", verify: "Tasdiqlash",
+          code_sent: "Kod o'yin pochtangizga yuborildi", linked_ok: "Akkaunt ulandi!",
+          err_cooldown: "Biroz kuting va qayta yuboring", err_wrong_code: "Kod noto'g'ri. Qoldi: {left} ta urinish", err_too_many: "Urinishlar tugadi. Yangi kod so'rang",
+          err_code_expired: "Kod muddati tugagan. Yangi kod so'rang", err_invalid_format: "Kod formati noto'g'ri", err_rate_limit: "Juda ko'p so'rov. Birozdan keyin urining",
+          err_send_failed: "Kod yuborilmadi. ID va Zone to'g'riligini tekshiring", err_service_down: "Mobile Legends xizmati javob bermayapti", err_save_failed: "Saqlab bo'lmadi",
+          err_already_linked: "Bu akkaunt allaqachon ulangan", err_not_found: "Akkaunt topilmadi",
+          hist_limits: "Limitlar", hist_viewers: "Kim tekshirdi",
+          no_history: "Hali limit ishlatilmagan.", no_history_setup: "Limitlar tarixi tez orada shu yerda ko'rinadi.",
+          no_viewers: "Hozircha hech kim akkauntingizni tekshirmagan.",
+          src_admin: "Admin", src_purchase: "Xarid", left_n: "qoldi {n}",
+          act_server_check: "Server tekshirdi", act_full_info: "To'liq ma'lumot oldi", act_bind_info: "Ulanmalarini ko'rdi",
+          someone: "Foydalanuvchi",
+          shop_fm: "Firstmail pochtalar", shop_fm_lead: "To'liq manzil va parol to'lovdan keyin admin tomonidan beriladi.",
+          no_fm: "Hozircha sotuvda pochta yo'q.", buy: "Sotib olish", price_agreed: "kelishiladi",
+          prices_title: "Limit narxlari", prices_lead: "Paketni tanlang — so'rov adminga boradi, to'lovdan so'ng limit hisobingizga qo'shiladi.",
+          no_prices: "Narxlar hali qo'shilmagan. Admin bilan bog'laning.", per_unit: "1 tasi {p}", per_day: "kuniga", hit: "Mashhur",
+          buy_confirm: "{what} — {price}. So'rov yuborilsinmi?",
+          sent_title: "So'rov yuborildi!", sent_text: "Admin tez orada siz bilan bog'lanadi. Kutmasdan yozish uchun pastdagi tugmani bosing.",
+          contact: "Admin bilan bog'lanish", close: "Yopish", notify_failed: "So'rov yuborilmadi. Admin bilan to'g'ridan-to'g'ri bog'laning.",
+          not_available: "Bu mahsulot endi mavjud emas", som: "so'm", pcs: "ta"
+        },
+        ru: {
+          title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
+          not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте: «Мой профиль» → «Личный кабинет».",
+          error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
+          limits: "Мои лимиты", lim_full_info: "Полная инфо", lim_reset_pw: "Сброс пароля", lim_bind_info: "Привязки · сегодня",
+          unlimited: "Безлимит", buy_more: "Купить дополнительные лимиты", buy_more_sub: "Прайс-лист — кнопка $ вверху",
+          st_accounts: "Аккаунты", st_viewers: "Проверяли", st_used: "Использовано",
+          recent: "Последние действия", see_all: "Все",
+          accounts_title: "Мои аккаунты", add_account: "Добавить аккаунт", no_accounts: "Аккаунтов пока нет.\nДобавьте аккаунт — и вы увидите, кто его проверял.",
+          ml_linked: "Привязан к MLBB", ml_not_linked: "Не привязан", ml_open: "Мой аккаунт", ml_link: "Привязать MLBB", remove: "Отвязать",
+          remove_confirm: "Отвязать аккаунт {acc}?", removed: "Аккаунт отвязан", added: "Аккаунт добавлен",
+          add_title: "Добавить аккаунт", add_lead: "Введите ID и Zone (сервер) вашего MLBB аккаунта. Когда его проверят, вы получите уведомление.",
+          f_account: "User ID", f_zone: "Zone ID", save: "Сохранить", cancel: "Отмена",
+          err_invalid_input: "ID — 5–12 цифр, Zone — 1–8 цифр", err_limit_reached: "Можно добавить не более 5 аккаунтов",
+          err_already_exists: "Этот аккаунт уже принадлежит другому пользователю", err_add_failed: "Не удалось добавить аккаунт",
+          link_title: "Привязка к Mobile Legends", link_lead: "На игровую почту придёт код подтверждения. Введите его здесь.",
+          send_code: "Отправить код", resend: "Отправить снова", resend_in: "Повтор через {s} с", f_code: "Код подтверждения", verify: "Подтвердить",
+          code_sent: "Код отправлен на игровую почту", linked_ok: "Аккаунт привязан!",
+          err_cooldown: "Подождите немного и повторите", err_wrong_code: "Неверный код. Осталось попыток: {left}", err_too_many: "Попытки закончились. Запросите новый код",
+          err_code_expired: "Срок кода истёк. Запросите новый", err_invalid_format: "Неверный формат кода", err_rate_limit: "Слишком много запросов. Попробуйте позже",
+          err_send_failed: "Код не отправлен. Проверьте ID и Zone", err_service_down: "Сервис Mobile Legends не отвечает", err_save_failed: "Не удалось сохранить",
+          err_already_linked: "Аккаунт уже привязан", err_not_found: "Аккаунт не найден",
+          hist_limits: "Лимиты", hist_viewers: "Кто проверял",
+          no_history: "Лимиты ещё не использовались.", no_history_setup: "История лимитов скоро появится здесь.",
+          no_viewers: "Пока никто не проверял ваши аккаунты.",
+          src_admin: "Админ", src_purchase: "Покупка", left_n: "осталось {n}",
+          act_server_check: "Проверил сервер", act_full_info: "Получил полную инфо", act_bind_info: "Смотрел привязки",
+          someone: "Пользователь",
+          shop_fm: "Почты Firstmail", shop_fm_lead: "Полный адрес и пароль выдаёт админ после оплаты.",
+          no_fm: "Сейчас почт в продаже нет.", buy: "Купить", price_agreed: "договорная",
+          prices_title: "Цены на лимиты", prices_lead: "Выберите пакет — запрос уйдёт админу, после оплаты лимит будет зачислен.",
+          no_prices: "Цены ещё не добавлены. Свяжитесь с админом.", per_unit: "1 шт — {p}", per_day: "в день", hit: "Хит",
+          buy_confirm: "{what} — {price}. Отправить запрос?",
+          sent_title: "Запрос отправлен!", sent_text: "Админ скоро свяжется с вами. Чтобы написать сразу, нажмите кнопку ниже.",
+          contact: "Написать админу", close: "Закрыть", notify_failed: "Запрос не отправлен. Свяжитесь с админом напрямую.",
+          not_available: "Товар больше недоступен", som: "сум", pcs: "шт"
+        },
+        en: {
+          title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
+          not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot: “My profile” → “Personal cabinet”.",
+          error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
+          limits: "My limits", lim_full_info: "Full info", lim_reset_pw: "Password reset", lim_bind_info: "Bindings · today",
+          unlimited: "Unlimited", buy_more: "Buy extra limits", buy_more_sub: "Price list — the $ button at the top",
+          st_accounts: "Accounts", st_viewers: "Checked by", st_used: "Used",
+          recent: "Recent activity", see_all: "All",
+          accounts_title: "My accounts", add_account: "Add account", no_accounts: "No accounts yet.\nAdd one to see who checks it.",
+          ml_linked: "Linked to MLBB", ml_not_linked: "Not linked", ml_open: "My account", ml_link: "Link MLBB", remove: "Remove",
+          remove_confirm: "Remove account {acc}?", removed: "Account removed", added: "Account added",
+          add_title: "Add account", add_lead: "Enter your MLBB account ID and Zone (server). You'll be notified when someone checks it.",
+          f_account: "User ID", f_zone: "Zone ID", save: "Save", cancel: "Cancel",
+          err_invalid_input: "ID must be 5–12 digits, Zone 1–8 digits", err_limit_reached: "You can add up to 5 accounts",
+          err_already_exists: "This account already belongs to another user", err_add_failed: "Could not add the account",
+          link_title: "Link to Mobile Legends", link_lead: "A verification code will be sent to your in-game email. Enter it here.",
+          send_code: "Send code", resend: "Resend", resend_in: "Resend in {s}s", f_code: "Verification code", verify: "Verify",
+          code_sent: "Code sent to your in-game email", linked_ok: "Account linked!",
+          err_cooldown: "Please wait a bit and resend", err_wrong_code: "Wrong code. Attempts left: {left}", err_too_many: "No attempts left. Request a new code",
+          err_code_expired: "Code expired. Request a new one", err_invalid_format: "Invalid code format", err_rate_limit: "Too many requests. Try later",
+          err_send_failed: "Code not sent. Check the ID and Zone", err_service_down: "Mobile Legends service is not responding", err_save_failed: "Could not save",
+          err_already_linked: "This account is already linked", err_not_found: "Account not found",
+          hist_limits: "Limits", hist_viewers: "Checked by",
+          no_history: "No limits used yet.", no_history_setup: "Your limit history will appear here soon.",
+          no_viewers: "Nobody has checked your accounts yet.",
+          src_admin: "Admin", src_purchase: "Purchase", left_n: "{n} left",
+          act_server_check: "Checked server", act_full_info: "Got full info", act_bind_info: "Viewed bindings",
+          someone: "User",
+          shop_fm: "Firstmail mailboxes", shop_fm_lead: "The full address and password are sent by the admin after payment.",
+          no_fm: "No mailboxes for sale right now.", buy: "Buy", price_agreed: "negotiable",
+          prices_title: "Limit prices", prices_lead: "Pick a pack — the request goes to the admin and the limit is added after payment.",
+          no_prices: "No prices yet. Contact the admin.", per_unit: "{p} each", per_day: "per day", hit: "Popular",
+          buy_confirm: "{what} — {price}. Send the request?",
+          sent_title: "Request sent!", sent_text: "The admin will contact you soon. Tap below to message them right away.",
+          contact: "Contact admin", close: "Close", notify_failed: "Request failed. Please contact the admin directly.",
+          not_available: "This item is no longer available", som: "UZS", pcs: "pcs"
+        }
+      };
+
+      var KINDS = {
+        full_info: { icon: "file-earmark-text", cls: "k-fi", tone: "" },
+        reset_pw: { icon: "key", cls: "k-rp", tone: "pink" },
+        bind_info: { icon: "link-45deg", cls: "k-bd", tone: "green" }
+      };
+      var TABS = [
+        { id: "home", ico: "house", active: "house-fill" },
+        { id: "accounts", ico: "person-badge", active: "person-badge-fill" },
+        { id: "history", ico: "clock-history", active: "clock-history" },
+        { id: "shop", ico: "bag", active: "bag-fill" }
+      ];
+
+      var state = { lang: "uz", tab: "home", histTab: "limits", data: null };
+      var app = document.getElementById("app");
+
+      // ---------------------------------------------------------------- utils
+      function L(key, params) {
+        var text = (I18N[state.lang] || I18N.uz)[key] || I18N.uz[key] || key;
+        Object.keys(params || {}).forEach(function (k) { text = text.split("{" + k + "}").join(params[k]); });
+        return text;
+      }
+      function icon(name) { return '<i class="bi bi-' + name + '" aria-hidden="true"></i>'; }
+      function esc(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+      function som(value) {
+        var n = Math.round(Number(value) || 0);
+        return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " " + L("som");
+      }
+      function acc(a) { return a.account_id + " (" + a.zone_id + ")"; }
+
+      var AGO = {
+        uz: { now: "hozirgina", suffix: " oldin", units: ["yil", "oy", "kun", "soat", "daq"] },
+        ru: { now: "только что", suffix: " назад", units: ["г.", "мес.", "дн.", "ч", "мин"] },
+        en: { now: "just now", suffix: " ago", units: ["y", "mo", "d", "h", "min"] }
+      };
+      function timeAgo(iso) {
+        var seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+        if (!isFinite(seconds)) return "";
+        var w = AGO[state.lang] || AGO.uz;
+        var steps = [31536000, 2592000, 86400, 3600, 60];
+        for (var i = 0; i < steps.length; i++) {
+          if (seconds >= steps[i]) return Math.floor(seconds / steps[i]) + " " + w.units[i] + w.suffix;
+        }
+        return w.now;
+      }
+
+      function haptic(kind) {
+        try {
+          if (!tg || !tg.HapticFeedback) return;
+          if (kind === "select") tg.HapticFeedback.selectionChanged();
+          else if (kind === "success" || kind === "error" || kind === "warning") tg.HapticFeedback.notificationOccurred(kind);
+          else tg.HapticFeedback.impactOccurred(kind || "light");
+        } catch (e) { /* eski mijozlar */ }
+      }
+
+      var toastTimer = null;
+      function toast(text) {
+        var el = document.getElementById("toast");
+        el.textContent = text;
+        el.classList.remove("hidden");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { el.classList.add("hidden"); }, 2400);
+      }
+
+      function api(action, payload) {
+        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", lang: state.lang }, payload || {});
+        return fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (r) {
+          return r.json().catch(function () { return { ok: false, error: "bad_response" }; });
+        }).catch(function () { return { ok: false, error: "network" }; });
+      }
+
+      function confirmAction(text) {
+        return new Promise(function (resolve) {
+          if (tg && tg.showConfirm) {
+            try { tg.showConfirm(text, function (ok) { resolve(Boolean(ok)); }); return; } catch (e) { /* fallback */ }
+          }
+          resolve(window.confirm(text));
+        });
+      }
+
+      function errText(code, extra) {
+        var key = "err_" + code;
+        return (I18N[state.lang] || I18N.uz)[key] ? L(key, extra) : L("error_text");
+      }
+
+      function contactAdmin() {
+        var u = state.data && state.data.supportUsername;
+        if (!u) return;
+        var link = "https://t.me/" + u;
+        if (tg && tg.openTelegramLink) { try { tg.openTelegramLink(link); return; } catch (e) { /* fallback */ } }
+        window.open(link, "_blank");
+      }
+
+      // ---------------------------------------------------------------- sheet
+      function openSheet(html) {
+        var root = document.getElementById("sheetRoot");
+        root.innerHTML = '<div class="sheet-backdrop"></div><div class="sheet"><div class="sheet-inner"><div class="sheet-handle"></div>' + html + "</div></div>";
+        root.querySelector(".sheet-backdrop").addEventListener("click", closeSheet);
+        if (tg && tg.BackButton) tg.BackButton.show();
+        haptic("light");
+        return root.querySelector(".sheet-inner");
+      }
+      function closeSheet() {
+        document.getElementById("sheetRoot").innerHTML = "";
+        if (tg && tg.BackButton) tg.BackButton.hide();
+        stopCountdown();
+      }
+      function setSheet(sheet, html) {
+        sheet.innerHTML = '<div class="sheet-handle"></div>' + html;
+      }
+
+      // ---------------------------------------------------------------- nav
+      function moveNavIndicator(nav, animate) {
+        var indicator = nav.querySelector(".nav-indicator");
+        var active = nav.querySelector("button.active");
+        if (!indicator || !active || !active.offsetWidth) return;
+        if (!animate) indicator.classList.remove("ready");
+        indicator.style.width = active.offsetWidth + "px";
+        indicator.style.transform = "translate3d(" + active.offsetLeft + "px, 0, 0)";
+        if (!animate) { void indicator.offsetWidth; indicator.classList.add("ready"); }
+      }
+
+      function renderNav() {
+        var nav = document.getElementById("nav");
+        var fresh = nav.dataset.lang !== state.lang;
+        if (fresh) {
+          nav.innerHTML = '<div class="nav-indicator" aria-hidden="true"></div>' + TABS.map(function (t) {
+            return '<button data-tab="' + t.id + '"><span class="nav-ico"></span><span>' + esc(L("tab_" + t.id)) + "</span></button>";
+          }).join("");
+          nav.dataset.lang = state.lang;
+          Array.prototype.forEach.call(nav.querySelectorAll("button"), function (b) {
+            b.addEventListener("click", function () { goToTab(b.dataset.tab); });
+          });
+        }
+        TABS.forEach(function (t) {
+          var b = nav.querySelector('button[data-tab="' + t.id + '"]');
+          b.classList.toggle("active", state.tab === t.id);
+          b.querySelector(".nav-ico").innerHTML = icon(state.tab === t.id ? t.active : t.ico);
+        });
+        nav.classList.remove("hidden");
+        moveNavIndicator(nav, !fresh);
+      }
+
+      function goToTab(id) {
+        if (state.tab === id) return;
+        var ids = TABS.map(function (t) { return t.id; });
+        var from = ids.indexOf(state.tab);
+        haptic("select");
+        state.tab = id;
+        renderNav();
+        render();
+        window.scrollTo(0, 0);
+        app.classList.remove("slide-from-right", "slide-from-left");
+        void app.offsetWidth;
+        app.classList.add(ids.indexOf(id) > from ? "slide-from-right" : "slide-from-left");
+      }
+
+      // ---------------------------------------------------------------- render
+      function headerHtml() {
+        var u = state.data.user;
+        var name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || u.id;
+        var avatar = /^https:\/\//.test(u.photo_url || "")
+          ? '<img class="avatar" src="' + esc(u.photo_url) + '" alt="">'
+          : '<div class="avatar">' + esc(String(name).trim().charAt(0).toUpperCase() || "?") + "</div>";
+        return '<div class="head">' + avatar +
+          '<div class="grow"><div class="head-name ellipsis">' + esc(name) + "</div>" +
+          '<div class="head-sub ellipsis">' + (u.username ? "@" + esc(u.username) + " · " : "") + "ID <code>" + esc(u.id) + "</code></div></div>" +
+          '<button class="price-btn" id="priceBtn" aria-label="' + esc(L("prices_title")) + '">' + icon("currency-dollar") + "</button></div>";
+      }
+
+      function limitCard(kind) {
+        var d = state.data;
+        var lim = d.limits[kind] || {};
+        var value, small = "", bar = "", empty = false;
+        if (d.unlimited) {
+          value = "∞";
+        } else if (typeof lim.remaining !== "number") {
+          value = "—";
+        } else {
+          value = String(lim.remaining);
+          empty = lim.remaining <= 0;
+          if (kind === "bind_info" && lim.total) {
+            small = "<small>/" + esc(lim.total) + "</small>";
+            bar = '<div class="bar"><div style="width:' + Math.max(0, Math.min(100, lim.remaining / lim.total * 100)).toFixed(0) + '%"></div></div>';
+          }
+        }
+        return '<div class="limit ' + KINDS[kind].cls + (empty ? " zero" : "") + '"><div class="limit-ico">' + icon(KINDS[kind].icon) + "</div>" +
+          '<div class="limit-value">' + esc(value) + small + '</div><div class="limit-label">' + esc(L("lim_" + kind)) + "</div>" + bar + "</div>";
+      }
+
+      function historyItemHtml(h) {
+        var kind = KINDS[h.kind] || KINDS.full_info;
+        var target = h.account_id ? h.account_id + (h.zone_id ? " (" + h.zone_id + ")" : "") : (h.target || "");
+        var sub = [];
+        if (h.source === "admin") sub.push('<span class="pill accent">' + esc(L("src_admin")) + "</span>");
+        if (h.source === "purchase") sub.push('<span class="pill green">' + esc(L("src_purchase")) + "</span>");
+        sub.push(esc(timeAgo(h.created_at)));
+        if (typeof h.remaining === "number") sub.push(esc(L("left_n", { n: h.remaining })));
+        var plus = h.delta > 0;
+        return '<div class="item"><div class="item-ico ' + (plus ? "green" : kind.tone) + '">' + icon(plus ? "plus-lg" : kind.icon) + "</div>" +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(L("lim_" + h.kind).replace(/ ·.*$/, "")) + (target ? ' <span class="muted" style="font-weight:500">· ' + esc(target) + "</span>" : "") + "</div>" +
+          '<div class="item-sub">' + sub.join(" · ") + "</div></div>" +
+          '<div class="item-right"><div class="delta ' + (plus ? "plus" : "minus") + '">' + (plus ? "+" : "") + esc(h.delta) + "</div></div></div>";
+      }
+
+      function viewerItemHtml(v) {
+        var who = v.checker_username ? "@" + v.checker_username : (v.checker_name || L("someone"));
+        var ico = { full_info: ["file-earmark-text", ""], bind_info: ["link-45deg", "green"] }[v.action] || ["search", "gold"];
+        return '<div class="item"><div class="item-ico ' + ico[1] + '">' + icon(ico[0]) + "</div>" +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(who) + "</div>" +
+          '<div class="item-sub">' + esc(L("act_" + v.action) || v.action) + " · " + esc(v.account_id) + " (" + esc(v.zone_id) + ")</div></div>" +
+          '<div class="item-right item-sub">' + esc(timeAgo(v.created_at)) + "</div></div>";
+      }
+
+      function renderHome() {
+        var d = state.data;
+        var used = d.history.filter(function (h) { return h.delta < 0 && h.source === "use"; }).length;
+        var html = headerHtml() +
+          '<div class="section-title">' + esc(L("limits")) + "</div>" +
+          '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + limitCard("bind_info") + "</div>" +
+          '<div class="stats">' +
+          '<div class="stat"><b>' + d.accounts.length + "<small class=\"muted\" style=\"font-size:12px\">/" + d.accountMax + "</small></b><span>" + esc(L("st_accounts")) + "</span></div>" +
+          '<div class="stat"><b>' + d.viewers.length + "</b><span>" + esc(L("st_viewers")) + "</span></div>" +
+          '<div class="stat"><b>' + used + "</b><span>" + esc(L("st_used")) + "</span></div></div>" +
+          '<button class="cta" id="ctaBuy"><div class="ico">' + icon("lightning-charge-fill") + '</div><div class="grow"><b>' + esc(L("buy_more")) +
+          "</b><span>" + esc(L("buy_more_sub")) + "</span></div>" + icon("chevron-right") + "</button>";
+
+        var recent = d.history.slice(0, 3);
+        if (recent.length) {
+          html += '<div class="section-title">' + esc(L("recent")) + '<button class="link" data-goto="history">' + esc(L("see_all")) + "</button></div>" +
+            recent.map(historyItemHtml).join("");
+        }
+        app.innerHTML = html;
+        document.getElementById("ctaBuy").addEventListener("click", openPrices);
+        var more = app.querySelector("[data-goto]");
+        if (more) more.addEventListener("click", function () { goToTab("history"); });
+      }
+
+      function renderAccounts() {
+        var d = state.data;
+        var html = headerHtml() + '<div class="section-title">' + esc(L("accounts_title")) + " · " + d.accounts.length + "/" + d.accountMax + "</div>";
+        if (!d.accounts.length) {
+          html += '<div class="empty">' + icon("person-plus") + esc(L("no_accounts")).replace(/\n/g, "<br>") + "</div>";
+        }
+        html += d.accounts.map(function (a) {
+          var badge = a.ml_linked
+            ? '<span class="pill green">' + icon("check2") + " " + esc(L("ml_linked")) + "</span>"
+            : '<span class="pill">' + esc(L("ml_not_linked")) + "</span>";
+          var main = a.ml_linked
+            ? '<button class="btn primary" data-ml-open="' + esc(a.id) + '">' + icon("controller") + esc(L("ml_open")) + "</button>"
+            : '<button class="btn primary" data-ml-link="' + esc(a.id) + '">' + icon("link-45deg") + esc(L("ml_link")) + "</button>";
+          return '<div class="acc' + (a.ml_linked ? " linked" : "") + '"><div class="row"><div class="item-ico">' + icon("controller") + "</div>" +
+            '<div class="grow"><div class="item-title ellipsis">' + esc(a.ml_nickname || acc(a)) + "</div>" +
+            '<div class="item-sub">' + (a.ml_nickname ? esc(acc(a)) + " · " : "") + badge + "</div></div></div>" +
+            '<div class="acc-actions">' + main + '<button class="btn danger" style="flex:0 0 auto;width:auto;padding:10px 14px" data-remove="' + esc(a.id) + '" aria-label="' + esc(L("remove")) + '">' + icon("trash3") + "</button></div></div>";
+        }).join("");
+        if (d.accounts.length < d.accountMax) {
+          html += '<button class="btn" id="addAccBtn" style="margin-top:4px">' + icon("plus-lg") + esc(L("add_account")) + "</button>";
+        }
+        app.innerHTML = html;
+
+        var addBtn = document.getElementById("addAccBtn");
+        if (addBtn) addBtn.addEventListener("click", openAddAccount);
+        bindAll("[data-ml-open]", function (el) { openMlAccount(el.dataset.mlOpen); });
+        bindAll("[data-ml-link]", function (el) { openLink(el.dataset.mlLink); });
+        bindAll("[data-remove]", function (el) { removeAccount(el.dataset.remove); });
+      }
+
+      function renderHistory() {
+        var d = state.data;
+        var html = headerHtml() + '<div class="seg" style="margin-top:4px">' +
+          '<button data-hist="limits" class="' + (state.histTab === "limits" ? "active" : "") + '">' + esc(L("hist_limits")) + "</button>" +
+          '<button data-hist="viewers" class="' + (state.histTab === "viewers" ? "active" : "") + '">' + esc(L("hist_viewers")) + " · " + d.viewers.length + "</button></div>";
+        if (state.histTab === "limits") {
+          html += d.history.length
+            ? d.history.map(historyItemHtml).join("")
+            : '<div class="empty">' + icon("hourglass") + esc(L(d.historyAvailable ? "no_history" : "no_history_setup")) + "</div>";
+        } else {
+          html += d.viewers.length
+            ? d.viewers.map(viewerItemHtml).join("")
+            : '<div class="empty">' + icon("eye-slash") + esc(L("no_viewers")) + "</div>";
+        }
+        app.innerHTML = html;
+        bindAll("[data-hist]", function (el) {
+          if (state.histTab === el.dataset.hist) return;
+          haptic("select");
+          state.histTab = el.dataset.hist;
+          renderHistory();
+        });
+      }
+
+      function renderShop() {
+        var d = state.data;
+        var html = headerHtml() +
+          '<button class="cta" id="ctaBuy" style="margin-top:0">' + '<div class="ico">' + icon("currency-dollar") + '</div><div class="grow"><b>' + esc(L("prices_title")) +
+          "</b><span>" + esc(L("buy_more")) + "</span></div>" + icon("chevron-right") + "</button>" +
+          '<div class="section-title">' + esc(L("shop_fm")) + " · " + d.firstmails.length + "</div>" +
+          '<div class="item-sub" style="margin:-4px 2px 12px">' + esc(L("shop_fm_lead")) + "</div>";
+        html += d.firstmails.length ? d.firstmails.map(function (fm) {
+          return '<button class="item" data-fm="' + esc(fm.id) + '"><div class="item-ico pink">' + icon("envelope-at") + "</div>" +
+            '<div class="grow"><div class="item-title ellipsis">' + esc(fm.email) + "</div>" +
+            (fm.note ? '<div class="item-sub ellipsis">' + esc(fm.note) + "</div>" : "") + "</div>" +
+            '<div class="item-right"><div class="price-sum">' + esc(fm.price ? som(fm.price) : (fm.price_text || L("price_agreed"))) + "</div></div></button>";
+        }).join("") : '<div class="empty">' + icon("inbox") + esc(L("no_fm")) + "</div>";
+        app.innerHTML = html;
+        document.getElementById("ctaBuy").addEventListener("click", openPrices);
+        bindAll("[data-fm]", function (el) { buyFirstmail(el.dataset.fm); });
+      }
+
+      function render() {
+        if (!state.data) return;
+        ({ home: renderHome, accounts: renderAccounts, history: renderHistory, shop: renderShop }[state.tab] || renderHome)();
+        var priceBtn = document.getElementById("priceBtn");
+        if (priceBtn) priceBtn.addEventListener("click", openPrices);
+      }
+
+      function bindAll(selector, fn) {
+        Array.prototype.forEach.call(app.querySelectorAll(selector), function (el) {
+          el.addEventListener("click", function () { fn(el); });
+        });
+      }
+
+      // ---------------------------------------------------------------- prices / buying
+      function kindAmountText(item) {
+        return item.amount + " " + L("pcs") + (item.kind === "bind_info" ? " " + L("per_day") : "");
+      }
+
+      function openPrices() {
+        var prices = state.data.prices;
+        var html = "<h2>" + esc(L("prices_title")) + '</h2><p class="lead">' + esc(L("prices_lead")) + "</p>";
+        if (!prices.length) {
+          html += '<div class="empty">' + icon("tag") + esc(L("no_prices")) + "</div>" +
+            (state.data.supportUsername ? '<button class="btn primary" id="sheetContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "");
+        }
+        Object.keys(KINDS).forEach(function (kind) {
+          var items = prices.filter(function (p) { return p.kind === kind; });
+          if (!items.length) return;
+          html += '<div class="price-group">' + icon(KINDS[kind].icon) + esc(L("lim_" + kind).replace(/ ·.*$/, "")) + "</div>";
+          html += items.map(function (p) {
+            var unit = p.amount > 0 ? L("per_unit", { p: som(p.price / p.amount) }) : "";
+            return '<button class="price' + (p.hit ? " hit" : "") + '" data-price="' + esc(p.id) + '">' +
+              '<div class="grow"><div class="price-amount">' + esc(p.amount) + " <small>" + esc(L("pcs")) + (kind === "bind_info" ? " " + esc(L("per_day")) : "") + "</small></div>" +
+              ((p.title || p.hit) ? '<div style="margin-top:6px">' + (p.hit ? '<span class="pill gold">🔥 ' + esc(L("hit")) + "</span> " : "") + (p.title ? '<span class="pill">' + esc(p.title) + "</span>" : "") + "</div>" : "") +
+              (p.note ? '<div class="price-unit">' + esc(p.note) + "</div>" : "") + "</div>" +
+              '<div class="item-right"><div class="price-sum">' + esc(som(p.price)) + '</div><div class="price-unit">' + esc(unit) + "</div></div></button>";
+          }).join("");
+        });
+        var sheet = openSheet(html);
+        var contactBtn = sheet.querySelector("#sheetContact");
+        if (contactBtn) contactBtn.addEventListener("click", contactAdmin);
+        Array.prototype.forEach.call(sheet.querySelectorAll("[data-price]"), function (el) {
+          el.addEventListener("click", function () { buyLimit(sheet, el.dataset.price); });
+        });
+      }
+
+      function showBuyResult(sheet, result) {
+        if (result.ok) {
+          haptic("success");
+          setSheet(sheet, '<div class="result"><div class="big">' + icon("check2") + "</div><h2>" + esc(L("sent_title")) + "</h2><p>" + esc(L("sent_text")) + "</p>" +
+            (state.data.supportUsername ? '<button class="btn green" id="resContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "") +
+            '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
+        } else {
+          haptic("error");
+          var text = result.error === "not_available" ? L("not_available") : L("notify_failed");
+          setSheet(sheet, '<div class="result"><div class="big warn">' + icon("exclamation-lg") + "</div><h2>" + esc(L("error_title")) + "</h2><p>" + esc(text) + "</p>" +
+            (state.data.supportUsername ? '<button class="btn primary" id="resContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "") +
+            '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
+        }
+        var c = sheet.querySelector("#resContact");
+        if (c) c.addEventListener("click", contactAdmin);
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      function sheetLoading(sheet) {
+        setSheet(sheet, '<div class="skeleton" style="height:120px"></div><div class="skeleton"></div>');
+      }
+
+      function buyLimit(sheet, id) {
+        var item = state.data.prices.filter(function (p) { return p.id === id; })[0];
+        if (!item) return;
+        haptic("medium");
+        var what = L("lim_" + item.kind).replace(/ ·.*$/, "") + " × " + kindAmountText(item);
+        confirmAction(L("buy_confirm", { what: what, price: som(item.price) })).then(function (ok) {
+          if (!ok || !sheet.isConnected) return;
+          sheetLoading(sheet);
+          api("buy_limit", { id: id }).then(function (result) {
+            if (sheet.isConnected) showBuyResult(sheet, result);
+          });
+        });
+      }
+
+      function buyFirstmail(id) {
+        var fm = state.data.firstmails.filter(function (f) { return f.id === id; })[0];
+        if (!fm) return;
+        haptic("medium");
+        var price = fm.price ? som(fm.price) : (fm.price_text || L("price_agreed"));
+        confirmAction(L("buy_confirm", { what: "Firstmail " + fm.email, price: price })).then(function (ok) {
+          if (!ok) return;
+          var sheet = openSheet('<div class="skeleton" style="height:120px"></div>');
+          api("buy_firstmail", { id: id }).then(function (result) {
+            if (!sheet.isConnected) return;
+            showBuyResult(sheet, result);
+            if (!result.ok && result.error === "not_available") {
+              state.data.firstmails = state.data.firstmails.filter(function (f) { return f.id !== id; });
+              render();
+            }
+          });
+        });
+      }
+
+      // ---------------------------------------------------------------- accounts
+      function openAddAccount() {
+        var sheet = openSheet("<h2>" + esc(L("add_title")) + '</h2><p class="lead">' + esc(L("add_lead")) + "</p>" +
+          '<div class="fields2"><div class="field"><label>' + esc(L("f_account")) + '</label><input id="fAcc" inputmode="numeric" maxlength="12" placeholder="123456789"></div>' +
+          '<div class="field"><label>' + esc(L("f_zone")) + '</label><input id="fZone" inputmode="numeric" maxlength="8" placeholder="2001"></div></div>' +
+          '<button class="btn primary" id="fSave">' + icon("plus-lg") + esc(L("save")) + "</button>");
+        var accInput = sheet.querySelector("#fAcc");
+        var zoneInput = sheet.querySelector("#fZone");
+        // "123456 (2001)" ni bitta maydonga tashlansa — ikkiga ajratamiz.
+        accInput.addEventListener("input", function () {
+          var m = accInput.value.match(/^\s*(\d{5,12})\D+(\d{1,8})\D*$/);
+          if (m) { accInput.value = m[1]; zoneInput.value = m[2]; zoneInput.focus(); }
+        });
+        setTimeout(function () { accInput.focus(); }, 300);
+        sheet.querySelector("#fSave").addEventListener("click", function () {
+          var btn = this;
+          var accountId = accInput.value.replace(/\D/g, "");
+          var zoneId = zoneInput.value.replace(/\D/g, "");
+          if (!/^\d{5,12}$/.test(accountId) || !/^\d{1,8}$/.test(zoneId)) { haptic("error"); toast(errText("invalid_input")); return; }
+          btn.disabled = true;
+          api("account_add", { account_id: accountId, zone_id: zoneId }).then(function (result) {
+            btn.disabled = false;
+            if (!result.ok) { haptic("error"); toast(errText(result.error || "add_failed")); return; }
+            haptic("success");
+            state.data.accounts = result.accounts || state.data.accounts;
+            closeSheet();
+            render();
+            toast(L("added"));
+            var added = state.data.accounts.filter(function (a) { return a.account_id === accountId && a.zone_id === zoneId; })[0];
+            if (added && !added.ml_linked) setTimeout(function () { openLink(added.id); }, 450);
+          });
+        });
+      }
+
+      function removeAccount(rowId) {
+        var a = findAccount(rowId);
+        if (!a) return;
+        haptic("warning");
+        confirmAction(L("remove_confirm", { acc: acc(a) })).then(function (ok) {
+          if (!ok) return;
+          api("account_remove", { rowId: rowId }).then(function (result) {
+            if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
+            haptic("success");
+            state.data.accounts = result.accounts || state.data.accounts.filter(function (x) { return x.id !== rowId; });
+            render();
+            toast(L("removed"));
+          });
+        });
+      }
+
+      function findAccount(rowId) {
+        return state.data.accounts.filter(function (a) { return a.id === rowId; })[0] || null;
+      }
+
+      // "Mening akkauntim" (MLBB statistika) — o'sha Vercel funksiyasi, view'siz.
+      // initData sessionStorage orqali saqlanadi (telegram-web-app.js), orqaga
+      // qaytish uchun belgi qo'yamiz.
+      function openMlAccount(rowId) {
+        haptic("light");
+        try {
+          localStorage.setItem("mlbb_account_row", rowId);
+          sessionStorage.setItem("from_cabinet", "1");
+        } catch (e) { /* noop */ }
+        location.href = API_URL;
+      }
+
+      // ---------------------------------------------------------------- ML link
+      var countdownTimer = null;
+      function stopCountdown() { clearInterval(countdownTimer); countdownTimer = null; }
+
+      function openLink(rowId) {
+        var a = findAccount(rowId);
+        if (!a) return;
+        var sheet = openSheet("<h2>" + esc(L("link_title")) + '</h2><p class="lead">' + esc(acc(a)) + " — " + esc(L("link_lead")) + "</p>" +
+          '<div id="linkBody"><button class="btn primary" id="sendCode">' + icon("envelope-paper") + esc(L("send_code")) + "</button></div>");
+        sheet.querySelector("#sendCode").addEventListener("click", function () { sendCode(sheet, rowId, this); });
+      }
+
+      function sendCode(sheet, rowId, btn) {
+        btn.disabled = true;
+        api("ml_send_code", { rowId: rowId }).then(function (result) {
+          if (!sheet.isConnected) return;
+          if (!result.ok) {
+            btn.disabled = false;
+            haptic("error");
+            if (result.error === "cooldown" && result.wait) { showCodeForm(sheet, rowId, result.wait); return; }
+            toast(errText(result.error));
+            return;
+          }
+          haptic("success");
+          toast(L("code_sent"));
+          showCodeForm(sheet, rowId, result.cooldown || 60);
+        });
+      }
+
+      function showCodeForm(sheet, rowId, cooldown) {
+        var body = sheet.querySelector("#linkBody");
+        body.innerHTML = '<div class="field"><label>' + esc(L("f_code")) + '</label><input id="fCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="••••"></div>' +
+          '<button class="btn primary" id="verifyBtn">' + icon("shield-check") + esc(L("verify")) + "</button>" +
+          '<button class="btn" id="resendBtn" disabled></button>';
+        var input = body.querySelector("#fCode");
+        var resend = body.querySelector("#resendBtn");
+        setTimeout(function () { input.focus(); }, 200);
+
+        var left = Number(cooldown) || 60;
+        stopCountdown();
+        function tick() {
+          if (!resend.isConnected) { stopCountdown(); return; }
+          if (left <= 0) { stopCountdown(); resend.disabled = false; resend.textContent = L("resend"); return; }
+          resend.textContent = L("resend_in", { s: left });
+          left -= 1;
+        }
+        tick();
+        countdownTimer = setInterval(tick, 1000);
+        resend.addEventListener("click", function () { sendCode(sheet, rowId, resend); });
+
+        body.querySelector("#verifyBtn").addEventListener("click", function () {
+          var btn = this;
+          var code = input.value.replace(/[\s-]/g, "");
+          if (!code) { input.focus(); return; }
+          btn.disabled = true;
+          api("ml_verify", { rowId: rowId, code: code }).then(function (result) {
+            btn.disabled = false;
+            if (!sheet.isConnected) return;
+            if (!result.ok) {
+              haptic("error");
+              toast(errText(result.error, { left: result.left }));
+              if (result.error === "wrong_code") { input.value = ""; input.focus(); }
+              return;
+            }
+            haptic("success");
+            state.data.accounts = result.accounts || state.data.accounts;
+            closeSheet();
+            render();
+            toast(L("linked_ok"));
+          });
+        });
+      }
+
+      // ---------------------------------------------------------------- boot
+      function renderState(iconName, title, text, action) {
+        app.innerHTML = '<div class="state"><div class="big">' + icon(iconName) + "</div><h2>" + esc(title) + "</h2><p>" + esc(text) + "</p>" +
+          (action ? '<button class="btn primary" id="stateBtn">' + esc(action.label) + "</button>" : "") + "</div>";
+        if (action) document.getElementById("stateBtn").addEventListener("click", action.onClick);
+      }
+
+      function boot() {
+        document.getElementById("nav").classList.add("hidden");
+        app.innerHTML = '<div class="skeleton" style="height:56px;margin-bottom:18px"></div><div class="skeleton" style="height:110px"></div>' +
+          '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+
+        if (!tg || !tg.initData) {
+          renderState("phone", L("not_telegram_title"), L("not_telegram_text"));
+          return;
+        }
+
+        api("cabinet").then(function (result) {
+          if (!result.ok) {
+            renderState("exclamation-triangle", L("error_title"), L("error_text"), { label: L("retry"), onClick: boot });
+            return;
+          }
+          state.lang = I18N[result.lang] ? result.lang : "uz";
+          state.data = result;
+          document.documentElement.lang = state.lang;
+          document.title = L("title");
+          renderNav();
+          render();
+        });
+      }
+
+      // ready / fullscreen / safe area / ranglar — api/_tg-shell.js da.
+      if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
+      function syncNav() { moveNavIndicator(document.getElementById("nav"), false); }
+      window.addEventListener("resize", syncNav);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncNav);
+
+      boot();
+    })();
+  </script>
+</body>
+</html>

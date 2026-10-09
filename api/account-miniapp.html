@@ -850,9 +850,27 @@
         return root.querySelector(".sheet");
       }
 
+      // Shaxsiy kabinetdan ochilgan bo'lsa — Telegram "Orqaga" tugmasi kabinetga qaytaradi.
+      var fromCabinet = false;
+      try { fromCabinet = sessionStorage.getItem("from_cabinet") === "1"; } catch (e) { /* noop */ }
+
+      function syncBackButton() {
+        if (!tg || !tg.BackButton) return;
+        if (fromCabinet || document.querySelector("#sheetRoot .sheet")) tg.BackButton.show();
+        else tg.BackButton.hide();
+      }
+
       function closeSheet() {
         document.getElementById("sheetRoot").innerHTML = "";
-        if (tg && tg.BackButton) tg.BackButton.hide();
+        syncBackButton();
+      }
+
+      function onBack() {
+        if (document.querySelector("#sheetRoot .sheet")) { closeSheet(); return; }
+        if (fromCabinet) {
+          try { sessionStorage.removeItem("from_cabinet"); } catch (e) { /* noop */ }
+          location.href = location.pathname + "?view=cabinet";
+        }
       }
 
       function openMatch(match) {
@@ -1042,7 +1060,7 @@
       }
 
       // ready / fullscreen / safe area / ranglar — api/_tg-shell.js da.
-      if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
+      if (tg && tg.BackButton) { tg.BackButton.onClick(onBack); syncBackButton(); }
 
       function syncNavIndicator() { moveNavIndicator(document.getElementById("nav"), false); }
       window.addEventListener("resize", syncNavIndicator);

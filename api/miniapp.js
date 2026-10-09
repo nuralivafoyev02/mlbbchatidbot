@@ -3,6 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const shop = require("./_shop.js");
 const donat = require("./_donat.js");
+const limitPrices = require("./_limit-prices.js");
+const quotaLog = require("./_quota-log.js");
 const adminAuth = require("./_admin-auth.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 
@@ -143,6 +145,12 @@ module.exports = async function handler(req, res) {
           return handleShopDnPackSave(req, res, body);
         case "shop_dn_pack_delete":
           return handleShopDnPackDelete(req, res, body);
+        case "shop_lp_list":
+          return handleShopLpList(req, res, body);
+        case "shop_lp_save":
+          return handleShopLpSave(req, res, body);
+        case "shop_lp_delete":
+          return handleShopLpDelete(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -430,6 +438,7 @@ async function handleUpdateUser(req, res, body) {
         void sendTelegramMessage(userId,
           "⚠️ <b>Limit kamaytirildi!</b>\n\nSizning to'liq malumot tekshirish limitingiz <b>" + absAmount + " ta</b> ga kamaytirildi.\n📦 Qoldiq: <b>" + updates.full_info_quota + "</b> ta.").catch(function() {});
       }
+      await logAdminQuotaEvent(userId, "full_info", fullInfoAmount, updates.full_info_quota);
     } catch (e) {
       console.error("[UPDATE_FULLINFO_QUOTA]", e.message);
       return json(res, 500, { ok: false, error: "fullinfo_quota_update_failed", detail: e.message });
@@ -458,6 +467,7 @@ async function handleUpdateUser(req, res, body) {
         void sendTelegramMessage(userId,
           "⚠️ <b>Limit kamaytirildi!</b>\n\nSizning parolni tiklash limitingiz <b>" + absAmount + " ta</b> ga kamaytirildi.\n📦 Qoldiq: <b>" + updates.reset_pw_quota + "</b> ta.").catch(function() {});
       }
+      await logAdminQuotaEvent(userId, "reset_pw", resetPwAmount, updates.reset_pw_quota);
     } catch (e) {
       console.error("[UPDATE_RESETPW_QUOTA]", e.message);
       return json(res, 500, { ok: false, error: "resetpw_quota_update_failed", detail: e.message });
@@ -465,6 +475,21 @@ async function handleUpdateUser(req, res, body) {
   }
 
   return json(res, 200, { ok: true, data: updates });
+}
+
+// Shaxsiy kabinetdagi limitlar tarixi uchun (018 migratsiyasi). Xato — e'tiborsiz.
+async function logAdminQuotaEvent(userId, kind, delta, remaining) {
+  try {
+    await quotaLog.logQuotaEvent((reqPath, options) => supabaseRequest(reqPath, options), {
+      userId,
+      kind,
+      delta,
+      source: "admin",
+      remaining: typeof remaining === "number" ? remaining : null,
+    });
+  } catch (e) {
+    console.error("[QUOTA_EVENT_LOG]", e.message);
+  }
 }
 
 async function sendTelegramMessage(chatId, text) {
@@ -1073,6 +1098,81 @@ async function handleShopFmDelete(req, res, body) {
     return json(res, 200, { ok: true });
   } catch (e) {
     console.error("[SHOP_FM_DELETE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Do'kon → Limit narxlari (bot_settings: shop_lp:<id>) — shaxsiy kabinetdagi
+// "$" tugmasi shu ro'yxatni ko'rsatadi.
+// ---------------------------------------------------------------------------
+const LIMIT_PRICE_ERROR_TEXTS = {
+  kind_invalid: "Limit turini tanlang",
+  amount_invalid: "Miqdor musbat butun son bo'lishi kerak",
+  price_invalid: "Narx musbat butun son bo'lishi kerak (so'm)",
+  item_exists: "Bu tur va miqdordagi paket allaqachon bor",
+  item_not_found: "Paket topilmadi",
+  item_limit: `Ko'pi bilan ${limitPrices.SHOP_LP_MAX_ITEMS} ta paket bo'ladi`,
+};
+
+function limitPriceErrorResponse(res, error) {
+  const status = error === "item_not_found" ? 404 : 400;
+  return json(res, status, { ok: false, error, message: LIMIT_PRICE_ERROR_TEXTS[error] || error });
+}
+
+function getLimitPriceStore() {
+  return limitPrices.createLimitPriceStore((reqPath, options) => supabaseRequest(reqPath, options));
+}
+
+async function handleShopLpList(req, res) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    return json(res, 200, { ok: true, data: { items: await getLimitPriceStore().list() } });
+  } catch (e) {
+    console.error("[SHOP_LP_LIST]", e.message);
+    return json(res, 500, { ok: false, error: "shop_list_failed", message: "Ro'yxatni yuklab bo'lmadi" });
+  }
+}
+
+async function handleShopLpSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getLimitPriceStore().save({
+      id: body.id || "",
+      kind: body.kind,
+      amount: body.amount,
+      price: body.price,
+      title: body.title,
+      note: body.note,
+      hit: body.hit,
+    });
+
+    if (!result.ok) {
+      return limitPriceErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true, data: { item: result.item } });
+  } catch (e) {
+    console.error("[SHOP_LP_SAVE]", e.message);
+    return json(res, 500, { ok: false, error: "shop_update_failed", message: "Saqlashda xatolik" });
+  }
+}
+
+async function handleShopLpDelete(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+
+  try {
+    const result = await getLimitPriceStore().remove(String(body.id || ""));
+
+    if (!result.ok) {
+      return limitPriceErrorResponse(res, result.error);
+    }
+
+    return json(res, 200, { ok: true });
+  } catch (e) {
+    console.error("[SHOP_LP_DELETE]", e.message);
     return json(res, 500, { ok: false, error: "shop_delete_failed", message: "O'chirishda xatolik" });
   }
 }

@@ -2257,6 +2257,80 @@
       box-shadow: 0 6px 18px rgba(245, 158, 11, 0.35)
     }
 
+    .shop-cat.limits {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(99, 102, 241, 0.08)), var(--surface);
+      border-color: rgba(16, 185, 129, 0.28)
+    }
+
+    .shop-cat.limits .shop-cat-icon {
+      background: linear-gradient(135deg, #10b981, var(--accent));
+      box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35)
+    }
+
+    .lp-group-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--text2);
+      margin: 14px 4px 8px
+    }
+
+    .lp-hit {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 5px;
+      margin-left: 6px;
+      vertical-align: middle;
+      background: rgba(245, 158, 11, 0.16);
+      color: #f59e0b
+    }
+
+    .lp-kinds {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px
+    }
+
+    .lp-kinds button {
+      padding: 10px 4px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text2);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px
+    }
+
+    .lp-kinds button i {
+      font-size: 17px
+    }
+
+    .lp-kinds button.active {
+      border-color: transparent;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6)
+    }
+
+    .lp-hit-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px
+    }
+
     .dn-admin-tag {
       display: inline-block;
       font-size: 9.5px;
@@ -2698,7 +2772,16 @@
             </div>
             <i class="bi bi-chevron-right shop-cat-arrow"></i>
           </div>
+          <div class="shop-cat limits" onclick="openLimitPrices()">
+            <div class="shop-cat-icon"><i class="bi bi-currency-dollar"></i></div>
+            <div class="shop-cat-body">
+              <div class="shop-cat-title">Limit narxlari</div>
+              <div class="shop-cat-meta" id="shopLpMeta">Yuklanmoqda...</div>
+            </div>
+            <i class="bi bi-chevron-right shop-cat-arrow"></i>
+          </div>
           <div class="hint" style="font-size:11px;color:var(--text2);margin-top:6px;padding:0 4px">
+            <b>Limit narxlari</b> botdagi <b>👤 Mening profilim → 🗂 Shaxsiy kabinet</b>dagi <b>$</b> tugmasida ko'rinadi.
             Firstmail'ga qo'shilgan pochtalar botdagi <b>🛒 Do'kon → 📧 Firstmail sotib olish</b> bo'limida ko'rinadi.
             «Sotildi» deb belgilanganlari botda ustidan chizilgan holda turadi.
             <b>Donat</b> hozircha faqat shu panelda — botda ko'rinmaydi.
@@ -2736,6 +2819,17 @@
           <div class="empty" id="fmLoader" style="display:none;padding:12px">
             <div class="spinner"></div>
           </div>
+          <div style="height:70px"></div>
+        </div>
+
+        <!-- Limit narxlari -->
+        <div id="shopLimits" style="display:none">
+          <div class="shop-title-row">
+            <button class="shop-back" onclick="closeLimitPrices()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
+            <h2><i class="bi bi-currency-dollar"></i> Limit narxlari</h2>
+            <button class="refresh-btn" style="margin:0" onclick="loadLimitPrices()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+          <div id="lpList"></div>
           <div style="height:70px"></div>
         </div>
 
@@ -3062,7 +3156,55 @@
     </div>
   </div>
 
-  <!-- Do'kon qo'shish tugmasi (Firstmail / o'yin / paket) -->
+  <!-- Limit narxi: qo'shish / tahrirlash -->
+  <div class="modal-overlay" id="lpModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="lpFormTitle">Limit paketi qo'shish</h2>
+      <div class="modal-field">
+        <label>Limit turi</label>
+        <div class="lp-kinds" id="lpKinds">
+          <button type="button" data-kind="full_info" onclick="setLpKind('full_info')"><i class="bi bi-file-earmark-text"></i>To'liq ma'lumot</button>
+          <button type="button" data-kind="reset_pw" onclick="setLpKind('reset_pw')"><i class="bi bi-key"></i>Parol tiklash</button>
+          <button type="button" data-kind="bind_info" onclick="setLpKind('bind_info')"><i class="bi bi-link-45deg"></i>Ulanmalar</button>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label id="lpAmountLabel">Miqdor (ta)</label>
+        <input type="text" id="lpAmount" inputmode="numeric" placeholder="Masalan: 10">
+        <div class="hint" id="lpAmountHint"></div>
+      </div>
+      <div class="modal-field">
+        <label>Narx (so'm)</label>
+        <input type="text" id="lpPrice" inputmode="numeric" placeholder="Masalan: 25000">
+        <div class="hint" id="lpUnitHint"></div>
+      </div>
+      <div class="modal-field">
+        <label>Nomi (ixtiyoriy)</label>
+        <input type="text" id="lpTitle" placeholder="Masalan: Start, Pro" maxlength="40" autocomplete="off">
+      </div>
+      <div class="modal-field">
+        <label>Izoh (ixtiyoriy)</label>
+        <input type="text" id="lpNote" placeholder="Masalan: eng foydali tanlov" maxlength="200">
+      </div>
+      <div class="modal-field lp-hit-row">
+        <span><i class="bi bi-fire" style="color:#f59e0b"></i> «Mashhur» belgisi</span>
+        <label class="switch">
+          <input type="checkbox" id="lpHit">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="dn-delete-row" id="lpDeleteRow">
+        <button class="fm-action delete" id="lpDeleteBtn" onclick="deleteCurrentLp()"><i class="bi bi-trash3"></i><span>Paketni o'chirish</span></button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeLpForm()">Bekor qilish</button>
+        <button class="btn-save" id="lpSaveBtn" onclick="saveLp()"><i class="bi bi-floppy"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Do'kon qo'shish tugmasi (Firstmail / o'yin / paket / limit) -->
   <button class="shop-fab" id="shopFab" onclick="onShopFab()" aria-label="Qo'shish"><span style="margin-top:-3px;font-weight:300">+</span></button>
 
   <!-- Scroll to top -->
@@ -3309,6 +3451,7 @@
         if (name === "Shop") {
           if (fmView === "list") reloadFirstmailsKeepingPosition();
           else if (dnView !== "none") loadDonat();
+          else if (lpView) loadLimitPrices();
           else loadShopSummary();
         }
         updateShopFab();
@@ -4177,6 +4320,7 @@
       var fmFilter = "all";
       var fmView = "home";
       var dnView = "none"; // "none" | "games" | "game" — Donat bo'limi
+      var lpView = false; // Limit narxlari bo'limi ochiqmi
       var fmLoading = false;
       var fmHasMore = false;
       var fmRequestSeq = 0;
@@ -4190,13 +4334,14 @@
       function updateShopFab() {
         var fab = document.getElementById("shopFab");
         if (!fab) return;
-        fab.classList.toggle("visible", currentTab === "Shop" && (fmView === "list" || dnView !== "none"));
+        fab.classList.toggle("visible", currentTab === "Shop" && (fmView === "list" || dnView !== "none" || lpView));
       }
 
       function onShopFab() {
         if (fmView === "list") openFmForm();
         else if (dnView === "game") openDnPackForm();
         else if (dnView === "games") openDnGameForm();
+        else if (lpView) openLpForm();
       }
       window.onShopFab = onShopFab;
 
@@ -4232,6 +4377,7 @@
 
       function loadShopSummary() {
         loadDonat();
+        loadLimitPrices();
         api("shop_fm_list", { limit: 0 }).then(function (result) {
           if (result.ok && result.data) {
             applyFmSummary(result.data);
@@ -5031,6 +5177,229 @@
       });
       document.getElementById("dnPackModal").addEventListener("click", function (e) {
         if (e.target === e.currentTarget) { hapticLight(); closeDnPackForm(); }
+      });
+
+
+      /* -----------------------------------------------------------------------
+         Do'kon → Limit narxlari (shaxsiy kabinetdagi "$" tugmasi)
+      ----------------------------------------------------------------------- */
+      var LP_KINDS = {
+        full_info: { label: "To'liq ma'lumot", icon: "file-earmark-text", unit: "ta" },
+        reset_pw: { label: "Parolni tiklash", icon: "key", unit: "ta" },
+        bind_info: { label: "Ulanmalar (kunlik limit)", icon: "link-45deg", unit: "ta/kun" }
+      };
+      var lpItems = [];
+      var lpLoaded = false;
+      var lpRequestSeq = 0;
+      var lpEditingId = null;
+      var lpKind = "full_info";
+      var lpDeleteArmed = false;
+      var lpDeleteTimer = null;
+
+      function updateLpMeta() {
+        var meta = document.getElementById("shopLpMeta");
+        if (!meta) return;
+        meta.textContent = lpItems.length ? lpItems.length + " ta paket · shaxsiy kabinetda" : "Hali paket qo'shilmagan";
+      }
+
+      function loadLimitPrices() {
+        var seq = ++lpRequestSeq;
+        if (!lpLoaded && lpView) document.getElementById("lpList").innerHTML = buildFmSkeleton();
+        api("shop_lp_list", {}).then(function (result) {
+          if (seq !== lpRequestSeq) return;
+          if (!result.ok || !result.data) {
+            document.getElementById("shopLpMeta").textContent = "Ma'lumotni yuklab bo'lmadi";
+            if (lpView) showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
+            return;
+          }
+          lpLoaded = true;
+          lpItems = result.data.items || [];
+          updateLpMeta();
+          if (lpView) renderLimitPrices();
+        }).catch(function () {
+          if (seq !== lpRequestSeq) return;
+          document.getElementById("shopLpMeta").textContent = "Server bilan bog'lanishda xatolik";
+          if (lpView) showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.loadLimitPrices = loadLimitPrices;
+
+      function showLpView(open) {
+        lpView = open;
+        document.getElementById("shopHome").style.display = open ? "none" : "block";
+        document.getElementById("shopLimits").style.display = open ? "block" : "none";
+        updateShopFab();
+        if (open) renderLimitPrices();
+      }
+
+      function openLimitPrices() {
+        hapticLight();
+        showLpView(true);
+        loadLimitPrices();
+      }
+      window.openLimitPrices = openLimitPrices;
+
+      function closeLimitPrices() {
+        hapticLight();
+        showLpView(false);
+      }
+      window.closeLimitPrices = closeLimitPrices;
+
+      function lpUnitPrice(item) {
+        return item.amount > 0 ? Math.round(item.price / item.amount) : 0;
+      }
+
+      function renderLimitPrices() {
+        var list = document.getElementById("lpList");
+        if (!lpItems.length) {
+          list.innerHTML = '<div class="empty"><div class="empty-icon"><i class="bi bi-currency-dollar"></i></div><div class="empty-text">' +
+            (lpLoaded ? "Hali paket qo'shilmagan.<br>Pastdagi <b>+</b> tugmasini bosing." : "Yuklanmoqda...") + "</div></div>";
+          return;
+        }
+        var html = "";
+        Object.keys(LP_KINDS).forEach(function (kind) {
+          var items = lpItems.filter(function (i) { return i.kind === kind; });
+          if (!items.length) return;
+          var meta = LP_KINDS[kind];
+          html += '<div class="lp-group-title"><i class="bi bi-' + meta.icon + '"></i>' + esc(meta.label) + "</div>";
+          html += items.map(function (item) {
+            var name = item.amount + " " + meta.unit + (item.title ? " · " + item.title : "");
+            var sub = "1 tasi " + formatSom(lpUnitPrice(item)) + (item.note ? " · " + item.note : "");
+            return '<div class="fm-item" data-lid="' + esc(item.id) + '">' +
+              '<div class="fm-avatar"><i class="bi bi-' + meta.icon + '"></i></div>' +
+              '<div class="fm-body"><div class="fm-email">' + esc(name) + (item.hit ? '<span class="lp-hit">🔥 HIT</span>' : "") + "</div>" +
+              '<div class="fm-meta">' + esc(sub) + "</div></div>" +
+              '<div class="fm-price">' + esc(formatSom(item.price)) + "</div></div>";
+          }).join("");
+        });
+        list.innerHTML = html;
+        list.querySelectorAll(".fm-item[data-lid]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var id = el.getAttribute("data-lid");
+            for (var i = 0; i < lpItems.length; i++) if (lpItems[i].id === id) openLpForm(lpItems[i]);
+          });
+        });
+      }
+
+      function setLpKind(kind) {
+        lpKind = LP_KINDS[kind] ? kind : "full_info";
+        document.querySelectorAll("#lpKinds button").forEach(function (b) {
+          b.classList.toggle("active", b.getAttribute("data-kind") === lpKind);
+        });
+        var daily = lpKind === "bind_info";
+        document.getElementById("lpAmountLabel").textContent = daily ? "Kunlik limit (ta)" : "Miqdor (ta)";
+        document.getElementById("lpAmountHint").textContent = daily
+          ? "Xaridor kuniga shuncha ulanma tekshira oladi (standart — 10)."
+          : "Xaridor limitiga shuncha qo'shiladi.";
+        updateLpUnitHint();
+      }
+      window.setLpKind = setLpKind;
+
+      function updateLpUnitHint() {
+        var amount = Number(document.getElementById("lpAmount").value.replace(/\s+/g, ""));
+        var price = Number(document.getElementById("lpPrice").value.replace(/\s+/g, ""));
+        document.getElementById("lpUnitHint").textContent = amount > 0 && price > 0
+          ? "1 tasi ≈ " + formatSom(price / amount)
+          : "";
+      }
+      document.getElementById("lpAmount").addEventListener("input", updateLpUnitHint);
+      document.getElementById("lpPrice").addEventListener("input", updateLpUnitHint);
+
+      function resetLpDelete() {
+        lpDeleteArmed = false;
+        clearTimeout(lpDeleteTimer);
+        var btn = document.getElementById("lpDeleteBtn");
+        btn.classList.remove("confirm");
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-trash3"></i><span>Paketni o\'chirish</span>';
+      }
+
+      function openLpForm(item) {
+        lpEditingId = item && item.id ? item.id : null;
+        document.getElementById("lpFormTitle").textContent = lpEditingId ? "Paketni tahrirlash" : "Limit paketi qo'shish";
+        document.getElementById("lpAmount").value = lpEditingId ? String(item.amount) : "";
+        document.getElementById("lpPrice").value = lpEditingId ? String(item.price) : "";
+        document.getElementById("lpTitle").value = lpEditingId ? (item.title || "") : "";
+        document.getElementById("lpNote").value = lpEditingId ? (item.note || "") : "";
+        document.getElementById("lpHit").checked = Boolean(lpEditingId && item.hit);
+        document.getElementById("lpDeleteRow").style.display = lpEditingId ? "block" : "none";
+        setLpKind(lpEditingId ? item.kind : lpKind);
+        resetLpDelete();
+        document.getElementById("lpModal").classList.add("open");
+        if (!lpEditingId) setTimeout(function () { document.getElementById("lpAmount").focus(); }, 320);
+      }
+
+      function closeLpForm() {
+        document.getElementById("lpModal").classList.remove("open");
+        resetLpDelete();
+        lpEditingId = null;
+      }
+      window.closeLpForm = closeLpForm;
+
+      function saveLp() {
+        var btn = document.getElementById("lpSaveBtn");
+        var body = {
+          id: lpEditingId || "",
+          kind: lpKind,
+          amount: document.getElementById("lpAmount").value.trim(),
+          price: document.getElementById("lpPrice").value.trim(),
+          title: document.getElementById("lpTitle").value.trim(),
+          note: document.getElementById("lpNote").value.trim(),
+          hit: document.getElementById("lpHit").checked
+        };
+        if (!body.amount) { showToast("⚠️ Miqdorni kiriting", "warning"); return; }
+        if (!body.price) { showToast("⚠️ Narxni kiriting", "warning"); return; }
+        var editing = Boolean(lpEditingId);
+        setSaveBusy(btn, true);
+        api("shop_lp_save", body).then(function (result) {
+          setSaveBusy(btn, false);
+          if (!result.ok || !result.data) {
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+            return;
+          }
+          closeLpForm();
+          showToast(editing ? "✅ Paket saqlandi" : "✅ Paket qo'shildi", "success");
+          loadLimitPrices();
+        }).catch(function () {
+          setSaveBusy(btn, false);
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.saveLp = saveLp;
+
+      function deleteCurrentLp() {
+        if (!lpEditingId) return;
+        var btn = document.getElementById("lpDeleteBtn");
+        if (!lpDeleteArmed) {
+          lpDeleteArmed = true;
+          btn.classList.add("confirm");
+          btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i><span>Tasdiqlang</span>';
+          lpDeleteTimer = setTimeout(resetLpDelete, 3500);
+          return;
+        }
+        clearTimeout(lpDeleteTimer);
+        btn.disabled = true;
+        var id = lpEditingId;
+        api("shop_lp_delete", { id: id }).then(function (result) {
+          resetLpDelete();
+          if (!result.ok) {
+            showToast("❌ " + (result.message || "Xatolik"), "error");
+            return;
+          }
+          closeLpForm();
+          lpItems = lpItems.filter(function (i) { return i.id !== id; });
+          updateLpMeta();
+          renderLimitPrices();
+          showToast("✅ Paket o'chirildi", "success");
+        }).catch(function () {
+          resetLpDelete();
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.deleteCurrentLp = deleteCurrentLp;
+
+      document.getElementById("lpModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) { hapticLight(); closeLpForm(); }
       });
 
       /* -----------------------------------------------------------------------
