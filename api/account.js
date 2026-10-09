@@ -96,6 +96,8 @@ module.exports = async function handler(req, res) {
         return await handleMlSendCode(res, ctx);
       case "ml_verify":
         return await handleMlVerify(res, ctx);
+      case "firstmails":
+        return await handleFirstmails(res, ctx);
       case "buy_limit":
         return await handleBuyLimit(res, ctx);
       case "buy_firstmail":
@@ -309,7 +311,7 @@ async function loadPreferredLanguage(config, user) {
 // ---------------------------------------------------------------------------
 const BIND_INFO_DEFAULT_LIMIT = 10; // bot.js dagi check_and_consume_bind_limit bilan bir xil
 const CABINET_HISTORY_LIMIT = 50;
-const CABINET_FIRSTMAIL_LIMIT = 50;
+const CABINET_FIRSTMAIL_PAGE = 30; // Do'kon: pastga aylantirganda 30 tadan
 const ACCOUNT_MAX_COUNT = 5;
 const ML_VC_KEY_PREFIX = "ml_vc:";
 const ML_CODE_MAX_ATTEMPTS = 5;
@@ -414,7 +416,7 @@ async function handleCabinet(res, { config, user }) {
     // 018 migratsiyasi qo'llanmagan bo'lsa — null, UI "tarix hali yo'q" deydi.
     settle(supabaseRequest(config, `/quota_usage_events?${historyParams.toString()}`), "HISTORY"),
     settle(limitPrices.createLimitPriceStore(storeRequest(config)).list(), "PRICES"),
-    settle(shop.createFirstmailStore(storeRequest(config)).list(), "FIRSTMAIL"),
+    settle(loadFirstmailPage(config, 0), "FIRSTMAIL"),
   ]);
 
   return json(res, 200, {
@@ -444,11 +446,25 @@ async function handleCabinet(res, { config, user }) {
     history: Array.isArray(history) ? history.map(publicHistory) : [],
     historyAvailable: Array.isArray(history),
     prices: (prices || []).map(limitPrices.toPublicLimitPrice),
-    firstmails: (firstmails || [])
-      .filter((item) => item.status === shop.SHOP_FM_STATUS_AVAILABLE)
-      .slice(0, CABINET_FIRSTMAIL_LIMIT)
-      .map(publicFirstmail),
+    firstmails: firstmails ? firstmails.items : [],
+    firstmailTotal: firstmails ? firstmails.total : 0,
+    firstmailHasMore: firstmails ? firstmails.hasMore : false,
   });
+}
+
+// Sotuvdagi pochtalarning bitta sahifasi (offset dan boshlab 30 ta).
+async function loadFirstmailPage(config, offsetRaw) {
+  const offset = Math.max(0, Math.min(Number.parseInt(offsetRaw, 10) || 0, 100000));
+  const available = (await shop.createFirstmailStore(storeRequest(config)).list())
+    .filter((item) => item.status === shop.SHOP_FM_STATUS_AVAILABLE);
+  const items = available.slice(offset, offset + CABINET_FIRSTMAIL_PAGE).map(publicFirstmail);
+
+  return { items, total: available.length, hasMore: offset + items.length < available.length };
+}
+
+async function handleFirstmails(res, { config, body }) {
+  const page = await loadFirstmailPage(config, body.offset);
+  return json(res, 200, { ok: true, ...page });
 }
 
 async function handleAccountAdd(res, { config, user, body }) {

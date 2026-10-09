@@ -346,3 +346,28 @@ test("cabinet: buy requests go to the shop owner with buyer + item details", asy
     backend.restore();
   }
 });
+
+test("cabinet: firstmails come in pages of 30 (rest via the firstmails action)", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const shop = require("../api/_shop.js");
+    const fmStore = shop.createFirstmailStore(backend.settings.handle);
+    for (let i = 0; i < 35; i += 1) {
+      await fmStore.create({ email: `user${String(i).padStart(2, "0")}@firstmail.ltd`, price: "10000" });
+    }
+
+    const app = loadAccountApp();
+    const first = (await call(app, USER, "cabinet")).body;
+    assert.equal(first.firstmails.length, 30);
+    assert.equal(first.firstmailTotal, 35);
+    assert.equal(first.firstmailHasMore, true);
+
+    const next = (await call(app, USER, "firstmails", { offset: 30 })).body;
+    assert.equal(next.items.length, 5);
+    assert.equal(next.hasMore, false);
+    const ids = new Set([...first.firstmails, ...next.items].map((f) => f.id));
+    assert.equal(ids.size, 35, "sahifalar takrorlanmaydi");
+  } finally {
+    backend.restore();
+  }
+});
