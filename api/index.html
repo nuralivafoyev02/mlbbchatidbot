@@ -2293,7 +2293,7 @@
 
     .lp-kinds {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 6px
     }
 
@@ -3166,7 +3166,6 @@
         <div class="lp-kinds" id="lpKinds">
           <button type="button" data-kind="full_info" onclick="setLpKind('full_info')"><i class="bi bi-file-earmark-text"></i>To'liq ma'lumot</button>
           <button type="button" data-kind="reset_pw" onclick="setLpKind('reset_pw')"><i class="bi bi-key"></i>Parol tiklash</button>
-          <button type="button" data-kind="bind_info" onclick="setLpKind('bind_info')"><i class="bi bi-link-45deg"></i>Ulanmalar</button>
         </div>
       </div>
       <div class="modal-field">
@@ -5185,8 +5184,7 @@
       ----------------------------------------------------------------------- */
       var LP_KINDS = {
         full_info: { label: "To'liq ma'lumot", icon: "file-earmark-text", unit: "ta" },
-        reset_pw: { label: "Parolni tiklash", icon: "key", unit: "ta" },
-        bind_info: { label: "Ulanmalar (kunlik limit)", icon: "link-45deg", unit: "ta/kun" }
+        reset_pw: { label: "Parolni tiklash", icon: "key", unit: "ta" }
       };
       var lpItems = [];
       var lpLoaded = false;
@@ -5286,11 +5284,7 @@
         document.querySelectorAll("#lpKinds button").forEach(function (b) {
           b.classList.toggle("active", b.getAttribute("data-kind") === lpKind);
         });
-        var daily = lpKind === "bind_info";
-        document.getElementById("lpAmountLabel").textContent = daily ? "Kunlik limit (ta)" : "Miqdor (ta)";
-        document.getElementById("lpAmountHint").textContent = daily
-          ? "Xaridor kuniga shuncha ulanma tekshira oladi (standart — 10)."
-          : "Xaridor limitiga shuncha qo'shiladi.";
+        document.getElementById("lpAmountHint").textContent = "Xaridor limitiga shuncha qo'shiladi.";
         updateLpUnitHint();
       }
       window.setLpKind = setLpKind;

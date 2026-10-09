@@ -87,11 +87,13 @@ test("limit prices: validation, CRUD, sorting and duplicate guard", async () => 
   assert.equal(big.ok, true);
   assert.equal(big.item.price, 40000);
   assert.equal(big.item.hit, true);
-  await store.save({ kind: "bind_info", amount: 30, price: 15000 });
+  await store.save({ kind: "reset_pw", amount: 10, price: 5000 });
   await store.save({ kind: "full_info", amount: 5, price: 12000 });
+  // Ulanmalar tekshiruvi botda yo'q — bunday paket qabul qilinmaydi.
+  assert.equal((await store.save({ kind: "bind_info", amount: 30, price: 15000 })).error, "kind_invalid");
 
   const list = await store.list();
-  assert.deepEqual(list.map((i) => `${i.kind}:${i.amount}`), ["full_info:5", "full_info:20", "bind_info:30"]);
+  assert.deepEqual(list.map((i) => `${i.kind}:${i.amount}`), ["full_info:5", "full_info:20", "reset_pw:10"]);
   assert.equal((await store.save({ kind: "full_info", amount: 5, price: 1 })).error, "item_exists");
 
   const edited = await store.save({ id: big.item.id, kind: "full_info", amount: 25, price: 45000 });
@@ -248,7 +250,7 @@ test("cabinet: returns limits, accounts, viewers, history, prices and only avail
     const d = res.body;
     assert.equal(d.limits.full_info.remaining, 2);
     assert.equal(d.limits.reset_pw.remaining, 0);
-    assert.deepEqual(d.limits.bind_info, { remaining: 7, total: 10 });
+    assert.deepEqual(Object.keys(d.limits), ["full_info", "reset_pw"]);
     assert.equal(d.unlimited, false);
     assert.equal(d.viewers[0].checker_username, "spy");
     assert.equal(d.history[0].account_id, "555555");

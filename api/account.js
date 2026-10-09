@@ -309,7 +309,6 @@ async function loadPreferredLanguage(config, user) {
 // narxlari va Firstmail xaridi. To'lov hozircha qo'lda — xarid so'rovi
 // do'kon egasiga boradi (api/_shop-notify.js).
 // ---------------------------------------------------------------------------
-const BIND_INFO_DEFAULT_LIMIT = 10; // bot.js dagi check_and_consume_bind_limit bilan bir xil
 const CABINET_HISTORY_LIMIT = 50;
 const CABINET_FIRSTMAIL_PAGE = 30; // Do'kon: pastga aylantirganda 30 tadan
 const ACCOUNT_MAX_COUNT = 5;
@@ -401,17 +400,18 @@ async function handleCabinet(res, { config, user }) {
   const userId = String(user.id);
   const historyParams = new URLSearchParams({
     user_id: `eq.${userId}`,
+    // Ulanmalar tekshiruvi botda yo'q — kabinetda faqat shu ikki limit.
+    kind: "in.(full_info,reset_pw)",
     select: "id,kind,delta,source,account_id,zone_id,target,remaining,created_at",
     order: "created_at.desc",
     limit: String(CABINET_HISTORY_LIMIT),
   });
 
-  const [lang, accounts, fullInfo, resetPw, bindInfo, viewers, history, prices, firstmails] = await Promise.all([
+  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails] = await Promise.all([
     loadPreferredLanguage(config, user),
     settle(listUserAccounts(config, userId), "ACCOUNTS"),
     settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
     settle(supabaseRpc(config, "get_reset_pw_quota", { p_user_id: userId }), "RESET_PW"),
-    settle(supabaseRpc(config, "check_bind_limit_only", { p_user_id: userId, p_limit: BIND_INFO_DEFAULT_LIMIT }), "BIND_INFO"),
     settle(supabaseRpc(config, "get_account_check_history", { p_user_id: userId, p_limit: CABINET_HISTORY_LIMIT }), "VIEWERS"),
     // 018 migratsiyasi qo'llanmagan bo'lsa — null, UI "tarix hali yo'q" deydi.
     settle(supabaseRequest(config, `/quota_usage_events?${historyParams.toString()}`), "HISTORY"),
@@ -435,10 +435,6 @@ async function handleCabinet(res, { config, user }) {
     limits: {
       full_info: { remaining: quotaNumber(fullInfo) },
       reset_pw: { remaining: quotaNumber(resetPw) },
-      bind_info: {
-        remaining: quotaNumber(bindInfo),
-        total: bindInfo && typeof bindInfo.total_limit === "number" ? bindInfo.total_limit : BIND_INFO_DEFAULT_LIMIT,
-      },
     },
     accounts: accounts || [],
     accountMax: ACCOUNT_MAX_COUNT,

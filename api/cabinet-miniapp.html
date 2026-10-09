@@ -102,7 +102,7 @@
     .section-title .link { text-transform: none; letter-spacing: 0; font-size: 13px; color: #a5b4fc; font-weight: 600; }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
 
-    .limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .limit {
       position: relative; overflow: hidden; border-radius: 16px; padding: 12px 11px 11px;
       background: var(--surface); border: 1px solid var(--border);
@@ -110,7 +110,6 @@
     .limit-ico { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; color: #fff; margin-bottom: 10px; }
     .limit.k-fi .limit-ico { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
     .limit.k-rp .limit-ico { background: linear-gradient(135deg, var(--pink), #f43f5e); }
-    .limit.k-bd .limit-ico { background: linear-gradient(135deg, var(--green), #0ea5e9); }
     .limit-value { font-size: 24px; font-weight: 800; line-height: 1; }
     .limit-value small { font-size: 12px; font-weight: 600; color: var(--text2); }
     .limit-label { font-size: 11px; color: var(--text2); margin-top: 5px; line-height: 1.3; }
@@ -291,8 +290,8 @@
           title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_history: "Tarix", tab_shop: "Do'kon",
           not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «Mening profilim» → «Shaxsiy kabinet» tugmasi orqali ochiladi.",
           error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
-          limits: "Limitlarim", lim_full_info: "To'liq ma'lumot", lim_reset_pw: "Parolni tiklash", lim_bind_info: "Ulanmalar · bugun",
-          unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Narxlar ro'yxati — yuqoridagi $ tugmasi",
+          limits: "Limitlarim", lim_full_info: "To'liq ma'lumot", lim_reset_pw: "Parolni tiklash",
+          unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Ulgurchi narxlarda paketlarni sotib oling",
           st_accounts: "Akkaunt", st_viewers: "Tekshirishgan", st_used: "Ishlatilgan",
           recent: "So'nggi harakatlar", see_all: "Hammasi",
           accounts_title: "Akkauntlarim", add_account: "Akkaunt qo'shish", no_accounts: "Hali akkaunt qo'shilmagan.\nAkkaunt qo'shsangiz, uni kim tekshirganini ko'rib turasiz.",
@@ -318,7 +317,7 @@
           shop_fm: "Firstmail pochtalar", shop_fm_lead: "To'liq manzil va parol to'lovdan keyin admin tomonidan beriladi.",
           no_fm: "Hozircha sotuvda pochta yo'q.", buy: "Sotib olish", price_agreed: "kelishiladi",
           prices_title: "Limit narxlari", prices_lead: "Paketni tanlang — so'rov adminga boradi, to'lovdan so'ng limit hisobingizga qo'shiladi.",
-          no_prices: "Narxlar hali qo'shilmagan. Admin bilan bog'laning.", per_unit: "1 tasi {p}", per_day: "kuniga", hit: "Mashhur",
+          no_prices: "Narxlar hali qo'shilmagan. Admin bilan bog'laning.", per_unit: "1 tasi {p}", hit: "Mashhur",
           buy_confirm: "{what} — {price}. So'rov yuborilsinmi?",
           sent_title: "So'rov yuborildi!", sent_text: "Admin tez orada siz bilan bog'lanadi. Kutmasdan yozish uchun pastdagi tugmani bosing.",
           contact: "Admin bilan bog'lanish", close: "Yopish", notify_failed: "So'rov yuborilmadi. Admin bilan to'g'ridan-to'g'ri bog'laning.",
@@ -328,7 +327,7 @@
           title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
           not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте: «Мой профиль» → «Личный кабинет».",
           error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
-          limits: "Мои лимиты", lim_full_info: "Полная инфо", lim_reset_pw: "Сброс пароля", lim_bind_info: "Привязки · сегодня",
+          limits: "Мои лимиты", lim_full_info: "Полная инфо", lim_reset_pw: "Сброс пароля",
           unlimited: "Безлимит", buy_more: "Купить дополнительные лимиты", buy_more_sub: "Прайс-лист — кнопка $ вверху",
           st_accounts: "Аккаунты", st_viewers: "Проверяли", st_used: "Использовано",
           recent: "Последние действия", see_all: "Все",
@@ -355,7 +354,7 @@
           shop_fm: "Почты Firstmail", shop_fm_lead: "Полный адрес и пароль выдаёт админ после оплаты.",
           no_fm: "Сейчас почт в продаже нет.", buy: "Купить", price_agreed: "договорная",
           prices_title: "Цены на лимиты", prices_lead: "Выберите пакет — запрос уйдёт админу, после оплаты лимит будет зачислен.",
-          no_prices: "Цены ещё не добавлены. Свяжитесь с админом.", per_unit: "1 шт — {p}", per_day: "в день", hit: "Хит",
+          no_prices: "Цены ещё не добавлены. Свяжитесь с админом.", per_unit: "1 шт — {p}", hit: "Хит",
           buy_confirm: "{what} — {price}. Отправить запрос?",
           sent_title: "Запрос отправлен!", sent_text: "Админ скоро свяжется с вами. Чтобы написать сразу, нажмите кнопку ниже.",
           contact: "Написать админу", close: "Закрыть", notify_failed: "Запрос не отправлен. Свяжитесь с админом напрямую.",
@@ -365,7 +364,7 @@
           title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
           not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot: “My profile” → “Personal cabinet”.",
           error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
-          limits: "My limits", lim_full_info: "Full info", lim_reset_pw: "Password reset", lim_bind_info: "Bindings · today",
+          limits: "My limits", lim_full_info: "Full info", lim_reset_pw: "Password reset",
           unlimited: "Unlimited", buy_more: "Buy extra limits", buy_more_sub: "Price list — the $ button at the top",
           st_accounts: "Accounts", st_viewers: "Checked by", st_used: "Used",
           recent: "Recent activity", see_all: "All",
@@ -392,7 +391,7 @@
           shop_fm: "Firstmail mailboxes", shop_fm_lead: "The full address and password are sent by the admin after payment.",
           no_fm: "No mailboxes for sale right now.", buy: "Buy", price_agreed: "negotiable",
           prices_title: "Limit prices", prices_lead: "Pick a pack — the request goes to the admin and the limit is added after payment.",
-          no_prices: "No prices yet. Contact the admin.", per_unit: "{p} each", per_day: "per day", hit: "Popular",
+          no_prices: "No prices yet. Contact the admin.", per_unit: "{p} each", hit: "Popular",
           buy_confirm: "{what} — {price}. Send the request?",
           sent_title: "Request sent!", sent_text: "The admin will contact you soon. Tap below to message them right away.",
           contact: "Contact admin", close: "Close", notify_failed: "Request failed. Please contact the admin directly.",
@@ -402,8 +401,7 @@
 
       var KINDS = {
         full_info: { icon: "file-earmark-text", cls: "k-fi", tone: "" },
-        reset_pw: { icon: "key", cls: "k-rp", tone: "pink" },
-        bind_info: { icon: "link-45deg", cls: "k-bd", tone: "green" }
+        reset_pw: { icon: "key", cls: "k-rp", tone: "pink" }
       };
       var TABS = [
         { id: "home", ico: "house", active: "house-fill" },
@@ -594,10 +592,6 @@
         } else {
           value = String(lim.remaining);
           empty = lim.remaining <= 0;
-          if (kind === "bind_info" && lim.total) {
-            small = "<small>/" + esc(lim.total) + "</small>";
-            bar = '<div class="bar"><div style="width:' + Math.max(0, Math.min(100, lim.remaining / lim.total * 100)).toFixed(0) + '%"></div></div>';
-          }
         }
         return '<div class="limit ' + KINDS[kind].cls + (empty ? " zero" : "") + '"><div class="limit-ico">' + icon(KINDS[kind].icon) + "</div>" +
           '<div class="limit-value">' + esc(value) + small + '</div><div class="limit-label">' + esc(L("lim_" + kind)) + "</div>" + bar + "</div>";
@@ -632,7 +626,7 @@
         var used = d.history.filter(function (h) { return h.delta < 0 && h.source === "use"; }).length;
         var html = "" +
           '<div class="section-title">' + esc(L("limits")) + "</div>" +
-          '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + limitCard("bind_info") + "</div>" +
+          '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + "</div>" +
           '<div class="stats">' +
           '<div class="stat"><b>' + d.accounts.length + "<small class=\"muted\" style=\"font-size:12px\">/" + d.accountMax + "</small></b><span>" + esc(L("st_accounts")) + "</span></div>" +
           '<div class="stat"><b>' + d.viewers.length + "</b><span>" + esc(L("st_viewers")) + "</span></div>" +
@@ -788,7 +782,7 @@
 
       // ---------------------------------------------------------------- prices / buying
       function kindAmountText(item) {
-        return item.amount + " " + L("pcs") + (item.kind === "bind_info" ? " " + L("per_day") : "");
+        return item.amount + " " + L("pcs");
       }
 
       function openPrices() {
@@ -805,7 +799,7 @@
           html += items.map(function (p) {
             var unit = p.amount > 0 ? L("per_unit", { p: som(p.price / p.amount) }) : "";
             return '<button class="price' + (p.hit ? " hit" : "") + '" data-price="' + esc(p.id) + '">' +
-              '<div class="grow"><div class="price-amount">' + esc(p.amount) + " <small>" + esc(L("pcs")) + (kind === "bind_info" ? " " + esc(L("per_day")) : "") + "</small></div>" +
+              '<div class="grow"><div class="price-amount">' + esc(p.amount) + " <small>" + esc(L("pcs")) + "</small></div>" +
               ((p.title || p.hit) ? '<div style="margin-top:6px">' + (p.hit ? '<span class="pill gold">🔥 ' + esc(L("hit")) + "</span> " : "") + (p.title ? '<span class="pill">' + esc(p.title) + "</span>" : "") + "</div>" : "") +
               (p.note ? '<div class="price-unit">' + esc(p.note) + "</div>" : "") + "</div>" +
               '<div class="item-right"><div class="price-sum">' + esc(som(p.price)) + '</div><div class="price-unit">' + esc(unit) + "</div></div></button>";

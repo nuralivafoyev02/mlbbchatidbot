@@ -42,7 +42,6 @@ function resolveShopNotifyConfig(env = process.env) {
 const LIMIT_KIND_LABELS = {
   full_info: "📋 To'liq ma'lumot",
   reset_pw: "🔐 Parolni tiklash",
-  bind_info: "🔗 Ulanmalar (kunlik limit)",
 };
 
 function buyerLine(user) {

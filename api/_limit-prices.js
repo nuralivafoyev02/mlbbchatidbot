@@ -4,8 +4,9 @@
 // Shaxsiy kabinetdagi "$" tugmasi shu ro'yxatni ko'rsatadi. Firstmail/Donat
 // kabi `bot_settings` jadvalida: har bir paket — bitta qator,
 // `key = "shop_lp:<id>"`, `value = { kind, amount, price, title, note, hit }`.
-//   kind   — full_info | reset_pw | bind_info
-//   amount — nechta limit (bind_info uchun — kunlik limit)
+//   kind   — full_info | reset_pw (ulanmalar tekshiruvi botda yo'q — sotilmaydi;
+//            eski bind_info yozuvlari ro'yxatga chiqmaydi)
+//   amount — nechta limit
 //   price  — narx, so'm (butun son)
 //   hit    — "Mashhur" belgisi
 // ---------------------------------------------------------------------------
@@ -13,7 +14,7 @@
 const { generateShopItemId, isValidShopItemId } = require("./_shop.js");
 
 const SHOP_LP_KEY_PREFIX = "shop_lp:";
-const SHOP_LP_KINDS = Object.freeze(["full_info", "reset_pw", "bind_info"]);
+const SHOP_LP_KINDS = Object.freeze(["full_info", "reset_pw"]);
 const SHOP_LP_MAX_ITEMS = 60;
 const SHOP_LP_MAX_AMOUNT = 100000;
 const SHOP_LP_MAX_PRICE = 1_000_000_000;
@@ -92,7 +93,7 @@ function normalizeLimitPriceRecord(row = {}) {
   };
 }
 
-// Tur bo'yicha (full_info → reset_pw → bind_info), keyin miqdor bo'yicha.
+// Tur bo'yicha (full_info → reset_pw), keyin miqdor bo'yicha.
 function sortLimitPrices(items = []) {
   return items.slice().sort((a, b) =>
     SHOP_LP_KINDS.indexOf(a.kind) - SHOP_LP_KINDS.indexOf(b.kind) || a.amount - b.amount || a.price - b.price

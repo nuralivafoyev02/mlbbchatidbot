@@ -2947,17 +2947,6 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
   await safeDeleteBindWaitMessage(chatId, waitMessage);
   runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.BIND_INFO);
 
-  if (limitData) {
-    await recordQuotaEvent({
-      userId: user.id,
-      kind: "bind_info",
-      delta: -1,
-      accountId: parsed.accountId,
-      zoneId: parsed.zoneId,
-      remaining: limitData.remaining,
-    });
-  }
-
   if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
     const userMention = user.username ? `@${user.username}` : `<a href="tg://user?id=${user.id}">${user.first_name || "Foydalanuvchi"}</a>`;
     const notificationText = `#foydalanish\n${userMention} <b>${parsed.accountId} (${parsed.zoneId})</b> ni ulanmalarini tekshirdi.`;
