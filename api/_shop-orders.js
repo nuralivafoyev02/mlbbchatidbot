@@ -51,17 +51,20 @@ function publicDelivery(row) {
 }
 
 function toPublicShopOrder(row = {}) {
+  const delivery = publicDelivery(row);
   return {
     id: row.id,
     kind: row.kind,
-    title: row.title || "",
+    // Sotib olingan pochta egasiga to'liq ko'rinadi (bazada yashirilgan holda turadi).
+    title: (delivery && delivery.email) || row.title || "",
     price: row.price === null || row.price === undefined ? null : Number(row.price),
     price_text: row.price_text || "",
     status: SHOP_ORDER_STATUSES.includes(row.status) ? row.status : "pending",
     paid: Number(row.paid_amount) > 0,
-    delivery: publicDelivery(row),
+    delivery,
     note: row.status === "refunded" ? String(row.note || "") : "",
     created_at: row.created_at || null,
+    refunded_at: row.refunded_at || null,
   };
 }
 

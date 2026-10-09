@@ -20,6 +20,9 @@ const TOPUP_DEFAULTS = Object.freeze({
   ttlMinutes: elderpay.ORDER_TTL_MINUTES,
   manualTtlMinutes: 30,
   graceMinutes: 60,
+  // ElderPay rejimida bekor qilingan/muddati o'tgan summa shuncha vaqt
+  // boshqaga berilmaydi (ElderPay buyurtmasi 5 daqiqa yashaydi).
+  exactGraceMinutes: 10,
   // To'lanmagan buyurtmalar shuncha vaqt orqaga qayta tekshiriladi.
   syncWindowMinutes: 180,
   presets: [10000, 20000, 50000, 100000],
@@ -239,6 +242,28 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     return rpc("wallet_cancel_topup", { p_user_id: String(userId), p_topup_id: String(topupId) });
   }
 
+  // ElderPay ulangan bo'lsa — aniq summa (band bo'lsa +1, +2 so'm, 021),
+  // aks holda tasodifiy +1..999 (summa to'lovni ajratadigan yagona belgi).
+  async function createTopupRow(userId, amount) {
+    const args = {
+      p_user_id: String(userId),
+      p_amount: amount,
+      p_ttl_minutes: client.enabled ? TOPUP_DEFAULTS.ttlMinutes : TOPUP_DEFAULTS.manualTtlMinutes,
+      p_grace_minutes: client.enabled ? TOPUP_DEFAULTS.exactGraceMinutes : TOPUP_DEFAULTS.graceMinutes,
+    };
+    if (!client.enabled) {
+      return rpc("wallet_create_topup", args);
+    }
+    try {
+      return await rpc("wallet_create_topup", { ...args, p_exact: true });
+    } catch (error) {
+      // 021 migratsiyasi hali qo'llanmagan — eski funksiya (p_exact'siz).
+      if (!/PGRST202|p_exact|Could not find the function/i.test(String(error?.message))) throw error;
+      console.error("[WALLET_TOPUP_EXACT_MISSING]", error.message);
+      return rpc("wallet_create_topup", args);
+    }
+  }
+
   // 1) bazada noyob summali so'rov; 2) ELDER PAY'da shu summaga buyurtma.
   // ElderPay 409 qaytarsa (shu summada boshqa faol to'lov) — so'rov bekor
   // qilinadi va boshqa summa bilan qayta uriniladi.
@@ -253,13 +278,8 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
       return { ok: false, error: "invalid_amount", min: config.min, max: config.max };
     }
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const result = await rpc("wallet_create_topup", {
-        p_user_id: String(userId),
-        p_amount: amount,
-        p_ttl_minutes: client.enabled ? TOPUP_DEFAULTS.ttlMinutes : TOPUP_DEFAULTS.manualTtlMinutes,
-        p_grace_minutes: TOPUP_DEFAULTS.graceMinutes,
-      });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const result = await createTopupRow(userId, amount);
 
       if (!result || result.ok !== true) {
         return { ok: false, error: result?.error || "topup_failed" };
@@ -403,6 +423,23 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     return credited;
   }
 
+  // Kabinet "Tarix" uchun: balansga tushgan to'ldirishlar.
+  async function listPaidTopups(userId, limit = 50) {
+    const params = new URLSearchParams({
+      user_id: `eq.${String(userId)}`,
+      status: "eq.paid",
+      select: "id,amount,pay_amount,paid_amount,status,provider,provider_order,created_at,expires_at,paid_at",
+      order: "paid_at.desc",
+      limit: String(limit),
+    });
+    const rows = await requestFn(`/wallet_topups?${params.toString()}`);
+    return (Array.isArray(rows) ? rows : []).map((row) => ({
+      ...toPublicTopup(row),
+      provider: row.provider === "manual" ? "manual" : row.provider ? "elderpay" : null,
+      reference: row.provider_order || null,
+    }));
+  }
+
   async function buyLimit(userId, packageId) {
     return rpc("wallet_buy_limit", { p_user_id: String(userId), p_package_id: String(packageId || "") });
   }
@@ -435,6 +472,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     return (Array.isArray(rows) ? rows : []).map((row) => ({
       ...toPublicTopup(row),
       user_id: String(row.user_id),
+      requested: Number(row.amount) || 0,
       provider: row.provider || null,
       provider_order: row.provider_order || null,
       provider_txn_id: row.provider_txn_id || null,
@@ -455,6 +493,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     checkTopup,
     creditIncoming,
     syncRecentTopups,
+    listPaidTopups,
     buyLimit,
     buyFirstmail,
     refundOrder,

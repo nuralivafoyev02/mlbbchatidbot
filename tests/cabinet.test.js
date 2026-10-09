@@ -159,8 +159,11 @@ function installCabinetBackend() {
       case "wallet_get": return { ok: true, balance: balanceOf(userId) };
       case "wallet_create_topup": {
         wallet.topups.filter((t) => t.user_id === userId && t.status === "pending").forEach((t) => { t.status = "cancelled"; });
+        // p_exact (021): aniq summa, band bo'lsa +1, +2 ...; aks holda tasodifiy (+347).
+        let pay = args.p_amount + (args.p_exact ? 0 : 347);
+        while (args.p_exact && wallet.topups.some((t) => t.pay_amount === pay && t.status !== "paid")) pay += 1;
         const topup = {
-          id: wallet.topups.length + 1, user_id: userId, amount: args.p_amount, pay_amount: args.p_amount + 347, status: "pending",
+          id: wallet.topups.length + 1, user_id: userId, amount: args.p_amount, pay_amount: pay, status: "pending",
           created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
         };
         wallet.topups.push(topup);
@@ -480,10 +483,10 @@ test("cabinet: limit is bought from the balance — insufficient funds first, th
     assert.equal(cabinet.wallet.config.auto, true);
     assert.equal((await call(app, USER, "topup_create", { amount: 100 })).body.error, "invalid_amount");
     const topup = (await call(app, USER, "topup_create", { amount: 20000 })).body.topup;
-    assert.equal(topup.pay_amount, 20347);
+    assert.equal(topup.pay_amount, 20000, "ElderPay rejimida aniq summa");
 
     // ElderPay'da aynan shu summaga buyurtma ochildi (shop_key faqat serverda).
-    assert.deepEqual(backend.elderCalls[0], { method: "create", shop_id: "123456", shop_key: "shop-secret-key", amount: 20347, user_id: "tg_777" });
+    assert.deepEqual(backend.elderCalls[0], { method: "create", shop_id: "123456", shop_key: "shop-secret-key", amount: 20000, user_id: "tg_777" });
     assert.ok(!JSON.stringify(topup).includes("shop-secret-key"));
 
     // Pul hali tushmagan.
@@ -496,21 +499,21 @@ test("cabinet: limit is bought from the balance — insufficient funds first, th
 
     backend.elder.orders.get("ord-1").status = "paid";
     const paid = (await call(app, USER, "topup_check", { id: topup.id })).body;
-    assert.deepEqual([paid.credited, paid.balance, paid.topup.status], [true, 20347, "paid"]);
+    assert.deepEqual([paid.credited, paid.balance, paid.topup.status], [true, 20000, "paid"]);
     assert.ok(backend.telegram.some((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)));
 
     // Qayta tekshirish ikkinchi marta yozmaydi.
-    assert.equal((await call(app, USER, "topup_check", { id: topup.id })).body.balance, 20347);
+    assert.equal((await call(app, USER, "topup_check", { id: topup.id })).body.balance, 20000);
 
     const bought = (await call(app, USER, "buy_limit", { id: item.id })).body;
     assert.equal(bought.ok, true);
-    assert.equal(bought.balance, 10347);
+    assert.equal(bought.balance, 10000);
     assert.deepEqual(bought.limit, { kind: "reset_pw", amount: 5, remaining: 7 });
     assert.equal(bought.order.status, "done");
     assert.ok(backend.telegram.some((m) => String(m.chat_id) === "1" && /#sotuv #limit/.test(m.text) && /@ali/.test(m.text)));
 
     const wallet = (await call(app, USER, "wallet")).body;
-    assert.deepEqual(wallet.transactions.map((t) => [t.kind, t.delta]), [["purchase", -10000], ["topup", 20347]]);
+    assert.deepEqual(wallet.transactions.map((t) => [t.kind, t.delta]), [["purchase", -10000], ["topup", 20000]]);
 
     assert.equal((await call(app, USER, "buy_limit", { id: "zzzzzzzz" })).body.error, "not_available");
     assert.equal((await call(app, USER, "buy_firstmail", { id: "zzzzzzzz" })).body.error, "not_available");
@@ -534,6 +537,11 @@ test("cabinet: firstmail from balance reveals credentials to the buyer only; agr
     assert.deepEqual(res.delivery, { email: "secretbox@firstmail.ltd", password: "pw-123" });
     assert.equal(res.balance, 5000);
     assert.deepEqual(res.order.delivery, { email: "secretbox@firstmail.ltd", password: "pw-123" });
+    assert.equal(res.order.title, "secretbox@firstmail.ltd", "tarixda pochta ochiq");
+    const delivered = backend.telegram.find((m) => String(m.chat_id) === "777" && /Firstmail xaridingiz/.test(m.text));
+    assert.ok(delivered, "pochta va parol bot orqali ham yuboriladi");
+    assert.match(delivered.text, /secretbox@firstmail\.ltd/);
+    assert.match(delivered.text, /pw-123/);
 
     // Ikkinchi xaridor ololmaydi.
     backend.wallet.balances.set("888", 50000);
@@ -567,6 +575,7 @@ test("cabinet: ElderPay — 409 picks another amount, cancel closes the order, a
     assert.equal(backend.wallet.topups.length, 2);
     assert.equal(backend.wallet.topups[0].status, "cancelled");
     assert.equal(backend.wallet.topups[1].provider_order, "ord-2");
+    assert.deepEqual(backend.wallet.topups.map((t) => t.pay_amount), [50000, 50001], "band bo'lsa +1 so'm");
 
     // Bekor qilish ElderPay'dagi buyurtmani ham yopadi.
     assert.equal((await call(app, USER, "topup_cancel", { id: first.topup.id })).body.ok, true);
@@ -577,7 +586,8 @@ test("cabinet: ElderPay — 409 picks another amount, cancel closes the order, a
     const order = backend.wallet.topups.find((t) => String(t.id) === second.id).provider_order;
     backend.elder.orders.get(order).status = "paid";
     const cabinet = (await call(app, USER, "cabinet")).body;
-    assert.equal(cabinet.wallet.balance, 30347);
+    assert.equal(cabinet.wallet.balance, 30000);
+    assert.deepEqual(cabinet.topups.map((t) => [t.paid_amount, t.reference]), [[30000, order]], "tarixda to'ldirish ko'rinadi");
     assert.ok(backend.telegram.some((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)));
 
     // ElderPay ishlamasa — foydalanuvchiga tushunarli xato, so'rov ochiq qolmaydi.

@@ -993,7 +993,7 @@
       overflow-x: hidden;
       padding: 20px 20px calc(20px + var(--safe-bottom, 0px));
       transform: translateY(100%);
-      transition: transform .3s
+      transition: transform .32s cubic-bezier(.22, .8, .3, 1)
     }
 
     .modal-overlay.open .modal {
@@ -3525,7 +3525,12 @@
       /* -----------------------------------------------------------------------
          Haptic — bo'limdan bo'limga o'tishda yengil vibratsiya
       ----------------------------------------------------------------------- */
+      var lastHapticAt = 0;
       function hapticLight() {
+        // Bir harakatda (tugma + modal yopilishi) ikki marta titramasin.
+        var now = Date.now();
+        if (now - lastHapticAt < 150) return;
+        lastHapticAt = now;
         try {
           var tg = window.Telegram && window.Telegram.WebApp;
           if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.impactOccurred === "function") {
@@ -3537,6 +3542,17 @@
         } catch (e) { /* vibratsiya ixtiyoriy */ }
       }
       window.hapticLight = hapticLight;
+
+      // Har qanday modal ochilganda va yopilganda — yengil vibratsiya
+      // (animatsiya .modal-overlay / .modal transition'larida).
+      document.querySelectorAll(".modal-overlay").forEach(function (overlay) {
+        var wasOpen = overlay.classList.contains("open");
+        new MutationObserver(function () {
+          var isOpen = overlay.classList.contains("open");
+          if (isOpen !== wasOpen) hapticLight();
+          wasOpen = isOpen;
+        }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
+      });
 
       // Yopish / Bekor qilish / Saqlash va boshqa asosiy tugmalar — yengil vibratsiya.
       // (shop-back o'zi closeFirstmail() ichida vibratsiya beradi.)

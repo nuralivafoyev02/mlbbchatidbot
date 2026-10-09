@@ -208,7 +208,17 @@
     .sheet h2 { font-size: 19px; font-weight: 800; margin-bottom: 4px; }
     .sheet .lead { font-size: 13px; color: var(--text2); margin-bottom: 16px; line-height: 1.45; }
     @keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
+    @keyframes sheetDown { from { transform: none } to { transform: translateY(100%) } }
     @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes fadeOut { from { opacity: 1 } to { opacity: 0 } }
+    .sheet.closing { animation: sheetDown .24s cubic-bezier(.4, 0, .9, .6) both; }
+    .sheet-backdrop.closing { animation: fadeOut .24s both; }
+    .sheet-body { animation: popIn .26s cubic-bezier(.22, .8, .3, 1) both; }
+    .detail-head { text-align: center; margin: 2px 0 14px; }
+    .detail-head .item-ico { width: 56px; height: 56px; border-radius: 18px; font-size: 24px; margin: 0 auto 10px; }
+    .detail-head h2 { word-break: break-all; }
+    .item.tappable { cursor: pointer; }
+    .item.tappable:active { transform: scale(.985); }
 
     .field { margin-bottom: 12px; }
     .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
@@ -449,7 +459,11 @@
           not_available: "Bu mahsulot endi mavjud emas", som: "so'm", pcs: "ta",
           shop_title: "Do'kon", sh_mail: "Pochta", sh_donat: "Donat", sh_orders: "Tarix",
           soon: "Tez kunda!", soon_text: "Donat bo'limi ustida ishlayapmiz. Tez orada shu yerda olmos sotib olishingiz mumkin bo'ladi.",
-          orders_title: "Xaridlarim", no_orders: "Hali xarid qilinmagan.\nDo'kondan sotib olganlaringiz shu yerda ko'rinadi.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
+          orders_title: "Xaridlar va to'lovlar", no_orders: "Hali xarid yoki to'lov yo'q.\nXaridlar va balansga kiritgan pullaringiz shu yerda ko'rinadi.",
+          d_type: "Turi", d_price: "Summa", d_status: "Holati", d_date: "Sana", d_order: "Buyurtma", d_package: "Paket",
+          d_refunded_at: "Qaytarilgan vaqt", d_reason: "Sabab", d_paid_sum: "Balansga tushdi", d_requested: "Tanlangan summa",
+          d_paid_at: "To'langan vaqt", d_created: "So'rov yaratilgan", d_method: "To'lov usuli", d_ref: "To'lov kodi",
+          m_elderpay: "Karta (ElderPay)", m_manual: "Admin tasdiqladi", ev_topup: "Balans to'ldirildi", d_manual_hint: "Bu so'rov admin orqali bajariladi — kerak bo'lsa bog'laning.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
           ord_pending: "Kutilmoqda", ord_done: "Bajarildi", ord_cancelled: "Bekor qilindi",
           ord_firstmail: "Firstmail pochta", ord_limit: "Limit paketi", ord_donat: "Donat",
           ord_refunded: "Qaytarildi",
@@ -515,7 +529,11 @@
           not_available: "Товар больше недоступен", som: "сум", pcs: "шт",
           shop_title: "Магазин", sh_mail: "Почта", sh_donat: "Донат", sh_orders: "История",
           soon: "Скоро!", soon_text: "Мы работаем над разделом доната. Скоро здесь можно будет купить алмазы.",
-          orders_title: "Мои покупки", no_orders: "Покупок пока нет.\nЗдесь появится всё, что вы купите в магазине.", no_orders_setup: "История покупок скоро появится здесь.",
+          orders_title: "Покупки и платежи", no_orders: "Покупок и платежей пока нет.\nЗдесь появятся покупки и пополнения баланса.",
+          d_type: "Тип", d_price: "Сумма", d_status: "Статус", d_date: "Дата", d_order: "Заказ", d_package: "Пакет",
+          d_refunded_at: "Время возврата", d_reason: "Причина", d_paid_sum: "Зачислено", d_requested: "Выбранная сумма",
+          d_paid_at: "Время оплаты", d_created: "Заявка создана", d_method: "Способ оплаты", d_ref: "Код платежа",
+          m_elderpay: "Карта (ElderPay)", m_manual: "Подтвердил админ", ev_topup: "Пополнение баланса", d_manual_hint: "Этот запрос выполняет админ — при необходимости свяжитесь.", no_orders_setup: "История покупок скоро появится здесь.",
           ord_pending: "Ожидает", ord_done: "Выполнено", ord_cancelled: "Отменено",
           ord_firstmail: "Почта Firstmail", ord_limit: "Пакет лимитов", ord_donat: "Донат",
           ord_refunded: "Возврат",
@@ -581,7 +599,11 @@
           not_available: "This item is no longer available", som: "UZS", pcs: "pcs",
           shop_title: "Shop", sh_mail: "Mail", sh_donat: "Donate", sh_orders: "History",
           soon: "Coming soon!", soon_text: "We're working on the donate section. Soon you'll be able to buy diamonds here.",
-          orders_title: "My purchases", no_orders: "No purchases yet.\nEverything you buy in the shop will appear here.", no_orders_setup: "Your purchase history will appear here soon.",
+          orders_title: "Purchases & payments", no_orders: "No purchases or payments yet.\nPurchases and balance top-ups will appear here.",
+          d_type: "Type", d_price: "Amount", d_status: "Status", d_date: "Date", d_order: "Order", d_package: "Pack",
+          d_refunded_at: "Refunded at", d_reason: "Reason", d_paid_sum: "Credited", d_requested: "Chosen amount",
+          d_paid_at: "Paid at", d_created: "Request created", d_method: "Payment method", d_ref: "Payment code",
+          m_elderpay: "Card (ElderPay)", m_manual: "Confirmed by admin", ev_topup: "Balance top-up", d_manual_hint: "This request is handled by the admin — contact them if needed.", no_orders_setup: "Your purchase history will appear here soon.",
           ord_pending: "Pending", ord_done: "Completed", ord_cancelled: "Cancelled",
           ord_firstmail: "Firstmail mailbox", ord_limit: "Limit pack", ord_donat: "Donate",
           ord_refunded: "Refunded",
@@ -652,6 +674,12 @@
         return String(Math.round(Number(value) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
       }
       function acc(a) { return a.account_id + " (" + a.zone_id + ")"; }
+      function fmtDate(iso) {
+        var d = new Date(iso);
+        if (!iso || isNaN(d.getTime())) return "—";
+        var p = function (n) { return String(n).padStart(2, "0"); };
+        return p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear() + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+      }
 
       var AGO = {
         uz: { now: "hozirgina", suffix: " oldin", units: ["yil", "oy", "kun", "soat", "daq"] },
@@ -721,22 +749,44 @@
       }
 
       // ---------------------------------------------------------------- sheet
+      // Oyna: pastdan chiqadi, yopilganda pastga tushib so'nadi; ikkalasida ham
+      // yengil vibratsiya. Ochiq oyna ustidan yangisi ochilsa — kontent joyida
+      // almashadi (oyna qayta sakramaydi).
+      var sheetSeq = 0;
       function openSheet(html) {
         var root = document.getElementById("sheetRoot");
-        root.innerHTML = '<div class="sheet-backdrop"></div><div class="sheet"><div class="sheet-inner"><div class="sheet-handle"></div>' + html + "</div></div>";
+        var current = root.querySelector(".sheet:not(.closing) .sheet-inner");
+        sheetSeq += 1;
+        haptic("light");
+        if (current) {
+          stopCountdown();
+          stopTopupTimers();
+          setSheet(current, html);
+          return current;
+        }
+        root.innerHTML = '<div class="sheet-backdrop"></div><div class="sheet"><div class="sheet-inner"><div class="sheet-handle"></div>' +
+          '<div class="sheet-body">' + html + "</div></div></div>";
         root.querySelector(".sheet-backdrop").addEventListener("click", closeSheet);
         syncBackButton();
-        haptic("light");
         return root.querySelector(".sheet-inner");
       }
       function closeSheet() {
-        document.getElementById("sheetRoot").innerHTML = "";
-        syncBackButton();
+        var root = document.getElementById("sheetRoot");
         stopCountdown();
         stopTopupTimers();
+        var sheet = root.querySelector(".sheet");
+        if (!sheet || sheet.classList.contains("closing")) { syncBackButton(); return; }
+        haptic("light");
+        var seq = ++sheetSeq;
+        sheet.classList.add("closing");
+        var backdrop = root.querySelector(".sheet-backdrop");
+        if (backdrop) backdrop.classList.add("closing");
+        setTimeout(function () {
+          if (seq === sheetSeq) { root.innerHTML = ""; syncBackButton(); }
+        }, 240);
       }
       function setSheet(sheet, html) {
-        sheet.innerHTML = '<div class="sheet-handle"></div>' + html;
+        sheet.innerHTML = '<div class="sheet-handle"></div><div class="sheet-body">' + html + "</div>";
       }
 
       // ---------------------------------------------------------------- nav
@@ -846,12 +896,12 @@
       // Telegram "Orqaga": avval oyna (sheet), keyin do'kondan asosiyga.
       function syncBackButton() {
         if (!tg || !tg.BackButton) return;
-        var open = Boolean(document.getElementById("sheetRoot").firstChild) || state.mode === "shop";
+        var open = Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop";
         if (open) tg.BackButton.show(); else tg.BackButton.hide();
       }
 
       function onBack() {
-        if (document.getElementById("sheetRoot").firstChild) { closeSheet(); return; }
+        if (document.querySelector("#sheetRoot .sheet:not(.closing)")) { closeSheet(); return; }
         if (state.mode === "shop") switchMode("main");
       }
 
@@ -1048,34 +1098,106 @@
         return o.title || L("ord_" + o.kind);
       }
 
+      function orderPrice(o) {
+        return o.price ? som(o.price) : (o.price_text || L("price_agreed"));
+      }
+
       function orderItemHtml(o) {
         var k = ORDER_KINDS[o.kind] || ORDER_KINDS.limit;
-        var price = o.price ? som(o.price) : (o.price_text || L("price_agreed"));
-        // Balansdan olingan pochta — bosilsa login/parol ochiladi.
-        var creds = o.kind === "firstmail" && o.delivery && o.delivery.email;
-        var sub = esc(L("ord_" + o.kind)) + " · " + esc(timeAgo(o.created_at));
+        var sub = esc(L("ord_" + o.kind)) + " · " + esc(fmtDate(o.created_at));
         if (o.status === "refunded") sub += '<br><span style="color:#a5b4fc">' + esc(L("refund_note")) + (o.note ? ": " + esc(o.note) : "") + "</span>";
-        if (creds) sub += ' · <span style="color:#6ee7b7">' + icon("key") + " " + esc(L("fm_open")) + "</span>";
-        return "<" + (creds ? 'button data-order="' + esc(o.id) + '"' : "div") + ' class="item"><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
+        if (o.kind === "firstmail" && o.delivery && o.delivery.email) sub += ' · <span style="color:#6ee7b7">' + icon("key") + "</span>";
+        return '<button class="item tappable" data-order="' + esc(o.id) + '"><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
           '<div class="grow"><div class="item-title ellipsis">' + esc(orderTitle(o)) + "</div>" +
           '<div class="item-sub">' + sub + "</div></div>" +
-          '<div class="item-right"><div class="price-sum" style="font-size:14px">' + esc(price) + "</div>" +
-          '<div style="margin-top:5px"><span class="pill ' + (ORDER_STATUS[o.status] || "gold") + '">' + esc(L("ord_" + o.status)) + "</span></div></div></" + (creds ? "button" : "div") + ">";
+          '<div class="item-right"><div class="price-sum" style="font-size:14px">' + esc(orderPrice(o)) + "</div>" +
+          '<div style="margin-top:5px"><span class="pill ' + (ORDER_STATUS[o.status] || "gold") + '">' + esc(L("ord_" + o.status)) + "</span></div></div></button>";
+      }
+
+      function topupItemHtml(t) {
+        var sum = t.paid_amount || t.pay_amount;
+        return '<button class="item tappable" data-topup="' + esc(t.id) + '"><div class="item-ico green">' + icon("plus-circle") + "</div>" +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(L("ev_topup")) + "</div>" +
+          '<div class="item-sub">' + esc(L(t.provider === "manual" ? "m_manual" : "m_elderpay")) + " · " + esc(fmtDate(t.paid_at || t.created_at)) + "</div></div>" +
+          '<div class="item-right"><div class="delta plus" style="font-size:14px">+' + esc(som(sum)) + "</div>" +
+          '<div style="margin-top:5px"><span class="pill green">' + esc(L("ord_done")) + "</span></div></div></button>";
+      }
+
+      // Xaridlar + balansga kiritilgan pullar — vaqt bo'yicha bitta lenta.
+      function timeline() {
+        var d = state.data;
+        var rows = (d.orders || []).map(function (o) { return { at: o.created_at, html: orderItemHtml(o) }; })
+          .concat((d.topups || []).map(function (t) { return { at: t.paid_at || t.created_at, html: topupItemHtml(t) }; }));
+        rows.sort(function (a, b) { return new Date(b.at).getTime() - new Date(a.at).getTime(); });
+        return rows;
       }
 
       function renderOrders() {
         var d = state.data;
-        var orders = d.orders || [];
-        var html = walletCardHtml() + '<div class="section-title" style="margin-top:8px">' + esc(L("orders_title")) + (orders.length ? " · " + orders.length : "") + "</div>";
-        html += orders.length
-          ? orders.map(orderItemHtml).join("")
+        var rows = timeline();
+        var html = walletCardHtml() + '<div class="section-title" style="margin-top:8px">' + esc(L("orders_title")) + (rows.length ? " · " + rows.length : "") + "</div>";
+        html += rows.length
+          ? rows.map(function (r) { return r.html; }).join("")
           : '<div class="empty">' + icon("receipt") + esc(L(d.ordersAvailable === false ? "no_orders_setup" : "no_orders")).replace(/\n/g, "<br>") + "</div>";
         app.innerHTML = html;
         bindWalletCard();
         bindAll("[data-order]", function (el) {
           var o = (state.data.orders || []).filter(function (x) { return String(x.id) === el.dataset.order; })[0];
-          if (o && o.delivery) showCreds(openSheet(""), o.delivery, orderTitle(o), "");
+          if (o) openOrderDetail(o);
         });
+        bindAll("[data-topup]", function (el) {
+          var t = (state.data.topups || []).filter(function (x) { return String(x.id) === el.dataset.topup; })[0];
+          if (t) openTopupDetail(t);
+        });
+      }
+
+      function detailHead(ico, tone, title, sub) {
+        return '<div class="detail-head"><div class="item-ico ' + tone + '">' + icon(ico) + "</div><h2>" + esc(title) + "</h2>" +
+          (sub ? '<div class="item-sub">' + sub + "</div>" : "") + "</div>";
+      }
+
+      function openOrderDetail(o) {
+        var k = ORDER_KINDS[o.kind] || ORDER_KINDS.limit;
+        var rows = payRow(L("d_type"), L("ord_" + o.kind));
+        if (o.kind === "firstmail" && o.delivery && o.delivery.email) {
+          rows += payRow(L("fm_email"), o.delivery.email, o.delivery.email);
+          if (o.delivery.password) rows += payRow(L("fm_password"), o.delivery.password, o.delivery.password);
+        } else if (o.kind === "limit") {
+          rows += payRow(L("d_package"), orderTitle(o));
+        } else if (o.title) {
+          rows += payRow(L("fm_email"), o.title);
+        }
+        rows += payRow(L("d_price"), orderPrice(o)) + payRow(L("d_date"), fmtDate(o.created_at)) + payRow(L("d_order"), "#" + o.id, String(o.id));
+        if (o.status === "refunded") {
+          rows += payRow(L("d_refunded_at"), fmtDate(o.refunded_at)) + (o.note ? payRow(L("d_reason"), o.note) : "");
+        }
+        var manual = o.status === "pending" && !o.paid;
+        var sheet = openSheet(detailHead(k.icon, k.tone, orderTitle(o),
+          '<span class="pill ' + (ORDER_STATUS[o.status] || "gold") + '">' + esc(L("ord_" + o.status)) + "</span>") +
+          '<div class="paybox">' + rows + "</div>" +
+          (o.status === "refunded" ? '<div class="hint" style="text-align:center">' + esc(L("refund_note")) + "</div>" : "") +
+          (manual ? '<div class="hint" style="text-align:center">' + esc(L("d_manual_hint")) + "</div>" +
+            (state.data.supportUsername ? '<button class="btn primary" id="dContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "") : "") +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button>");
+        bindCopy(sheet);
+        var c = sheet.querySelector("#dContact");
+        if (c) c.addEventListener("click", contactAdmin);
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      function openTopupDetail(t) {
+        var rows = payRow(L("d_paid_sum"), som(t.paid_amount || t.pay_amount)) +
+          payRow(L("d_requested"), som(t.amount)) +
+          payRow(L("d_paid_at"), fmtDate(t.paid_at)) +
+          payRow(L("d_created"), fmtDate(t.created_at)) +
+          payRow(L("d_method"), L(t.provider === "manual" ? "m_manual" : "m_elderpay")) +
+          (t.reference ? payRow(L("d_ref"), t.reference, t.reference) : "");
+        var sheet = openSheet(detailHead("plus-circle", "green", "+" + som(t.paid_amount || t.pay_amount),
+          '<span class="pill green">' + esc(L("ev_topup")) + "</span>") +
+          '<div class="paybox">' + rows + "</div>" +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button>");
+        bindCopy(sheet);
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
       }
 
       function rememberOrder(result) {
@@ -1488,6 +1610,8 @@
             stopTopupTimers();
             haptic("success");
             wallet().topup = null;
+            state.data.topups = [result.topup].concat((state.data.topups || []).filter(function (x) { return x.id !== result.topup.id; }));
+            if (state.mode === "shop" && currentTab() === "orders") renderOrders();
             setBalance(result.balance);
             showDone(sheet, L("tp_done_title"), L("tp_done_text", { sum: som(result.topup.paid_amount || topup.pay_amount), bal: som(result.balance) }));
             return;

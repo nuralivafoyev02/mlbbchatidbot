@@ -432,7 +432,7 @@ async function handleCabinet(res, { config, user }) {
   const wallet = createWalletFor(config);
   // Oyna yopilib qolgan to'lovlar — balansni ko'rsatishdan oldin yoziladi.
   await settle(syncUserTopups(config, wallet, user), "TOPUP_SYNC");
-  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup] = await Promise.all([
+  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup, paidTopups] = await Promise.all([
     loadPreferredLanguage(config, user),
     settle(listUserAccounts(config, userId), "ACCOUNTS"),
     settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
@@ -448,6 +448,7 @@ async function handleCabinet(res, { config, user }) {
     settle(wallet.getBalance(userId), "WALLET"),
     settle(wallet.getConfig(), "WALLET_CONFIG"),
     settle(wallet.getActiveTopup(userId), "TOPUP"),
+    settle(wallet.listPaidTopups(userId, CABINET_HISTORY_LIMIT), "TOPUPS"),
   ]);
 
   return json(res, 200, {
@@ -481,6 +482,8 @@ async function handleCabinet(res, { config, user }) {
     wallet: typeof balance === "number" && walletConfig
       ? { balance, config: wallet.publicConfig(walletConfig), topup: topup || null }
       : null,
+    // Tarix: balansga tushgan to'ldirishlar (xaridlar bilan bitta lentada).
+    topups: Array.isArray(paidTopups) ? paidTopups : [],
   });
 }
 
@@ -764,6 +767,70 @@ async function notifyTopupCredited(config, user, topup, balance) {
   }
 }
 
+const FIRSTMAIL_DELIVERY_TEXT = {
+  uz: (d) => [
+    "✅ <b>Firstmail xaridingiz</b>",
+    "",
+    `✉️ Pochta: <code>${d.email}</code>`,
+    `🔑 Parol: <code>${d.password}</code>`,
+    "",
+    `💳 Balansdan yechildi: <b>${d.price}</b>`,
+    `🧾 Buyurtma: <code>#${d.order}</code>`,
+    "",
+    "Ma'lumotlar Shaxsiy kabinet → Do'kon → Tarix bo'limida ham saqlanadi.",
+  ],
+  ru: (d) => [
+    "✅ <b>Ваша покупка Firstmail</b>",
+    "",
+    `✉️ Почта: <code>${d.email}</code>`,
+    `🔑 Пароль: <code>${d.password}</code>`,
+    "",
+    `💳 Списано с баланса: <b>${d.price}</b>`,
+    `🧾 Заказ: <code>#${d.order}</code>`,
+    "",
+    "Данные также сохранены в Личном кабинете → Магазин → История.",
+  ],
+  en: (d) => [
+    "✅ <b>Your Firstmail purchase</b>",
+    "",
+    `✉️ Email: <code>${d.email}</code>`,
+    `🔑 Password: <code>${d.password}</code>`,
+    "",
+    `💳 Charged from balance: <b>${d.price}</b>`,
+    `🧾 Order: <code>#${d.order}</code>`,
+    "",
+    "The details are also saved in Personal cabinet → Shop → History.",
+  ],
+};
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Sotib olingan pochta login/paroli bot chatiga ham yuboriladi (best effort —
+// ma'lumot kabinet tarixida baribir saqlangan).
+async function sendFirstmailToUser(config, user, result, langRaw) {
+  if (!config.botToken) return;
+  const lang = SUPPORTED_LANGS.includes(langRaw) ? langRaw : "uz";
+  const unit = lang === "uz" ? "so'm" : lang === "ru" ? "сум" : "UZS";
+  const text = FIRSTMAIL_DELIVERY_TEXT[lang]({
+    email: escapeHtml(result.email),
+    password: escapeHtml(result.password || "—"),
+    price: `${String(Math.round(Number(result.price) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ${unit}`,
+    order: escapeHtml(result.order_id),
+  }).join("\n");
+
+  try {
+    await fetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: String(user.id), text, parse_mode: "HTML" }),
+    });
+  } catch (error) {
+    console.error("[WALLET_FM_DELIVERY]", error?.message);
+  }
+}
+
 // Sotuv haqida do'kon egasiga xabar (best effort — xarid allaqachon bajarilgan).
 async function notifyWalletSale(config, user, details) {
   try {
@@ -845,6 +912,7 @@ async function handleBuyFirstmail(res, { config, user, body }) {
   }
 
   await notifyWalletSale(config, user, { kind: "firstmail", item, orderId: result.order_id, price: result.price });
+  await sendFirstmailToUser(config, user, result, body.lang);
 
   return json(res, 200, {
     ok: true,

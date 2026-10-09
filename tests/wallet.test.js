@@ -101,6 +101,7 @@ async function createWalletDb() {
     "018_quota_usage_events.sql",
     "019_shop_orders.sql",
     "020_wallet.sql",
+    "021_wallet_exact_amount.sql",
   ]) {
     await db.exec(fs.readFileSync(path.join(__dirname, "..", "supabase", file), "utf8"));
   }
@@ -171,6 +172,20 @@ test("wallet sql: firstmail is sold once; refund returns money once and can rest
     ["purchase", -15000, 35000],
     ["refund", 15000, 50000],
   ]);
+  await db.close();
+});
+
+test("wallet sql: exact mode gives the chosen amount, +1/+2 when it's taken", async () => {
+  const { db, one } = await createWalletDb();
+  const pays = [];
+  for (let user = 1; user <= 3; user += 1) {
+    pays.push((await one("select wallet_create_topup($1, 5000, 5, 10, true)", [user])).topup.pay_amount);
+  }
+  assert.deepEqual(pays, [5000, 5001, 5002]);
+  // Bekor qilingan summa grace ichida boshqaga berilmaydi.
+  const own = (await one("select wallet_create_topup(1, 7000, 5, 10, true)")).topup;
+  assert.equal(own.pay_amount, 7000);
+  assert.equal((await one("select wallet_create_topup(4, 5000, 5, 10, true)")).topup.pay_amount, 5003);
   await db.close();
 });
 
