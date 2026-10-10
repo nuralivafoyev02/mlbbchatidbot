@@ -257,6 +257,51 @@
       .slide-from-right, .slide-from-left { animation: none }
     }
 
+    /* ------------------------------------------------------------ yuklanish ekrani */
+    .loader {
+      position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; padding: 24px;
+      background: radial-gradient(circle at 50% 36%, rgba(109, 106, 248, .24), transparent 62%), var(--bg);
+      transition: opacity .35s ease, visibility .35s;
+    }
+    .loader.done { opacity: 0; visibility: hidden; pointer-events: none; }
+    .ld-box { width: 100%; max-width: 320px; text-align: center; }
+    .ld-orb { position: relative; width: 132px; height: 132px; margin: 0 auto 28px; }
+    .ld-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--accent2); border-right-color: rgba(155, 107, 255, .35); animation: spin 1.1s linear infinite; }
+    .ld-ring.r2 { inset: 14px; border-top-color: var(--green); border-right-color: transparent; border-left-color: rgba(25, 195, 125, .3); animation-duration: 1.7s; animation-direction: reverse; }
+    .ld-core {
+      position: absolute; inset: 32px; border-radius: 22px; display: grid; place-items: center; font-size: 30px; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 12px 40px rgba(109, 106, 248, .45);
+      animation: ldPulse 1.6s ease-in-out infinite;
+    }
+    .ld-title { font-size: 18px; font-weight: 800; }
+    .ld-text { position: relative; height: 22px; margin-top: 8px; overflow: hidden; color: var(--text2); font-size: 14px; }
+    .ld-text span { position: absolute; left: 0; right: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: ldTextIn .45s cubic-bezier(.22, .8, .3, 1) both; }
+    .ld-text span.out { animation: ldTextOut .35s ease both; }
+    .ld-bar { width: 180px; height: 4px; border-radius: 99px; margin: 22px auto 0; background: var(--card-strong); overflow: hidden; }
+    .ld-bar i { display: block; width: 40%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--green)); animation: ldBar 1.3s ease-in-out infinite; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    @keyframes ldPulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.07) } }
+    @keyframes ldTextIn { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+    @keyframes ldTextOut { from { opacity: 1; transform: none } to { opacity: 0; transform: translateY(-12px) } }
+    @keyframes ldBar { 0% { transform: translateX(-110%) } 100% { transform: translateX(260%) } }
+
+    /* Amal bajarilguncha tugma ichida spinner */
+    .btn.busy { position: relative; color: transparent !important; pointer-events: none; }
+    .btn.busy::after {
+      content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+      border: 2.5px solid rgba(255, 255, 255, .25); border-top-color: #fff; animation: spin .7s linear infinite;
+    }
+    .btn.danger.busy::after { border-color: rgba(240, 80, 110, .25); border-top-color: var(--red); }
+    .switch.busy { pointer-events: none; opacity: .75; }
+    .switch.busy::before {
+      content: ""; position: absolute; right: calc(100% + 10px); top: 50%; width: 16px; height: 16px; margin-top: -8px; border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, .2); border-top-color: var(--text); animation: spin .7s linear infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ld-core, .ld-text span, .ld-text span.out { animation: none; }
+      .ld-ring, .ld-bar i, .btn.busy::after, .switch.busy::before { animation-duration: 2s; }
+    }
+
     .skeleton { border-radius: 14px; height: 64px; margin-bottom: 8px; background: linear-gradient(90deg, var(--card) 25%, var(--card-strong) 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
     @keyframes shimmer { to { background-position: -200% 0; } }
 
@@ -274,6 +319,14 @@
   </style>
 </head>
 <body>
+  <div class="loader" id="loader" role="status" aria-live="polite">
+    <div class="ld-box">
+      <div class="ld-orb"><div class="ld-ring"></div><div class="ld-ring r2"></div><div class="ld-core"><i class="bi bi-controller" aria-hidden="true"></i></div></div>
+      <div class="ld-title" id="ldTitle">Mobile Legends</div>
+      <div class="ld-text" id="ldText"></div>
+      <div class="ld-bar"><i></i></div>
+    </div>
+  </div>
   <div id="app"></div>
   <nav class="nav hidden" id="nav"></nav>
   <div id="sheetRoot"></div>
@@ -290,7 +343,8 @@
       var I18N = {
         uz: {
           title: "Mening akkauntim", tab_profile: "Profil", tab_matches: "O'yinlar", tab_heroes: "Qahramonlar",
-          tab_friends: "Do'stlar", tab_settings: "Sozlama", loading: "Yuklanmoqda...",
+          tab_friends: "Do'stlar", tab_settings: "Sozlama", loading: "Yuklanmoqda...", ld_title: "Akkauntingiz ochilmoqda",
+          ld_texts: ["Telegram orqali tasdiqlanmoqda…", "Mobile Legends serveriga ulanilmoqda…", "Profil ma'lumotlari olinmoqda…", "Reyting va statistika hisoblanmoqda…", "Sezonlar va o'yinlar tayyorlanmoqda…", "Deyarli tayyor…"],
           not_telegram_title: "Telegram orqali oching", not_telegram_text: "Bu sahifa faqat bot ichidagi \"Mening akkauntim\" tugmasi orqali ishlaydi.",
           no_link_title: "Akkaunt ulanmagan", no_link_text: "Botda Mening profilim → Mobile Legends'ga ulash orqali akkauntingizni ulang.",
           expired_title: "Sessiya tugagan", expired_text: "Mobile Legends sessiyasi yaroqsiz bo'lib qoldi. Chiqib, bot orqali qayta ulang.",
@@ -311,7 +365,8 @@
         },
         ru: {
           title: "Мой аккаунт", tab_profile: "Профиль", tab_matches: "Матчи", tab_heroes: "Герои",
-          tab_friends: "Друзья", tab_settings: "Настройки", loading: "Загрузка...",
+          tab_friends: "Друзья", tab_settings: "Настройки", loading: "Загрузка...", ld_title: "Открываем ваш аккаунт",
+          ld_texts: ["Проверяем вход через Telegram…", "Подключаемся к серверу Mobile Legends…", "Получаем данные профиля…", "Считаем ранг и статистику…", "Готовим сезоны и матчи…", "Почти готово…"],
           not_telegram_title: "Откройте через Telegram", not_telegram_text: "Эта страница работает только через кнопку \"Мой аккаунт\" в боте.",
           no_link_title: "Аккаунт не привязан", no_link_text: "Привяжите аккаунт в боте: Мой профиль → Привязать к Mobile Legends.",
           expired_title: "Сессия истекла", expired_text: "Сессия Mobile Legends недействительна. Выйдите и привяжите заново через бота.",
@@ -332,7 +387,8 @@
         },
         en: {
           title: "My account", tab_profile: "Profile", tab_matches: "Matches", tab_heroes: "Heroes",
-          tab_friends: "Friends", tab_settings: "Settings", loading: "Loading...",
+          tab_friends: "Friends", tab_settings: "Settings", loading: "Loading...", ld_title: "Opening your account",
+          ld_texts: ["Verifying with Telegram…", "Connecting to Mobile Legends…", "Fetching your profile…", "Calculating rank and stats…", "Preparing seasons and matches…", "Almost there…"],
           not_telegram_title: "Open in Telegram", not_telegram_text: "This page only works via the \"My account\" button in the bot.",
           no_link_title: "No linked account", no_link_text: "Link your account in the bot: My profile → Link to Mobile Legends.",
           expired_title: "Session expired", expired_text: "Your Mobile Legends session is no longer valid. Log out and link again via the bot.",
@@ -382,6 +438,55 @@
       }
 
       function L(key) { return (I18N[state.lang] || I18N.uz)[key] || I18N.en[key] || key; }
+
+      // ---- yuklanish ekrani: aylanuvchi halqalar + almashib turadigan matnlar.
+      // Til bootstrap'gacha noma'lum — Telegram'dagi tildan taxmin qilinadi.
+      var ldTimer = null;
+      var ldIndex = 0;
+      var ldLangKnown = false;
+      function ldLang() {
+        if (ldLangKnown) return state.lang;
+        var code = String((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code) || "").slice(0, 2);
+        return I18N[code] ? code : "uz";
+      }
+      function ldT(key) { return (I18N[ldLang()] || I18N.uz)[key] || I18N.en[key]; }
+      function ldNext() {
+        var box = document.getElementById("ldText");
+        var texts = ldT("ld_texts");
+        var old = box.querySelector("span:not(.out)");
+        if (old) {
+          old.classList.add("out");
+          setTimeout(function () { if (old.parentNode) old.parentNode.removeChild(old); }, 350);
+        }
+        var span = document.createElement("span");
+        span.textContent = texts[ldIndex % texts.length];
+        // Oxirgi matn ("Deyarli tayyor") qayta-qayta aylanmasin — undan oldingilari aylanadi.
+        ldIndex = ldIndex + 1 >= texts.length ? 1 : ldIndex + 1;
+        box.appendChild(span);
+      }
+      function showLoader() {
+        var loader = document.getElementById("loader");
+        document.getElementById("ldTitle").textContent = ldT("ld_title");
+        loader.classList.remove("done");
+        if (ldTimer) return;
+        ldIndex = 0;
+        document.getElementById("ldText").innerHTML = "";
+        ldNext();
+        ldTimer = setInterval(ldNext, 1800);
+      }
+      function hideLoader() {
+        document.getElementById("loader").classList.add("done");
+        clearInterval(ldTimer);
+        ldTimer = null;
+      }
+
+      // Tugma ichida spinner (amal tugaguncha qayta bosilmaydi).
+      function setBusy(el, on) {
+        if (!el) return;
+        el.classList.toggle("busy", Boolean(on));
+        el.setAttribute("aria-busy", on ? "true" : "false");
+        if ("disabled" in el) el.disabled = Boolean(on);
+      }
 
       function esc(value) {
         return String(value == null ? "" : value)
@@ -519,8 +624,10 @@
         }).join("");
         app.innerHTML = '<div class="state"><div class="big' + (warn ? " warn" : "") + '">' + icon(iconName) + "</div><h2>" + esc(title) + "</h2><p>" + esc(text) + "</p>" + buttons + "</div>";
         (actions || []).forEach(function (a, i) {
-          app.querySelector('[data-state-action="' + i + '"]').addEventListener("click", a.onClick);
+          var btn = app.querySelector('[data-state-action="' + i + '"]');
+          btn.addEventListener("click", function () { a.onClick(btn); });
         });
+        hideLoader();
       }
 
       function renderSkeleton(count) {
@@ -801,14 +908,14 @@
         if (entry && entry.unavailable) return html + noticeHtml();
         if (!entry || !entry.loaded) return html + renderSkeleton(6);
         html += itemsHtml || '<div class="state"><p>' + esc(L("empty")) + "</p></div>";
-        if (entry.hasNext) html += '<button class="btn" id="loadMore">' + esc(entry.loading ? L("loading") : L("load_more")) + "</button>";
+        if (entry.hasNext) html += '<button class="btn' + (entry.loading ? " busy" : "") + '" id="loadMore"' + (entry.loading ? " disabled" : "") + ">" + esc(L("load_more")) + "</button>";
         return html;
       }
 
       function afterListRender(kind, rerender) {
         bindSeasonSelect(rerender);
         var more = document.getElementById("loadMore");
-        if (more) more.addEventListener("click", function () { haptic("light"); more.textContent = L("loading"); loadList(kind, true); });
+        if (more) more.addEventListener("click", function () { haptic("light"); setBusy(more, true); loadList(kind, true); });
       }
 
       function matchRow(m, attrs) {
@@ -969,7 +1076,7 @@
               (cursor ? '<button class="btn" id="heroMore">' + esc(L("load_more")) + "</button>" : "");
             sheet.innerHTML = html;
             var more = sheet.querySelector("#heroMore");
-            if (more) more.addEventListener("click", function () { more.textContent = L("loading"); load(); });
+            if (more) more.addEventListener("click", function () { haptic("light"); setBusy(more, true); load(); });
           });
         }
         load();
@@ -1000,10 +1107,13 @@
         if (toggle) {
           toggle.addEventListener("change", function () {
             var wanted = toggle.checked;
+            var sw = toggle.closest(".switch");
             toggle.disabled = true;
+            setBusy(sw, true);
             haptic("select");
             api("privacy_set", { visible: wanted }).then(function (result) {
               toggle.disabled = false;
+              setBusy(sw, false);
               if (result.ok) {
                 state.overview.privacy = result.data || { privacy: !wanted };
                 haptic("success");
@@ -1017,7 +1127,8 @@
           });
         }
         document.getElementById("openBotBtn").addEventListener("click", openBot);
-        document.getElementById("logoutBtn").addEventListener("click", doLogout);
+        var logoutBtn = document.getElementById("logoutBtn");
+        logoutBtn.addEventListener("click", function () { doLogout(logoutBtn); });
       }
 
       function confirmAction(text) {
@@ -1029,12 +1140,13 @@
         });
       }
 
-      function doLogout() {
+      function doLogout(btn) {
         haptic("warning");
         confirmAction(L("logout_confirm")).then(function (ok) {
           if (!ok) return;
+          setBusy(btn, true);
           api("logout").then(function (result) {
-            if (!result.ok) { haptic("error"); toast(L("error_text")); return; }
+            if (!result.ok) { setBusy(btn, false); haptic("error"); toast(L("error_text")); return; }
             haptic("success");
             toast(L("logged_out"));
             try { localStorage.removeItem("mlbb_account_row"); } catch (e) { /* noop */ }
@@ -1045,6 +1157,7 @@
 
       // ---------------------------------------------------------------- boot
       function loadOverview() {
+        showLoader();
         app.innerHTML = switcherHtml() + '<div class="skeleton" style="height:150px"></div>' + renderSkeleton(4);
         bindSwitcher();
         api("overview").then(function (result) {
@@ -1054,12 +1167,14 @@
           state.sid = seasons.length ? seasons[0] : null;
           renderNav();
           renderTab();
+          hideLoader();
         });
       }
 
       function boot() {
         document.getElementById("nav").classList.add("hidden");
         closeSheet();
+        showLoader();
         app.innerHTML = '<div class="skeleton" style="height:150px"></div>' + renderSkeleton(4);
 
         if (!tg || !tg.initData) {
@@ -1070,6 +1185,8 @@
         api("bootstrap").then(function (result) {
           if (!result.ok) return handleError(result, boot);
           state.lang = I18N[result.lang] ? result.lang : "uz";
+          ldLangKnown = true;
+          document.getElementById("ldTitle").textContent = L("ld_title");
           state.botUsername = result.botUsername;
           state.accounts = result.accounts || [];
           document.documentElement.lang = state.lang;

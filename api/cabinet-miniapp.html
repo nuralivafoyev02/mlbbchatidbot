@@ -186,6 +186,14 @@
     .btn.green { background: linear-gradient(135deg, var(--green), #059669); border-color: transparent; color: #fff; }
     .btn.danger { background: rgba(244, 63, 94, .12); border-color: rgba(244, 63, 94, .32); color: var(--red); }
     .btn:disabled { opacity: .55; }
+    /* Amal bajarilguncha tugma ichida spinner */
+    .btn.busy, .link-btn.busy { position: relative; color: transparent !important; pointer-events: none; }
+    .btn.busy:disabled { opacity: .85; }
+    .btn.busy::after, .link-btn.busy::after {
+      content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+      border: 2.5px solid rgba(255, 255, 255, .25); border-top-color: #fff; animation: spin .7s linear infinite;
+    }
+    .btn.danger.busy::after, .link-btn.busy::after { border-color: rgba(244, 63, 94, .25); border-top-color: var(--red); }
     .btn + .btn { margin-top: 8px; }
 
     .empty { text-align: center; padding: 30px 16px; color: var(--text2); font-size: 13.5px; line-height: 1.5; }
@@ -784,6 +792,14 @@
         } catch (e) { /* eski mijozlar */ }
       }
 
+      // Tugma ichida spinner (amal tugaguncha qayta bosilmaydi).
+      function setBusy(el, on) {
+        if (!el) return;
+        el.classList.toggle("busy", Boolean(on));
+        el.setAttribute("aria-busy", on ? "true" : "false");
+        el.disabled = Boolean(on);
+      }
+
       var toastTimer = null;
       function toast(text) {
         var el = document.getElementById("toast");
@@ -1096,7 +1112,7 @@
         if (addBtn) addBtn.addEventListener("click", openAddAccount);
         bindAll("[data-ml-open]", function (el) { openMlAccount(el.dataset.mlOpen); });
         bindAll("[data-ml-link]", function (el) { openLink(el.dataset.mlLink); });
-        bindAll("[data-remove]", function (el) { removeAccount(el.dataset.remove); });
+        bindAll("[data-remove]", function (el) { removeAccount(el.dataset.remove, el); });
       }
 
       function renderHistory() {
@@ -1605,9 +1621,9 @@
             input.focus();
             return;
           }
-          btn.disabled = true;
+          setBusy(btn, true);
           api("topup_create", { amount: amount }).then(function (result) {
-            btn.disabled = false;
+            setBusy(btn, false);
             if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
             haptic("success");
             w.topup = result.topup;
@@ -1684,10 +1700,10 @@
       function checkTopup(sheet, topup, silent, btn) {
         if (topupChecking) return;
         topupChecking = true;
-        if (btn) btn.disabled = true;
+        setBusy(btn, true);
         api("topup_check", { id: topup.id }).then(function (result) {
           topupChecking = false;
-          if (btn) btn.disabled = false;
+          setBusy(btn, false);
           if (!sheet.isConnected) return;
           var status = result.topup && result.topup.status;
           if (status === "paid") {
@@ -1877,9 +1893,9 @@
           var accountId = accInput.value.replace(/\D/g, "");
           var zoneId = zoneInput.value.replace(/\D/g, "");
           if (!/^\d{5,12}$/.test(accountId) || !/^\d{1,8}$/.test(zoneId)) { haptic("error"); toast(errText("invalid_input")); return; }
-          btn.disabled = true;
+          setBusy(btn, true);
           api("account_add", { account_id: accountId, zone_id: zoneId }).then(function (result) {
-            btn.disabled = false;
+            setBusy(btn, false);
             if (!result.ok) { haptic("error"); toast(errText(result.error || "add_failed")); return; }
             haptic("success");
             state.data.accounts = result.accounts || state.data.accounts;
@@ -1892,14 +1908,15 @@
         });
       }
 
-      function removeAccount(rowId) {
+      function removeAccount(rowId, btn) {
         var a = findAccount(rowId);
         if (!a) return;
         haptic("warning");
         confirmAction(L("remove_confirm", { acc: acc(a) })).then(function (ok) {
           if (!ok) return;
+          setBusy(btn, true);
           api("account_remove", { rowId: rowId }).then(function (result) {
-            if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
+            if (!result.ok) { setBusy(btn, false); haptic("error"); toast(errText(result.error)); return; }
             haptic("success");
             state.data.accounts = result.accounts || state.data.accounts.filter(function (x) { return x.id !== rowId; });
             render();
@@ -1948,11 +1965,11 @@
         var since = mlCode && mlCode.rowId === rowId ? Date.now() - mlCode.sentAt : Infinity;
         if (since < ML_RESEND_MS) { showCodeForm(sheet, rowId, Math.ceil((ML_RESEND_MS - since) / 1000)); return; }
         if (!window.ArenaWeb) { toast(errText("service_down")); return; }
-        btn.disabled = true;
+        setBusy(btn, true);
         window.ArenaWeb.sendCode(a.account_id, a.zone_id).then(function (result) {
           if (!sheet.isConnected) return;
+          setBusy(btn, false);
           if (!result.ok) {
-            btn.disabled = false;
             haptic("error");
             toast(errText(result.error));
             return;
@@ -1992,12 +2009,12 @@
           var a = findAccount(rowId);
           if (!a || !mlCode || mlCode.rowId !== rowId) { toast(errText("code_expired")); return; }
           if (mlCode.attempts >= ML_MAX_ATTEMPTS) { toast(errText("too_many")); return; }
-          btn.disabled = true;
+          setBusy(btn, true);
           window.ArenaWeb.login(a.account_id, a.zone_id, code, state.lang).then(function (login) {
             if (!login.ok) return login;
             return api("ml_link", { rowId: rowId, token: login.jwt, nickname: login.nickname || "" });
           }).then(function (result) {
-            btn.disabled = false;
+            setBusy(btn, false);
             if (!sheet.isConnected) return;
             if (!result.ok) {
               haptic("error");
