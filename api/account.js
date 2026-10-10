@@ -27,6 +27,7 @@ const {
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
+const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60;
@@ -615,7 +616,8 @@ async function notifyTopupCredited(config, user, topup, balance) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: String(user.id),
-        text: buildTopupCreditedText(topup.paid_amount || topup.pay_amount, balance),
+        // ✅ ➕ 💳 — premium (custom) emoji ko'rinishida (api/emojis.json).
+        text: enrichPremiumEmojis(buildTopupCreditedText(topup.paid_amount || topup.pay_amount, balance)),
         parse_mode: "HTML",
       }),
     });

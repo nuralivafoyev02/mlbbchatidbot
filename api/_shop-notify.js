@@ -107,7 +107,7 @@ function buildTopupCreditedText(amount, balance) {
     "✅ <b>Balans to'ldirildi</b>",
     "",
     `➕ Tushgan summa: <b>${escapeHtml(formatSom(amount))}</b>`,
-    `💰 Joriy balans: <b>${escapeHtml(formatSom(balance))}</b>`,
+    `💳 Joriy balans: <b>${escapeHtml(formatSom(balance))}</b>`,
   ].join("\n");
 }
 

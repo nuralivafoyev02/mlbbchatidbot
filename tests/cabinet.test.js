@@ -652,6 +652,13 @@ test("cabinet: Hamyon complete_url callback credits once, verifies the sign and 
     assert.equal(row.status, "paid");
     assert.equal(backend.wallet.balances.get("777"), 25000);
     assert.equal(backend.telegram.filter((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)).length, 1);
+    // Xabardagi ✅ ➕ 💳 — premium (custom) emoji, HTML rejimida.
+    const credited = backend.telegram.find((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text));
+    assert.equal(credited.parse_mode, "HTML");
+    for (const id of ["5316561083085895267", "5307728925223304731", "6019455416201646359"]) {
+      assert.ok(credited.text.includes(`<tg-emoji emoji-id="${id}">`), id);
+    }
+    assert.ok(!/(?<!>)💰/.test(credited.text));
 
     // Hamyon qayta yuborsa — ikkinchi marta yozilmaydi; kabinet ham "paid" ko'radi.
     assert.equal((await hamyonCallback(app, { ...paid, sign: hamyonSign(row.provider_order, "25000") }, { form: false })).statusCode, 200);

@@ -1168,7 +1168,7 @@ async function notifyWalletUser(userId, text) {
     await fetchWithTimeout(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: String(userId), text, parse_mode: "HTML" }),
+      body: JSON.stringify({ chat_id: String(userId), text: enrichPremiumEmojis(text), parse_mode: "HTML" }),
     });
   } catch (e) {
     console.error("[WALLET_NOTIFY]", e.message);
