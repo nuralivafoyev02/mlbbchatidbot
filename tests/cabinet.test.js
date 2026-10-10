@@ -283,8 +283,11 @@ function installCabinetBackend() {
           (!params.get("status") || (params.get("status").startsWith("neq.")
             ? t.status !== params.get("status").slice(4)
             : t.status === params.get("status").slice(3))) &&
-          (!params.get("provider_order") || Boolean(t.provider_order));
+          (!params.get("provider_order") || (params.get("provider_order").startsWith("eq.")
+            ? t.provider_order === params.get("provider_order").slice(3)
+            : Boolean(t.provider_order)));
         if (String(options.method || "GET").toUpperCase() === "PATCH") {
+          if (wallet.failPatch) return jsonResponse({ code: "PGRST204", message: "Could not find the 'provider_order' column" }, 400);
           wallet.topups.filter(matches).forEach((t) => Object.assign(t, body));
           return jsonResponse([]);
         }
@@ -301,15 +304,15 @@ function installCabinetBackend() {
     if (href.startsWith(HAMYON)) {
       const url = new URL(href);
       if (url.pathname === "/payment/create") {
-        const call = JSON.parse(options.body);
+        const call = Object.fromEntries(new URLSearchParams(options.body));
         hamyonCalls.push({ path: url.pathname, body: call });
         if (hamyon.conflicts > 0) {
           hamyon.conflicts -= 1;
           return jsonResponse({ error: "Bu summada ochiq to'lov mavjud — summani biroz o'zgartiring!" }, 400);
         }
         const paymentId = `pay-${hamyonCalls.length}`;
-        hamyon.orders.set(paymentId, { amount: call.amount, status: "pending" });
-        return jsonResponse({ payment_id: paymentId, card: "9860190111316492", amount: call.amount, expires_in: 300 });
+        hamyon.orders.set(paymentId, { amount: Number(call.amount), status: "pending" });
+        return jsonResponse({ payment_id: paymentId, order_id: call.order_id, card: "8600 1234 5678 9012", amount: Number(call.amount), expires_in: 300 });
       }
       if (url.pathname === "/payment/status") {
         const order = hamyon.orders.get(url.searchParams.get("payment_id"));
@@ -317,7 +320,7 @@ function installCabinetBackend() {
         return jsonResponse({ payment_id: url.searchParams.get("payment_id"), amount: order.amount, status: order.status, created_at: "2026-10-09" });
       }
       if (url.pathname === "/payment/cancel") {
-        const call = JSON.parse(options.body);
+        const call = Object.fromEntries(new URLSearchParams(options.body));
         hamyonCalls.push({ path: url.pathname, body: call });
         const order = hamyon.orders.get(call.payment_id);
         if (order) order.status = "cancel";
@@ -488,12 +491,12 @@ test("cabinet: limit is bought from the balance — insufficient funds first, th
     assert.equal((await call(app, USER, "topup_create", { amount: 100 })).body.error, "invalid_amount");
     const topup = (await call(app, USER, "topup_create", { amount: 20000 })).body.topup;
     assert.equal(topup.pay_amount, 20000, "Hamyon rejimida aniq summa");
-    assert.equal(topup.card, "9860190111316492", "mijozga o'tkaziladigan karta ko'rsatiladi");
+    assert.equal(topup.card, "8600123456789012", "mijozga o'tkaziladigan karta ko'rsatiladi");
 
     // Hamyon'da aynan shu summaga buyurtma ochildi (shop_key faqat serverda).
     assert.deepEqual(backend.hamyonCalls[0], {
       path: "/payment/create",
-      body: { shop_id: "123456", shop_key: "shop-secret-key", amount: 20000, order_id: String(topup.id) },
+      body: { shop_id: "123456", shop_key: "shop-secret-key", amount: "20000", order_id: String(topup.id) },
     });
     assert.ok(!JSON.stringify(topup).includes("shop-secret-key"));
 
@@ -602,6 +605,73 @@ test("cabinet: Hamyon — conflict picks another amount, cancel closes the order
     backend.hamyon.conflicts = 5;
     const busy = (await call(app, USER, "topup_create", { amount: 10000 })).body;
     assert.equal(busy.error, "busy");
+    assert.ok(backend.wallet.topups.every((t) => t.status !== "pending"));
+  } finally {
+    backend.restore();
+  }
+});
+
+function hamyonSign(paymentId, amount) {
+  return crypto.createHash("md5").update(`123456${paymentId}${amount}shop-secret-key`).digest("hex");
+}
+
+async function hamyonCallback(app, fields, { form = true } = {}) {
+  const res = createRes();
+  const body = form ? new URLSearchParams(fields).toString() : fields;
+  await app({ method: "POST", headers: {}, query: { hook: "hamyon" }, body }, res);
+  return res;
+}
+
+test("cabinet: Hamyon complete_url callback credits once, verifies the sign and closes cancelled orders", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const app = loadAccountApp();
+    const topup = (await call(app, USER, "topup_create", { amount: 25000 })).body.topup;
+    const row = backend.wallet.topups.find((t) => String(t.id) === topup.id);
+    const paid = { payment_id: row.provider_order, order_id: topup.id, shop_id: "123456", amount: "25000", status: "paid", paid_at: "1767225431" };
+
+    // Soxta imzo — rad etiladi, balans o'zgarmaydi.
+    const forged = await hamyonCallback(app, { ...paid, sign: hamyonSign(row.provider_order, "1") });
+    assert.equal(forged.statusCode, 403);
+    assert.equal(row.status, "pending");
+
+    // Boshqa summa — yozilmaydi (summa o'z bazamizdan).
+    const wrong = await hamyonCallback(app, { ...paid, amount: "99999", sign: hamyonSign(row.provider_order, "99999") });
+    assert.equal(wrong.statusCode, 200);
+    assert.equal(row.status, "pending");
+
+    const ok = await hamyonCallback(app, { ...paid, sign: hamyonSign(row.provider_order, "25000") });
+    assert.deepEqual([ok.statusCode, ok.body], [200, { result: "ok" }]);
+    assert.equal(row.status, "paid");
+    assert.equal(backend.wallet.balances.get("777"), 25000);
+    assert.equal(backend.telegram.filter((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)).length, 1);
+
+    // Hamyon qayta yuborsa — ikkinchi marta yozilmaydi; kabinet ham "paid" ko'radi.
+    assert.equal((await hamyonCallback(app, { ...paid, sign: hamyonSign(row.provider_order, "25000") }, { form: false })).statusCode, 200);
+    assert.equal(backend.wallet.balances.get("777"), 25000);
+    const check = (await call(app, USER, "topup_check", { id: topup.id })).body;
+    assert.deepEqual([check.topup.status, check.balance], ["paid", 25000]);
+
+    // cancel (timeout) callback kutilayotgan so'rovni yopadi.
+    const next = (await call(app, USER, "topup_create", { amount: 15000 })).body.topup;
+    const nextRow = backend.wallet.topups.find((t) => String(t.id) === next.id);
+    const cancel = { payment_id: nextRow.provider_order, order_id: next.id, shop_id: "123456", amount: "15000", status: "cancel", reason: "timeout" };
+    assert.equal((await hamyonCallback(app, { ...cancel, sign: hamyonSign(nextRow.provider_order, "15000") })).statusCode, 200);
+    assert.equal(nextRow.status, "cancelled");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: if the Hamyon payment can't be saved, it is closed on both sides instead of hanging open", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const app = loadAccountApp();
+    backend.wallet.failPatch = true;
+    const res = await call(app, USER, "topup_create", { amount: 10000 });
+    assert.equal(res.body.ok, false);
+    assert.equal(res.body.error, "wallet_unavailable");
+    assert.equal(backend.hamyon.orders.get("pay-1").status, "cancel");
     assert.ok(backend.wallet.topups.every((t) => t.status !== "pending"));
   } finally {
     backend.restore();

@@ -3,66 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const elderpay = require("../api/_elderpay.js");
 const hamyon = require("../api/_hamyon.js");
 const walletLib = require("../api/_wallet.js");
-
-// ---------------------------------------------------------------------------
-// _elderpay.js
-// ---------------------------------------------------------------------------
-function elderFetch(handler) {
-  const calls = [];
-  const fetchFn = async (url, options) => {
-    const body = JSON.parse(options.body);
-    calls.push({ url, body });
-    const [status, payload] = handler(body);
-    return new Response(JSON.stringify(payload), { status });
-  };
-  return { calls, fetchFn };
-}
-
-test("elderpay: create / check / cancel follow the v1 API", async () => {
-  const config = elderpay.resolveElderPayConfig({ ELDERPAY_SHOP_ID: "123456", ELDERPAY_SHOP_KEY: "k" });
-  assert.equal(config.apiUrl, "https://pay.elder.uz");
-
-  const { calls, fetchFn } = elderFetch((body) => {
-    if (body.method === "create") return [200, { status: "success", order: "a1b2", pay_url: "https://pay.elder.uz/pay/t", data: { amount: "15000", over: 5 } }];
-    if (body.method === "check") return [200, { status: "success", order: "a1b2", data: { amount: "15000", status: "paid", date: "2026-06-23", over: 3 } }];
-    return [200, { status: "success", message: "ok", order: "a1b2" }];
-  });
-  const client = elderpay.createElderPayClient({ config, fetchFn });
-  assert.equal(client.enabled, true);
-
-  assert.deepEqual(await client.createOrder({ amount: 15000, userId: 777 }), { order: "a1b2", amount: 15000, payUrl: "https://pay.elder.uz/pay/t" });
-  assert.deepEqual(calls[0], { url: "https://pay.elder.uz/api", body: { method: "create", shop_id: "123456", shop_key: "k", amount: 15000, user_id: "tg_777" } });
-
-  assert.deepEqual(await client.checkOrder("a1b2"), { order: "a1b2", status: "paid", amount: 15000, date: "2026-06-23" });
-  assert.deepEqual(calls[1].body, { method: "check", order: "a1b2" }, "check'da shop_key yuborilmaydi");
-
-  assert.equal(await client.cancelOrder("a1b2"), true);
-  assert.deepEqual(calls[2].body, { method: "cancel", order: "a1b2", shop_id: "123456", shop_key: "k" });
-});
-
-test("elderpay: errors map to reasons and never leak the shop key", async () => {
-  const off = elderpay.createElderPayClient({ config: elderpay.resolveElderPayConfig({}) });
-  assert.equal(off.enabled, false);
-  await assert.rejects(off.createOrder({ amount: 1 }), (e) => e.reason === "not_configured");
-
-  const config = elderpay.resolveElderPayConfig({ ELDERPAY_SHOP_ID: "1", ELDERPAY_SHOP_KEY: "super-secret" });
-  for (const [status, reason] of [[409, "conflict"], [403, "auth"], [400, "invalid"], [500, "unavailable"]]) {
-    const { fetchFn } = elderFetch(() => [status, { status: "error", message: "Xatolik sababi" }]);
-    const client = elderpay.createElderPayClient({ config, fetchFn });
-    await assert.rejects(client.createOrder({ amount: 1000 }), (e) => {
-      assert.equal(e.reason, reason);
-      assert.ok(!e.message.includes("super-secret"));
-      return true;
-    });
-  }
-
-  // 200 lekin status=error — ham xato.
-  const { fetchFn } = elderFetch(() => [200, { status: "error", message: "order topilmadi" }]);
-  await assert.rejects(elderpay.createElderPayClient({ config, fetchFn }).checkOrder("x"), (e) => e.reason === "unavailable");
-});
 
 // ---------------------------------------------------------------------------
 // _hamyon.js
@@ -71,8 +13,8 @@ function hamyonFetch(handler) {
   const calls = [];
   const fetchFn = async (url, options = {}) => {
     const href = String(url);
-    const body = options.body ? JSON.parse(options.body) : null;
-    calls.push({ url: href, body });
+    const body = options.body ? Object.fromEntries(new URLSearchParams(options.body)) : null;
+    calls.push({ url: href, body, headers: options.headers || {} });
     const [status, payload] = handler({ href, body });
     return new Response(JSON.stringify(payload), { status });
   };
@@ -85,7 +27,7 @@ test("hamyon: create / check / cancel follow the REST API and return the card", 
 
   const { calls, fetchFn } = hamyonFetch(({ href, body }) => {
     if (body) {
-      if (href.includes("/payment/create")) return [200, { payment_id: "pay-a1b2", card: "9860190111316492", amount: 20000, expires_in: 300 }];
+      if (href.includes("/payment/create")) return [200, { payment_id: "pay-a1b2", card: "9860 1901 1131 6492", amount: "20000.00", expires_in: 300 }];
       return [200, { ok: true, payment_id: body.payment_id, status: "cancel" }];
     }
     return [200, { payment_id: "pay-a1b2", amount: 20000, status: "paid", created_at: "2026-10-10" }];
@@ -99,7 +41,8 @@ test("hamyon: create / check / cancel follow the REST API and return the card", 
     card: "9860190111316492",
     payUrl: null,
   });
-  assert.deepEqual(calls[0].body, { shop_id: "73", shop_key: "k", amount: 20000, order_id: "42" });
+  assert.deepEqual(calls[0].body, { shop_id: "73", shop_key: "k", amount: "20000", order_id: "42" });
+  assert.equal(calls[0].headers["Content-Type"], "application/x-www-form-urlencoded");
 
   assert.deepEqual(await client.checkOrder("pay-a1b2"), { order: "pay-a1b2", status: "paid", amount: 20000, date: "2026-10-10" });
   assert.match(calls[1].url, /payment\/status\?payment_id=pay-a1b2/);
@@ -107,6 +50,22 @@ test("hamyon: create / check / cancel follow the REST API and return the card", 
 
   assert.equal(await client.cancelOrder("pay-a1b2"), true);
   assert.deepEqual(calls[2].body, { shop_id: "73", shop_key: "k", payment_id: "pay-a1b2" });
+});
+
+test("hamyon: callback sign = md5(shop_id + payment_id + amount + shop_key)", () => {
+  const client = hamyon.createHamyonClient({ config: hamyon.resolveHamyonConfig({ HAMYON_SHOP_ID: "12", HAMYON_SHOP_KEY: "sk_x" }) });
+  const sign = require("node:crypto").createHash("md5").update("12a1b2c350000sk_x").digest("hex");
+  const fields = { payment_id: "a1b2c3", order_id: "7", shop_id: "12", amount: "50000", status: "paid", paid_at: "1767225431", sign };
+
+  assert.deepEqual(client.parseCallback(fields), {
+    ok: true, order: "a1b2c3", orderId: "7", status: "paid", amount: 50000,
+    paidAt: new Date(1767225431 * 1000).toISOString(), reason: null,
+  });
+  assert.equal(client.parseCallback({ ...fields, sign: sign.toUpperCase() }).ok, true);
+  assert.equal(client.parseCallback({ ...fields, amount: "50001" }).error, "bad_sign");
+  assert.equal(client.parseCallback({ ...fields, shop_id: "13" }).error, "shop_mismatch");
+  assert.equal(client.parseCallback({ payment_id: "x" }).error, "invalid");
+  assert.equal(hamyon.createHamyonClient({ config: hamyon.resolveHamyonConfig({}) }).parseCallback(fields).error, "not_configured");
 });
 
 test("hamyon: errors map to reasons, 400 conflict means busy amount, never leaks the key", async () => {
@@ -176,6 +135,7 @@ async function createWalletDb() {
     "020_wallet.sql",
     "021_wallet_exact_amount.sql",
     "022_wallet_hamyon.sql",
+    "023_wallet_provider_columns.sql",
   ]) {
     await db.exec(fs.readFileSync(path.join(__dirname, "..", "supabase", file), "utf8"));
   }

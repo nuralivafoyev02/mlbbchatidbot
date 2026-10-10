@@ -1120,7 +1120,7 @@ async function handleShopFmDelete(req, res, body) {
 // 💰 Balans va to'lovlar (supabase/020_wallet.sql, api/_wallet.js)
 //
 // Admin: karta rekvizitlari, kutilayotgan to'ldirishlarni qo'lda tasdiqlash
-// (ELDER PAY ishlamay qolsa — zaxira), buyurtma pulini qaytarish va
+// (Hamyon ishlamay qolsa — zaxira), buyurtma pulini qaytarish va
 // foydalanuvchi balansini tuzatish. Har bir pul harakati foydalanuvchiga bot
 // orqali xabar qilinadi.
 // ---------------------------------------------------------------------------
@@ -1293,7 +1293,7 @@ async function handleWalletRefund(req, res, body) {
   }
 }
 
-// ELDER PAY ishlamay qolsa yoki boshqa summa tushsa — admin chekka qarab qo'lda
+// Hamyon ishlamay qolsa yoki boshqa summa tushsa — admin chekka qarab qo'lda
 // tasdiqlaydi. Summa sukut bo'yicha so'rovdagi aniq summa.
 async function handleWalletTopupConfirm(req, res, body) {
   if (!(await requireAuth(req, res))) return;

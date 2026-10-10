@@ -310,13 +310,22 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
         return { ok: false, error: "provider_unavailable" };
       }
 
-      await patchTopup(topup.id, {
-        provider: client.provider,
-        provider_order: order.order,
-        pay_url: order.payUrl || null,
-        card: order.card || null,
-      });
-      return { ok: true, topup: toPublicTopup({ ...topup, pay_url: order.payUrl, card: order.card }) };
+      // Hamyon'dagi to'lov bazaga bog'lanmasa — uni tekshirib bo'lmaydi.
+      // Ochiq qoldirmaymiz: ikkala tomonda ham yopiladi (023 migratsiyasi
+      // qo'llanmagan bo'lsa shu yerga tushadi).
+      try {
+        await patchTopup(topup.id, {
+          provider: client.provider,
+          provider_order: order.order,
+          card: order.card || null,
+        });
+      } catch (error) {
+        console.error("[WALLET_HAMYON_SAVE]", topup.id, error.message);
+        await client.cancelOrder(order.order).catch(() => {});
+        await rpcCancel(userId, topup.id).catch(() => {});
+        return { ok: false, error: "wallet_unavailable" };
+      }
+      return { ok: true, topup: toPublicTopup({ ...topup, card: order.card }) };
     }
 
     return { ok: false, error: "busy" };
@@ -345,7 +354,23 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     });
   }
 
-  // Bitta so'rov holatini ElderPay'dan olib, to'langan bo'lsa balansga yozadi.
+  // Hamyon "paid" deb tasdiqlagan to'lovni balansga yozadi. Summa — o'z
+  // bazamizdan (Hamyon tavsiyasi); Hamyon boshqa summa aytsa yozilmaydi,
+  // admin panelda qo'lda ko'riladi. Idempotent (wallet_credit_topup).
+  async function creditPaidRow(row, { amount, paidAt } = {}) {
+    const expected = Number(row.pay_amount);
+    if (amount !== null && amount !== undefined && Number(amount) !== expected) {
+      console.error("[WALLET_HAMYON_AMOUNT_MISMATCH]", row.id, expected, amount);
+      return { credited: false, status: "amount_mismatch" };
+    }
+    const result = await creditIncoming(
+      { id: row.provider_order, amount: expected, paid_at: paidAt || null },
+      { topupId: row.id, provider: client.provider }
+    );
+    return { credited: result?.status === "credited", status: "paid", result };
+  }
+
+  // Bitta so'rov holatini Hamyon'dan olib, to'langan bo'lsa balansga yozadi.
   // Natija: { credited, status, result? }
   async function syncTopupRow(row) {
     if (!row || row.status === "paid" || !row.provider_order || !client.enabled) {
@@ -355,11 +380,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     const remote = await client.checkOrder(row.provider_order);
 
     if (remote.status === "paid") {
-      const result = await creditIncoming(
-        { id: row.provider_order, amount: remote.amount || Number(row.pay_amount) },
-        { topupId: row.id, provider: client.provider }
-      );
-      return { credited: result?.status === "credited", status: "paid", result };
+      return creditPaidRow(row, { amount: remote.amount });
     }
 
     if (remote.status === "cancel" && row.status === "pending") {
@@ -427,6 +448,65 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
       }
     }
     return credited;
+  }
+
+  async function findTopupByOrder(order, orderId) {
+    const byOrder = await requestFn(
+      `/wallet_topups?${new URLSearchParams({ provider_order: `eq.${order}`, select: "*", limit: "1" }).toString()}`
+    );
+    if (Array.isArray(byOrder) && byOrder[0]) return byOrder[0];
+
+    // payment_id hali saqlanmagan bo'lishi mumkin (prepare create javobidan
+    // oldin keladi) — order_id = wallet_topups.id bo'yicha.
+    if (!/^\d{1,19}$/.test(String(orderId || ""))) return null;
+    const byId = await requestFn(
+      `/wallet_topups?${new URLSearchParams({ id: `eq.${orderId}`, select: "*", limit: "1" }).toString()}`
+    );
+    const row = Array.isArray(byId) && byId[0] ? byId[0] : null;
+    if (!row || (row.provider_order && row.provider_order !== order)) return null;
+    if (!row.provider_order) {
+      await patchTopup(row.id, { provider: client.provider, provider_order: order });
+      row.provider_order = order;
+    }
+    return row;
+  }
+
+  // Hamyon complete_url / prepare_url callback'i.
+  // → { httpStatus, credited, result?, userId?, amount? }
+  //   403 — imzo noto'g'ri; 500 — vaqtinchalik xato (Hamyon qayta yuboradi);
+  //   200 — qabul qilindi (topilmagan bo'lsa ham — qayta yuborish foyda bermaydi).
+  async function handleProviderCallback(fields) {
+    const cb = client.parseCallback(fields);
+    if (!cb.ok) {
+      console.error("[WALLET_HAMYON_CALLBACK]", cb.error, fields?.payment_id || "");
+      return { httpStatus: cb.error === "not_configured" ? 503 : cb.error === "invalid" ? 400 : 403, credited: false };
+    }
+
+    const row = await findTopupByOrder(cb.order, cb.orderId);
+    if (!row) {
+      console.error("[WALLET_HAMYON_CALLBACK]", "not_found", cb.order, cb.orderId || "", cb.status);
+      return { httpStatus: 200, credited: false, status: "not_found" };
+    }
+
+    if (cb.status === "paid") {
+      if (row.status === "paid") return { httpStatus: 200, credited: false, status: "already_paid" };
+      const sync = await creditPaidRow(row, { amount: cb.amount, paidAt: cb.paidAt });
+      return {
+        httpStatus: 200,
+        credited: sync.credited,
+        status: sync.status,
+        result: sync.result,
+        userId: String(row.user_id),
+        amount: Number(row.pay_amount),
+      };
+    }
+
+    if (cb.status === "cancel" && row.status === "pending") {
+      await rpcCancel(row.user_id, row.id);
+      return { httpStatus: 200, credited: false, status: "cancelled" };
+    }
+
+    return { httpStatus: 200, credited: false, status: cb.status };
   }
 
   // Kabinet "Tarix" uchun: balansga tushgan to'ldirishlar.
@@ -498,6 +578,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     cancelTopup,
     checkTopup,
     creditIncoming,
+    handleProviderCallback,
     syncRecentTopups,
     listPaidTopups,
     buyLimit,

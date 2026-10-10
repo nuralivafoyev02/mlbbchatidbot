@@ -3,6 +3,8 @@
 //
 // GET  → account-miniapp.html (Mini App)
 // POST → { action, initData, ... } JSON API
+// POST ?hook=hamyon → Hamyon API callback (prepare_url / complete_url), imzo
+//      md5(shop_id + payment_id + amount + shop_key) bilan tekshiriladi.
 //
 // Autentifikatsiya: Telegram WebApp initData imzosi (TELEGRAM_BOT_TOKEN).
 // Arena JWT faqat serverda ochiladi (user_accounts.ml_token) va hech qachon
@@ -59,6 +61,10 @@ module.exports = async function handler(req, res) {
     }
 
     const config = getConfig();
+
+    if (req.query && req.query.hook === "hamyon") {
+      return await handleHamyonCallback(req, res, config);
+    }
     const body = parseBody(req.body);
     const auth = arena.verifyTelegramInitData(
       body.initData || req.headers?.["x-telegram-init-data"],
@@ -747,6 +753,41 @@ async function handleTopupCheck(res, { config, user, body }) {
     await notifyTopupCredited(config, user, result.topup, result.balance);
   }
   return json(res, result.ok ? 200 : result.error === "not_found" ? 404 : 502, result);
+}
+
+// Hamyon to'lov holatini o'zi yuboradi (initData yo'q — imzo tekshiriladi).
+// Body application/x-www-form-urlencoded; Vercel uni obyektga aylantiradi.
+async function handleHamyonCallback(req, res, config) {
+  if (!config.supabaseUrl || !config.supabaseKey) {
+    return json(res, 503, { error: "not_configured" });
+  }
+
+  const fields = parseFormBody(req.body);
+  let outcome;
+  try {
+    outcome = await createWalletFor(config).handleProviderCallback(fields);
+  } catch (error) {
+    // 2xx bo'lmasa Hamyon qayta yuboradi — vaqtinchalik xatoda shu kerak.
+    console.error("[WALLET_HAMYON_CALLBACK]", error?.message);
+    return json(res, 500, { error: "temporary" });
+  }
+
+  if (outcome.credited && outcome.userId) {
+    await notifyTopupCredited(config, { id: outcome.userId }, { pay_amount: outcome.amount }, outcome.result?.balance);
+  }
+  if (outcome.httpStatus !== 200) {
+    return json(res, outcome.httpStatus, { error: "rejected" });
+  }
+  return json(res, 200, { result: "ok" });
+}
+
+function parseFormBody(body) {
+  if (!body) return {};
+  if (typeof body === "object" && !Buffer.isBuffer(body)) return body;
+  const text = String(body);
+  const parsed = safeJsonParse(text);
+  if (parsed && typeof parsed === "object") return parsed;
+  return Object.fromEntries(new URLSearchParams(text));
 }
 
 // Foydalanuvchiga bot orqali "balans to'ldirildi" xabari (best effort).

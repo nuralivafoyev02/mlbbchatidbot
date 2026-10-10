@@ -2058,7 +2058,7 @@ async function getWalletBalance(userId) {
   }
 }
 
-// Balansni faqat Shaxsiy kabinetda to'ldirish mumkin (karta + ELDER PAY).
+// Balansni faqat Shaxsiy kabinetda to'ldirish mumkin (karta + Hamyon API).
 function shopTopupButton(lang, chatId) {
   return Number(chatId) > 0
     ? { text: t("shop_topup_btn", lang), web_app: { url: CABINET_MINIAPP_URL } }

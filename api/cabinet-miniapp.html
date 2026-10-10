@@ -1548,10 +1548,11 @@
         var cfg = wallet().config;
         stopTopupTimers();
         var sum = som(topup.pay_amount);
-        var payCard = topup.card || cfg.card;
+        // Hamyon har bir to'lovga o'z kartasini beradi; bo'lmasa — admin kartasi.
+        var payCard = topup.card ? String(topup.card).replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ") : cfg.card;
         setSheet(sheet, "<h2>" + esc(L("tp_pay_title")) + "</h2>" +
           '<div class="paybox">' +
-          (payCard ? payRow(L("tp_card"), payCard + (cfg.bank ? " · " + cfg.bank : ""), payCard.replace(/\s/g, "")) : "") +
+          (payCard ? payRow(L("tp_card"), payCard + (!topup.card && cfg.bank ? " · " + cfg.bank : ""), payCard.replace(/\s/g, "")) : "") +
           (cfg.card && !topup.card && cfg.holder ? payRow(L("tp_holder"), cfg.holder) : "") +
           payRow(L("tp_exact"), sum, String(topup.pay_amount), true) + "</div>" +
           '<div class="warnbox">' + icon("exclamation-triangle") + " " + esc(L("tp_warn", { sum: sum })) + "</div>" +

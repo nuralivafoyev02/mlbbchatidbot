@@ -5445,13 +5445,13 @@
         var d = wlData;
         var c = d.config;
         document.getElementById("wlStatus").innerHTML =
-          '<span class="wl-pill ' + (c.enabled && c.cardNumber ? "on" : "off") + '">To\'ldirish ' + (c.enabled && c.cardNumber ? "yoqilgan" : "o'chiq") + "</span>" +
-          '<span class="wl-pill ' + (d.auto ? "on" : "off") + '">ElderPay ' + (d.auto ? "ulangan" : "ulanmagan") + "</span>" +
+          '<span class="wl-pill ' + (c.enabled && (c.cardNumber || d.auto) ? "on" : "off") + '">To\'ldirish ' + (c.enabled && (c.cardNumber || d.auto) ? "yoqilgan" : "o'chiq") + "</span>" +
+          '<span class="wl-pill ' + (d.auto ? "on" : "off") + '">Hamyon ' + (d.auto ? "ulangan" : "ulanmagan") + "</span>" +
           (d.synced ? '<span class="wl-pill on">' + d.synced + " ta to'lov yozildi</span>" : "");
 
         document.getElementById("wlPending").innerHTML = d.pending.length
           ? d.pending.map(wlTopupHtml).join("")
-          : '<div class="hint" style="font-size:12px;color:var(--text2)">Kutilayotgan to\'lov yo\'q.' + (d.auto ? " ElderPay avtomatik tekshiradi." : " ElderPay ulanmagan — to'lovlarni shu yerda qo'lda tasdiqlang.") + "</div>";
+          : '<div class="hint" style="font-size:12px;color:var(--text2)">Kutilayotgan to\'lov yo\'q.' + (d.auto ? " Hamyon avtomatik tekshiradi." : " Hamyon ulanmagan — to'lovlarni shu yerda qo'lda tasdiqlang.") + "</div>";
 
         document.getElementById("wlOrders").innerHTML = d.orders.length
           ? d.orders.map(wlOrderHtml).join("")
