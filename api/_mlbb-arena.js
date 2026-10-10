@@ -97,8 +97,6 @@ function createArenaClient(options = {}) {
   const baseUrl = cleanBaseUrl(options.baseUrl);
   const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_ARENA_TIMEOUT_MS;
   const fetchImpl = options.fetchImpl || ((...args) => fetch(...args));
-  // Masalan proxy kaliti (x-arena-proxy-key) — arena-proxy.mjs.
-  const extraHeaders = options.headers && typeof options.headers === "object" ? options.headers : {};
 
   async function request(method, path, { token, query, body } = {}) {
     const url = new URL(`${baseUrl}${path}`);
@@ -109,7 +107,7 @@ function createArenaClient(options = {}) {
       }
     }
 
-    const headers = { ...extraHeaders, Accept: "application/json" };
+    const headers = { Accept: "application/json" };
 
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -480,6 +478,8 @@ module.exports = {
   createArenaClient,
   formatRankLevel,
   isValidVerificationCode,
+  MYTHIC_START,
+  RANK_TABLE,
   openArenaToken,
   resolveLinkSecret,
   sealArenaToken,

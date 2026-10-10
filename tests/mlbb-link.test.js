@@ -558,7 +558,17 @@ test("account app: rejects requests without a valid Telegram signature", async (
   }
 });
 
-test("account app: bootstrap + overview + matches never expose the jwt", async () => {
+function arenaWebFor() {
+  const { createArenaWeb } = require("../api/_arena-web.js");
+  return createArenaWeb({
+    baseUrl: ARENA,
+    fetch: (url, init) => global.fetch(url, init),
+    rankTable: arena.RANK_TABLE,
+    mythicStart: arena.MYTHIC_START,
+  });
+}
+
+test("account app: ml_session gives the owner (only) the token; bootstrap never exposes it", async () => {
   const supabase = createFakeSupabase();
   const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
 
@@ -570,80 +580,88 @@ test("account app: bootstrap + overview + matches never expose the jwt", async (
     const initData = signInitData({ id: userId, first_name: "Ali", language_code: "ru" });
 
     const boot = await callAccount(app, { action: "bootstrap", initData });
-    assert.equal(boot.statusCode, 200);
     assert.equal(boot.body.lang, "ru");
-    assert.equal(boot.body.botUsername, "checkmlbbidBot");
     assert.deepEqual(boot.body.accounts.map((a) => [a.id, a.ml_linked, a.ml_nickname]), [[String(rowId), true, "Lily•°"]]);
+    assert.ok(!JSON.stringify(boot.body).includes("jwt-abc"));
 
-    const overview = await callAccount(app, { action: "overview", initData, rowId, lang: "ru" });
-    assert.equal(overview.statusCode, 200);
-    assert.equal(overview.body.info.name, "Lily•°");
-    assert.equal(overview.body.rank.label, "Mythical Honor ★32");
-    assert.deepEqual(overview.body.seasons, [40, 39]);
-    assert.equal(overview.body.privacy.privacy, false);
+    const session = await callAccount(app, { action: "ml_session", initData, rowId });
+    assert.equal(session.statusCode, 200);
+    assert.equal(session.body.token, "jwt-abc");
+    assert.deepEqual([session.body.account.account_id, session.body.account.ml_nickname], ["1006613098", "Lily•°"]);
+
+    const intruder = await callAccount(app, { action: "ml_session", initData: signInitData({ id: 7700301 }), rowId });
+    assert.equal(intruder.statusCode, 404);
+    assert.ok(!JSON.stringify(intruder.body).includes("jwt-abc"));
+
+    const unlinkedRow = supabase.rpc("add_user_account", { p_user_id: userId, p_account_id: "11113333", p_zone_id: "3001" }).id;
+    const notLinked = await callAccount(app, { action: "ml_session", initData, rowId: unlinkedRow });
+    assert.deepEqual([notLinked.statusCode, notLinked.body.error], [409, "not_linked"]);
+
+    // Logout faqat bazadan o'chiradi — server Arena'ga bormaydi (u yerdan bloklangan).
+    const out = await callAccount(app, { action: "logout", initData, rowId });
+    assert.equal(out.body.ok, true);
+    assert.equal(supabase.rows[0].ml_token, null);
+    assert.equal((await callAccount(app, { action: "ml_session", initData, rowId })).statusCode, 409);
+    assert.equal(net.arenaCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("arena web client: overview / matches / logout keep the old server response shapes", async () => {
+  const net = installFetch({ supabase: createFakeSupabase(), arenaHandler: defaultArenaHandler });
+  try {
+    const web = arenaWebFor();
+    const account = { id: "5", account_id: "1006613098" };
+    const overview = await web.call("overview", "jwt-abc", {}, "ru", account);
+    assert.equal(overview.ok, true);
+    assert.equal(overview.account, account);
+    assert.equal(overview.info.name, "Lily•°");
+    assert.equal(overview.rank.label, "Mythical Honor ★32");
+    assert.deepEqual(overview.seasons, [40, 39]);
+    assert.equal(overview.privacy.privacy, false);
     assert.equal(net.arenaCalls.find((c) => c.path === "/user/info").query.lang, "ru");
+    assert.equal(net.arenaCalls.find((c) => c.path === "/user/info").auth, "Bearer jwt-abc");
 
-    const matches = await callAccount(app, { action: "matches", initData, rowId, sid: 40, cursor: "55" });
-    assert.equal(matches.body.data.pageInfo.nextCursor, "77");
+    const matches = await web.call("matches", "jwt-abc", { sid: 40, cursor: "55" }, "en");
+    assert.equal(matches.data.pageInfo.nextCursor, "77");
     assert.equal(net.arenaCalls.find((c) => c.path === "/user/matches").query.last_cursor, "55");
 
-    for (const res of [boot, overview, matches]) {
-      assert.ok(!JSON.stringify(res.body).includes("jwt-abc"));
-      assert.ok(!JSON.stringify(res.body).includes("v1:"));
-    }
-  } finally {
-    net.restore();
-  }
-});
+    assert.deepEqual(await web.call("matches", "jwt-abc", { sid: "x" }, "en"), { ok: false, error: "invalid_input" });
+    assert.deepEqual(await web.call("overview", "expired-jwt", {}, "en"), { ok: false, error: "session_expired" });
 
-test("account app: other users' rows are 404, expired sessions are session_expired", async () => {
-  const supabase = createFakeSupabase();
-  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
-
-  try {
-    const app = loadAccountApp();
-    const owner = 7700300;
-    const rowId = supabase.rpc("add_user_account", { p_user_id: owner, p_account_id: "11112222", p_zone_id: "3001" }).id;
-    supabase.rpc("set_user_account_ml_link", { p_user_id: owner, p_row_id: rowId, p_token: arena.sealArenaToken("expired-jwt", LINK_SECRET) });
-
-    const intruder = await callAccount(app, { action: "overview", initData: signInitData({ id: 7700301 }), rowId });
-    assert.equal(intruder.statusCode, 404);
-    assert.equal(net.arenaCalls.length, 0);
-
-    const expired = await callAccount(app, { action: "overview", initData: signInitData({ id: owner }), rowId });
-    assert.equal(expired.statusCode, 401);
-    assert.equal(expired.body.error, "session_expired");
-
-    const unlinkedRow = supabase.rpc("add_user_account", { p_user_id: owner, p_account_id: "11113333", p_zone_id: "3001" }).id;
-    const notLinked = await callAccount(app, { action: "friends", initData: signInitData({ id: owner }), rowId: unlinkedRow, sid: 40 });
-    assert.equal(notLinked.statusCode, 409);
-    assert.equal(notLinked.body.error, "not_linked");
-  } finally {
-    net.restore();
-  }
-});
-
-test("account app: logout ends the Arena session and clears the stored token", async () => {
-  const supabase = createFakeSupabase();
-  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
-
-  try {
-    const app = loadAccountApp();
-    const userId = 7700400;
-    const rowId = supabase.rpc("add_user_account", { p_user_id: userId, p_account_id: "12121212", p_zone_id: "4001" }).id;
-    supabase.rpc("set_user_account_ml_link", { p_user_id: userId, p_row_id: rowId, p_token: arena.sealArenaToken("jwt-abc", LINK_SECRET), p_nickname: "Z" });
-
-    const res = await callAccount(app, { action: "logout", initData: signInitData({ id: userId }), rowId });
-    assert.equal(res.statusCode, 200);
-    assert.equal(res.body.ok, true);
+    assert.equal((await web.call("logout", "jwt-abc", {}, "en")).ok, true);
     assert.equal(net.arenaCalls.find((c) => c.path === "/user/auth/logout").auth, "Bearer jwt-abc");
-    assert.equal(supabase.rows[0].ml_token, null);
-    assert.equal(supabase.rows.length, 1, "account stays in the profile list");
-
-    const privacy = await callAccount(app, { action: "privacy_set", initData: signInitData({ id: userId }), rowId, visible: true });
-    assert.equal(privacy.statusCode, 409, "after logout the session is gone");
   } finally {
     net.restore();
+  }
+});
+
+test("arena web client: send code / login map errors; a Cloudflare challenge is service_down", async () => {
+  const net = installFetch({ supabase: createFakeSupabase(), arenaHandler: defaultArenaHandler });
+  try {
+    const web = arenaWebFor();
+    assert.deepEqual(await web.sendCode("1006613098", "13019"), { ok: true });
+    assert.deepEqual(net.arenaCalls[0].body, { role_id: 1006613098, zone_id: 13019 });
+    assert.deepEqual(await web.sendCode("12", "1"), { ok: false, error: "invalid_input" });
+
+    assert.deepEqual(await web.login("1006613098", "13019", "12 34", "en"), { ok: true, jwt: "jwt-abc", nickname: "Lily•°" });
+    assert.deepEqual(await web.login("1006613098", "13019", "9999", "en"), { ok: false, error: "wrong_code" });
+    assert.deepEqual(await web.login("1006613098", "13019", "ab", "en"), { ok: false, error: "invalid_format" });
+  } finally {
+    net.restore();
+  }
+
+  const blocked = installFetch({
+    supabase: createFakeSupabase(),
+    arenaHandler: () => new Response("<!DOCTYPE html><title>Just a moment...</title>", { status: 403, headers: { "content-type": "text/html" } }),
+  });
+  try {
+    const web = arenaWebFor();
+    assert.deepEqual(await web.sendCode("1006613098", "13019"), { ok: false, error: "service_down" });
+    assert.deepEqual(await web.call("overview", "jwt-abc", {}, "en"), { ok: false, error: "service_down" });
+  } finally {
+    blocked.restore();
   }
 });
 
@@ -655,25 +673,15 @@ test("arena/account app: Moonton-disabled endpoints (code 10407 接口下线) ar
   const client = arena.createArenaClient({ baseUrl: ARENA, fetchImpl: async (url) => offline({ path: new URL(url).pathname.replace(/^\/api/, ""), auth: "Bearer jwt-abc" }) });
   await assert.rejects(client.getStats("jwt-abc"), (error) => error.reason === "unavailable");
 
-  const supabase = createFakeSupabase();
-  const net = installFetch({ supabase, arenaHandler: offline });
-
+  const net = installFetch({ supabase: createFakeSupabase(), arenaHandler: offline });
   try {
-    const app = loadAccountApp();
-    const userId = 7700500;
-    const rowId = supabase.rpc("add_user_account", { p_user_id: userId, p_account_id: "1544940920", p_zone_id: "16474" }).id;
-    supabase.rpc("set_user_account_ml_link", { p_user_id: userId, p_row_id: rowId, p_token: arena.sealArenaToken("jwt-abc", LINK_SECRET) });
-    const initData = signInitData({ id: userId });
-
-    const overview = await callAccount(app, { action: "overview", initData, rowId });
-    assert.equal(overview.statusCode, 200, "profile still works with /user/info only");
-    assert.equal(overview.body.info.name, "Lily•°");
-    assert.equal(overview.body.stats, null);
-    assert.deepEqual(overview.body.unavailable, { stats: true, seasons: true, privacy: true });
-
-    const matches = await callAccount(app, { action: "matches", initData, rowId, sid: 40 });
-    assert.equal(matches.statusCode, 503);
-    assert.equal(matches.body.error, "unavailable");
+    const web = arenaWebFor();
+    const overview = await web.call("overview", "jwt-abc", {}, "en");
+    assert.equal(overview.ok, true, "profile still works with /user/info only");
+    assert.equal(overview.info.name, "Lily•°");
+    assert.equal(overview.stats, null);
+    assert.deepEqual(overview.unavailable, { stats: true, seasons: true, privacy: true });
+    assert.deepEqual(await web.call("matches", "jwt-abc", { sid: 40 }, "en"), { ok: false, error: "unavailable" });
   } finally {
     net.restore();
   }

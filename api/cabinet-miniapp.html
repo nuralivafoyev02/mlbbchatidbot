@@ -487,6 +487,7 @@
   <div id="sheetRoot"></div>
   <div id="toast" class="toast hidden"></div>
 
+  <!-- arena-web -->
   <script>
     (function () {
       "use strict";
@@ -515,7 +516,7 @@
           code_sent: "Kod o'yin pochtangizga yuborildi", linked_ok: "Akkaunt ulandi!",
           err_cooldown: "Biroz kuting va qayta yuboring", err_wrong_code: "Kod noto'g'ri. Qoldi: {left} ta urinish", err_too_many: "Urinishlar tugadi. Yangi kod so'rang",
           err_code_expired: "Kod muddati tugagan. Yangi kod so'rang", err_invalid_format: "Kod formati noto'g'ri", err_rate_limit: "Juda ko'p so'rov. Birozdan keyin urining",
-          err_send_failed: "Kod yuborilmadi. ID va Zone to'g'riligini tekshiring", err_service_down: "Mobile Legends xizmati javob bermayapti", err_save_failed: "Saqlab bo'lmadi",
+          err_send_failed: "Kod yuborilmadi. ID va Zone to'g'riligini tekshiring", err_service_down: "Mobile Legends xizmati javob bermayapti", err_save_failed: "Saqlab bo'lmadi", err_invalid_token: "Tasdiqlab bo'lmadi. Qaytadan urinib ko'ring", err_network: "Internet aloqasini tekshiring",
           err_already_linked: "Bu akkaunt allaqachon ulangan", err_not_found: "Akkaunt topilmadi",
           hist_limits: "Limitlar", hist_viewers: "Kim tekshirdi",
           no_history: "Hali limit ishlatilmagan.", no_history_setup: "Limitlar tarixi tez orada shu yerda ko'rinadi.",
@@ -586,7 +587,7 @@
           code_sent: "Код отправлен на игровую почту", linked_ok: "Аккаунт привязан!",
           err_cooldown: "Подождите немного и повторите", err_wrong_code: "Неверный код. Осталось попыток: {left}", err_too_many: "Попытки закончились. Запросите новый код",
           err_code_expired: "Срок кода истёк. Запросите новый", err_invalid_format: "Неверный формат кода", err_rate_limit: "Слишком много запросов. Попробуйте позже",
-          err_send_failed: "Код не отправлен. Проверьте ID и Zone", err_service_down: "Сервис Mobile Legends не отвечает", err_save_failed: "Не удалось сохранить",
+          err_send_failed: "Код не отправлен. Проверьте ID и Zone", err_service_down: "Сервис Mobile Legends не отвечает", err_save_failed: "Не удалось сохранить", err_invalid_token: "Не удалось подтвердить. Попробуйте ещё раз", err_network: "Проверьте подключение к интернету",
           err_already_linked: "Аккаунт уже привязан", err_not_found: "Аккаунт не найден",
           hist_limits: "Лимиты", hist_viewers: "Кто проверял",
           no_history: "Лимиты ещё не использовались.", no_history_setup: "История лимитов скоро появится здесь.",
@@ -657,7 +658,7 @@
           code_sent: "Code sent to your in-game email", linked_ok: "Account linked!",
           err_cooldown: "Please wait a bit and resend", err_wrong_code: "Wrong code. Attempts left: {left}", err_too_many: "No attempts left. Request a new code",
           err_code_expired: "Code expired. Request a new one", err_invalid_format: "Invalid code format", err_rate_limit: "Too many requests. Try later",
-          err_send_failed: "Code not sent. Check the ID and Zone", err_service_down: "Mobile Legends service is not responding", err_save_failed: "Could not save",
+          err_send_failed: "Code not sent. Check the ID and Zone", err_service_down: "Mobile Legends service is not responding", err_save_failed: "Could not save", err_invalid_token: "Could not verify. Please try again", err_network: "Check your internet connection",
           err_already_linked: "This account is already linked", err_not_found: "Account not found",
           hist_limits: "Limits", hist_viewers: "Checked by",
           no_history: "No limits used yet.", no_history_setup: "Your limit history will appear here soon.",
@@ -1935,20 +1936,31 @@
         sheet.querySelector("#sendCode").addEventListener("click", function () { sendCode(sheet, rowId, this); });
       }
 
+      // Arena so'rovlari shu yerdan (telefondan) yuboriladi — serverdan bloklangan
+      // (api/_arena-web.js). Qayta yuborish oralig'i va urinishlar shu yerda sanaladi.
+      var ML_RESEND_MS = 60 * 1000;
+      var ML_MAX_ATTEMPTS = 5;
+      var mlCode = null; // { rowId, sentAt, attempts }
+
       function sendCode(sheet, rowId, btn) {
+        var a = findAccount(rowId);
+        if (!a) return;
+        var since = mlCode && mlCode.rowId === rowId ? Date.now() - mlCode.sentAt : Infinity;
+        if (since < ML_RESEND_MS) { showCodeForm(sheet, rowId, Math.ceil((ML_RESEND_MS - since) / 1000)); return; }
+        if (!window.ArenaWeb) { toast(errText("service_down")); return; }
         btn.disabled = true;
-        api("ml_send_code", { rowId: rowId }).then(function (result) {
+        window.ArenaWeb.sendCode(a.account_id, a.zone_id).then(function (result) {
           if (!sheet.isConnected) return;
           if (!result.ok) {
             btn.disabled = false;
             haptic("error");
-            if (result.error === "cooldown" && result.wait) { showCodeForm(sheet, rowId, result.wait); return; }
             toast(errText(result.error));
             return;
           }
+          mlCode = { rowId: rowId, sentAt: Date.now(), attempts: 0 };
           haptic("success");
           toast(L("code_sent"));
-          showCodeForm(sheet, rowId, result.cooldown || 60);
+          showCodeForm(sheet, rowId, ML_RESEND_MS / 1000);
         });
       }
 
@@ -1977,16 +1989,30 @@
           var btn = this;
           var code = input.value.replace(/[\s-]/g, "");
           if (!code) { input.focus(); return; }
+          var a = findAccount(rowId);
+          if (!a || !mlCode || mlCode.rowId !== rowId) { toast(errText("code_expired")); return; }
+          if (mlCode.attempts >= ML_MAX_ATTEMPTS) { toast(errText("too_many")); return; }
           btn.disabled = true;
-          api("ml_verify", { rowId: rowId, code: code }).then(function (result) {
+          window.ArenaWeb.login(a.account_id, a.zone_id, code, state.lang).then(function (login) {
+            if (!login.ok) return login;
+            return api("ml_link", { rowId: rowId, token: login.jwt, nickname: login.nickname || "" });
+          }).then(function (result) {
             btn.disabled = false;
             if (!sheet.isConnected) return;
             if (!result.ok) {
               haptic("error");
-              toast(errText(result.error, { left: result.left }));
-              if (result.error === "wrong_code") { input.value = ""; input.focus(); }
+              if (result.error === "wrong_code") {
+                mlCode.attempts += 1;
+                var left = ML_MAX_ATTEMPTS - mlCode.attempts;
+                toast(left > 0 ? errText("wrong_code", { left: left }) : errText("too_many"));
+                input.value = "";
+                input.focus();
+                return;
+              }
+              toast(errText(result.error));
               return;
             }
+            mlCode = null;
             haptic("success");
             state.data.accounts = result.accounts || state.data.accounts;
             closeSheet();

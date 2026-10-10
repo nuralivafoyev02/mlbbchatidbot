@@ -433,40 +433,47 @@ test("cabinet: add / remove accounts with validation", async () => {
   }
 });
 
-test("cabinet: ML link — code send cooldown, wrong-code attempts are counted server-side, success links", async () => {
+function fakeJwt(claims) {
+  const part = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  return `${part({ alg: "HS256", typ: "JWT" })}.${part(claims)}.c2lnbmF0dXJlLXNpZ25hdHVyZQ`;
+}
+
+test("cabinet: ML link — the Mini App logs in to Arena itself; the server only checks and stores the token", async () => {
   const backend = installCabinetBackend();
   try {
     const app = loadAccountApp();
     const rowId = (await call(app, USER, "account_add", { account_id: "123456", zone_id: "2001" })).body.accounts[0].id;
 
-    assert.equal((await call(app, USER, "ml_verify", { rowId, code: "1234" })).body.error, "code_expired");
-    assert.equal((await call(app, USER, "ml_send_code", { rowId })).body.ok, true);
-    const again = await call(app, USER, "ml_send_code", { rowId });
-    assert.equal(again.body.error, "cooldown");
+    // Boshqa foydalanuvchi bu qatorni ulay olmaydi; noto'g'ri token rad etiladi.
+    const token = fakeJwt({ roleid: 123456, zoneid: 2001, exp: 9999999999 });
+    assert.equal((await call(app, { id: 888, first_name: "B" }, "ml_link", { rowId, token })).statusCode, 404);
+    assert.equal((await call(app, USER, "ml_link", { rowId, token: "not-a-jwt" })).body.error, "invalid_token");
+    assert.equal((await call(app, USER, "ml_link", { rowId, token: fakeJwt({ roleid: 999999, zoneid: 2001 }) })).body.error, "invalid_token",
+      "boshqa akkaunt tokeni bilan ulab bo'lmaydi");
 
-    const wrong = await call(app, USER, "ml_verify", { rowId, code: "9999" });
-    assert.deepEqual([wrong.body.error, wrong.body.left], ["wrong_code", 4]);
-    assert.equal(backend.settings.rows.get("ml_vc:777").value.attempts, 1);
-
-    const ok = await call(app, USER, "ml_verify", { rowId, code: "1234" });
+    const ok = await call(app, USER, "ml_link", { rowId, token, nickname: "  Lily<script>  " });
     assert.equal(ok.body.ok, true);
     assert.equal(ok.body.accounts[0].ml_linked, true);
-    assert.equal(ok.body.accounts[0].ml_nickname, "Lily");
-    assert.ok(!backend.settings.rows.has("ml_vc:777"), "kod holati tozalanadi");
-    assert.equal((await call(app, USER, "ml_send_code", { rowId })).body.error, "already_linked");
+    assert.equal(ok.body.accounts[0].ml_nickname, "Lilyscript");
+    const stored = backend.accounts[0].ml_token;
+    assert.ok(stored && !stored.includes(token), "token shifrlangan holda saqlanadi");
+    assert.equal((await call(app, USER, "ml_link", { rowId, token })).body.error, "already_linked");
+
+    // Server Arena'ga umuman murojaat qilmaydi (u yerdan bloklangan).
+    assert.equal(backend.arenaCalls.length, 0);
   } finally {
     backend.restore();
   }
 });
 
-test("cabinet: ML link — 5 wrong codes lock the code", async () => {
+test("cabinet: Mini App HTML carries the browser Arena client", async () => {
   const backend = installCabinetBackend();
   try {
     const app = loadAccountApp();
-    const rowId = (await call(app, USER, "account_add", { account_id: "123456", zone_id: "2001" })).body.accounts[0].id;
-    await call(app, USER, "ml_send_code", { rowId });
-    for (let i = 0; i < 5; i += 1) await call(app, USER, "ml_verify", { rowId, code: "9999" });
-    assert.equal((await call(app, USER, "ml_verify", { rowId, code: "1234" })).body.error, "too_many");
+    const res = createRes();
+    await app({ method: "GET", headers: {}, query: { view: "cabinet" }, url: "/api/account?view=cabinet" }, res);
+    assert.match(res.body, /window\.ArenaWeb = createArenaWeb/);
+    assert.ok(!res.body.includes("<!-- arena-web -->"));
   } finally {
     backend.restore();
   }

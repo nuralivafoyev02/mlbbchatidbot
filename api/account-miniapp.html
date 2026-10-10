@@ -279,6 +279,7 @@
   <div id="sheetRoot"></div>
   <div id="toast" class="toast hidden"></div>
 
+  <!-- arena-web -->
   <script>
     (function () {
       "use strict";
@@ -460,7 +461,36 @@
         toastTimer = setTimeout(function () { el.classList.add("hidden"); }, 2200);
       }
 
+      // O'yin ma'lumotlari Arena'dan telefonning o'zidan olinadi (serverdan
+      // bloklangan — api/_arena-web.js). Server faqat egasiga uning tokenini
+      // beradi (ml_session); javob shakli avvalgi server amallari bilan bir xil.
+      var ARENA_ACTIONS = ["overview", "matches", "match_detail", "heroes", "hero_matches", "friends", "privacy_set", "logout"];
+      var arenaSessions = {};
+
+      function arenaSession(rowId) {
+        if (arenaSessions[rowId]) return Promise.resolve(arenaSessions[rowId]);
+        return serverApi("ml_session", { rowId: rowId }).then(function (result) {
+          if (result.ok && result.token) arenaSessions[rowId] = result;
+          return result;
+        });
+      }
+
       function api(action, payload) {
+        if (ARENA_ACTIONS.indexOf(action) < 0) return serverApi(action, payload);
+        var rowId = state.rowId;
+        return arenaSession(rowId).then(function (session) {
+          if (!session.ok) return session;
+          if (!window.ArenaWeb) return { ok: false, error: "service_down" };
+          return window.ArenaWeb.call(action, session.token, payload, state.lang, session.account).then(function (result) {
+            if (action !== "logout") return result;
+            // Arena sessiyasi yopilmasa ham (masalan muddati o'tgan) — bazadan o'chiramiz.
+            delete arenaSessions[rowId];
+            return serverApi("logout", { rowId: rowId });
+          });
+        });
+      }
+
+      function serverApi(action, payload) {
         var body = Object.assign({ action: action, initData: tg ? tg.initData : "", lang: state.lang, rowId: state.rowId }, payload || {});
         return fetch(API_URL, {
           method: "POST",

@@ -26,6 +26,7 @@ const {
   buildTopupCreditedText,
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
+const { injectArenaWeb } = require("./_arena-web.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60;
@@ -40,11 +41,6 @@ function getConfig() {
     botUsername: cleanEnv(process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME).replace(/^@/, ""),
     supabaseUrl: cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, ""),
     supabaseKey: resolveServiceKey(process.env),
-    arenaUrl: cleanEnv(process.env.MLBB_ARENA_API_URL) || arena.DEFAULT_ARENA_API_URL,
-    arenaTimeoutMs: Number(process.env.MLBB_ARENA_TIMEOUT_MS) > 0 ? Number(process.env.MLBB_ARENA_TIMEOUT_MS) : 12000,
-    // Vercel IP'lari Arena'da bloklangan — MLBB_ARENA_API_URL Cloudflare Worker
-    // proxy'siga (…/arena-proxy) qaratiladi, kalit shu yerdan yuboriladi.
-    arenaProxyKey: cleanEnv(process.env.ARENA_PROXY_KEY),
     linkSecret: arena.resolveLinkSecret(process.env),
   };
 }
@@ -89,20 +85,10 @@ module.exports = async function handler(req, res) {
     switch (action) {
       case "bootstrap":
         return await handleBootstrap(res, ctx);
-      case "overview":
-        return await withSession(res, ctx, handleOverview);
-      case "matches":
-        return await withSession(res, ctx, handleMatches);
-      case "match_detail":
-        return await withSession(res, ctx, handleMatchDetail);
-      case "heroes":
-        return await withSession(res, ctx, handleHeroes);
-      case "hero_matches":
-        return await withSession(res, ctx, handleHeroMatches);
-      case "friends":
-        return await withSession(res, ctx, handleFriends);
-      case "privacy_set":
-        return await withSession(res, ctx, handlePrivacySet);
+      // Arena so'rovlarini Mini App o'zi yuboradi (api/_arena-web.js) —
+      // server faqat JWT'ni egasiga beradi.
+      case "ml_session":
+        return await handleMlSession(res, ctx);
       case "logout":
         return await handleLogout(res, ctx);
       // Shaxsiy kabinet (?view=cabinet)
@@ -112,10 +98,8 @@ module.exports = async function handler(req, res) {
         return await handleAccountAdd(res, ctx);
       case "account_remove":
         return await handleAccountRemove(res, ctx);
-      case "ml_send_code":
-        return await handleMlSendCode(res, ctx);
-      case "ml_verify":
-        return await handleMlVerify(res, ctx);
+      case "ml_link":
+        return await handleMlLink(res, ctx);
       case "firstmails":
         return await handleFirstmails(res, ctx);
       case "buy_limit":
@@ -166,79 +150,8 @@ async function handleBootstrap(res, { config, user }) {
   });
 }
 
-async function handleOverview(res, { client, token, lang, link }) {
-  const [info, stats, seasons, privacy] = await Promise.allSettled([
-    client.getInfo(token, lang),
-    client.getStats(token, lang),
-    client.getSeasons(token, lang),
-    client.getPrivacy(token, lang),
-  ]);
-
-  // Sessiya yaroqsiz bo'lsa — barchasi unauthorized bilan tushadi.
-  const failures = [info, stats, seasons, privacy].filter((r) => r.status === "rejected");
-  const unauthorized = failures.find((r) => r.reason?.reason === "unauthorized");
-  if (unauthorized && info.status === "rejected") {
-    throw unauthorized.reason;
-  }
-
-  if (info.status === "rejected" && stats.status === "rejected") {
-    throw info.reason;
-  }
-
-  const infoData = info.status === "fulfilled" ? info.value || {} : null;
-  const isUnavailable = (result) => result.status === "rejected" && result.reason?.reason === "unavailable";
-  const seasonList = seasons.status === "fulfilled" ? seasons.value : [];
-
-  return json(res, 200, {
-    ok: true,
-    account: publicLink(link),
-    info: infoData,
-    rank: infoData ? arena.formatRankLevel(infoData.rank_level) : null,
-    highestRank: infoData ? arena.formatRankLevel(infoData.history_rank_level) : null,
-    stats: stats.status === "fulfilled" ? stats.value || {} : null,
-    seasons: seasonList.length ? seasonList : (Array.isArray(stats.value?.sids) ? stats.value.sids : []),
-    privacy: privacy.status === "fulfilled" ? privacy.value || null : null,
-    // Moonton tomonidan o'chirilgan bo'limlar — UI "vaqtincha mavjud emas" deb ko'rsatadi.
-    unavailable: {
-      stats: isUnavailable(stats),
-      seasons: isUnavailable(seasons),
-      privacy: isUnavailable(privacy),
-    },
-  });
-}
-
-async function handleMatches(res, { client, token, lang, body }) {
-  const data = await client.getMatches(token, { sid: body.sid, limit: body.limit || 10, cursor: body.cursor, lang });
-  return json(res, 200, { ok: true, data: data || {} });
-}
-
-async function handleMatchDetail(res, { client, token, lang, body }) {
-  const data = await client.getMatchDetail(token, { matchId: body.matchId, sid: body.sid, lang });
-  return json(res, 200, { ok: true, data: data || {} });
-}
-
-async function handleHeroes(res, { client, token, lang, body }) {
-  const data = await client.getFrequentHeroes(token, { sid: body.sid, limit: body.limit || 20, cursor: body.cursor, lang });
-  return json(res, 200, { ok: true, data: data || {} });
-}
-
-async function handleHeroMatches(res, { client, token, lang, body }) {
-  const data = await client.getMatchesByHero(token, { heroId: body.heroId, sid: body.sid, limit: body.limit || 10, cursor: body.cursor, lang });
-  return json(res, 200, { ok: true, data: data || {} });
-}
-
-async function handleFriends(res, { client, token, lang, body }) {
-  const data = await client.getFriends(token, { sid: body.sid, lang });
-  return json(res, 200, { ok: true, data: data || {} });
-}
-
-async function handlePrivacySet(res, { client, token, lang, body }) {
-  const data = await client.setPrivacy(token, body.visible === true || body.visible === "true", lang);
-  return json(res, 200, { ok: true, data: data || null });
-}
-
-// Logout: Arena sessiyasini yopamiz (xato bo'lsa ham) va tokenni o'chiramiz.
-// Akkaunt "Mening profilim" ro'yxatida qoladi.
+// Logout: tokenni o'chiramiz (Arena sessiyasini Mini App o'zi yopadi —
+// serverdan Arena'ga so'rov bloklanadi). Akkaunt ro'yxatda qoladi.
 async function handleLogout(res, { config, user, body }) {
   const rowId = parseRowId(body.rowId);
   if (!rowId) {
@@ -250,22 +163,12 @@ async function handleLogout(res, { config, user, body }) {
     return json(res, 404, { ok: false, error: "not_found" });
   }
 
-  const token = arena.openArenaToken(link.ml_token, config.linkSecret);
-  if (token) {
-    try {
-      await createClient(config).logout(token);
-    } catch (error) {
-      console.error("[ACCOUNT_APP_LOGOUT_ARENA]", error?.message);
-    }
-  }
-
   const cleared = await supabaseRpc(config, "clear_user_account_ml_link", { p_user_id: String(user.id), p_row_id: rowId });
   return json(res, 200, { ok: Boolean(cleared && cleared.ok === true) });
 }
 
-// rowId → egasini tekshirish → tokenni ochish → handler. Arena xatolari
-// clientga do'stona kodlar bilan qaytariladi.
-async function withSession(res, { config, user, body }, handlerFn) {
+// "Mening akkauntim": egasiga uning Arena JWT'si (Mini App Arena'ga o'zi boradi).
+async function handleMlSession(res, { config, user, body }) {
   const rowId = parseRowId(body.rowId);
   if (!rowId) {
     return json(res, 400, { ok: false, error: "invalid_account" });
@@ -281,19 +184,7 @@ async function withSession(res, { config, user, body }, handlerFn) {
     return json(res, 409, { ok: false, error: "not_linked" });
   }
 
-  const lang = SUPPORTED_LANGS.includes(body.lang) ? body.lang : "en";
-
-  try {
-    return await handlerFn(res, { client: createClient(config), token, lang, body, link });
-  } catch (error) {
-    if (error instanceof arena.ArenaError) {
-      const status = { unauthorized: 401, invalid_input: 400, rate_limit: 429, timeout: 504, unavailable: 503 }[error.reason] || 502;
-      const code = error.reason === "unauthorized" ? "session_expired" : error.reason;
-      console.error("[ACCOUNT_APP_ARENA]", error.message);
-      return json(res, status, { ok: false, error: code });
-    }
-    throw error;
-  }
+  return json(res, 200, { ok: true, token, account: publicLink(link) });
 }
 
 function publicLink(link) {
@@ -304,14 +195,6 @@ function publicLink(link) {
     ml_nickname: link.ml_nickname || null,
     ml_linked_at: link.ml_linked_at || null,
   };
-}
-
-function createClient(config) {
-  return arena.createArenaClient({
-    baseUrl: config.arenaUrl,
-    timeoutMs: config.arenaTimeoutMs,
-    headers: config.arenaProxyKey ? { "x-arena-proxy-key": config.arenaProxyKey } : undefined,
-  });
 }
 
 function parseRowId(value) {
@@ -347,10 +230,6 @@ async function loadPreferredLanguage(config, user) {
 const CABINET_HISTORY_LIMIT = 50;
 const CABINET_FIRSTMAIL_PAGE = 30; // Do'kon: pastga aylantirganda 30 tadan
 const ACCOUNT_MAX_COUNT = 5;
-const ML_VC_KEY_PREFIX = "ml_vc:";
-const ML_CODE_MAX_ATTEMPTS = 5;
-const ML_CODE_TTL_MS = 5 * 60 * 1000;
-const ML_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
 const DEFAULT_ADMIN_IDS = "5081175125,8500085987,7396686285";
 
 function storeRequest(config) {
@@ -546,17 +425,6 @@ async function handleAccountRemove(res, { config, user, body }) {
     return json(res, 404, { ok: false, error: "not_found" });
   }
 
-  // Bot kabi: ulangan bo'lsa avval Arena sessiyasini yopamiz.
-  if (target.ml_linked) {
-    try {
-      const link = await supabaseRpc(config, "get_user_account_ml_link", { p_user_id: String(user.id), p_row_id: rowId });
-      const token = arena.openArenaToken(link?.ml_token, config.linkSecret);
-      if (token) await createClient(config).logout(token);
-    } catch (error) {
-      console.error("[CABINET_REMOVE_LOGOUT]", error?.message);
-    }
-  }
-
   const result = await supabaseRpc(config, "remove_user_account", {
     p_user_id: String(user.id),
     p_account_id: target.account_id,
@@ -570,39 +438,6 @@ async function handleAccountRemove(res, { config, user, body }) {
   return json(res, 200, { ok: true, accounts: accounts.filter((acc) => acc.id !== rowId) });
 }
 
-// Tasdiqlash kodi holati: bot_settings → ml_vc:<userId> = { rowId, sentAt, attempts }.
-// Urinishlar serverda sanaladi — kod tanlab topishning (brute force) oldi olinadi.
-function mlVcKey(userId) {
-  return `${ML_VC_KEY_PREFIX}${userId}`;
-}
-
-async function readMlVcState(config, userId) {
-  const rows = await supabaseRequest(
-    config,
-    `/bot_settings?key=eq.${encodeURIComponent(mlVcKey(userId))}&select=value&limit=1`
-  );
-  const value = Array.isArray(rows) && rows[0] ? rows[0].value : null;
-  return value && typeof value === "object" ? value : null;
-}
-
-function writeMlVcState(config, userId, value) {
-  return supabaseRequest(config, "/bot_settings?on_conflict=key", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: { key: mlVcKey(userId), value, updated_at: new Date().toISOString() },
-  });
-}
-
-function clearMlVcState(config, userId) {
-  return supabaseRequest(config, `/bot_settings?key=eq.${encodeURIComponent(mlVcKey(userId))}`, { method: "DELETE" });
-}
-
-function arenaErrorCode(error) {
-  return ["send_failed", "rate_limit", "invalid_input", "invalid_code", "timeout"].includes(error?.reason)
-    ? error.reason
-    : "service_down";
-}
-
 async function findUnlinkedAccount(config, user, rowIdRaw) {
   const rowId = parseRowId(rowIdRaw);
   const accounts = await listUserAccounts(config, user.id);
@@ -613,85 +448,58 @@ async function findUnlinkedAccount(config, user, rowIdRaw) {
   return { account };
 }
 
-async function handleMlSendCode(res, { config, user, body }) {
+// Kabinet: Mini App Arena'da kod bilan kirib, olingan JWT'ni yuboradi.
+// Serverdan Arena'ga so'rov yuborib bo'lmaydi (bloklangan), shuning uchun
+// token formati va (bo'lsa) undagi role/zone tekshiriladi, keyin shifrlab
+// saqlanadi. `ml_linked` faqat egasining o'ziga ko'rinadigan belgi.
+async function handleMlLink(res, { config, user, body }) {
   const { account, error } = await findUnlinkedAccount(config, user, body.rowId);
   if (!account) {
     return json(res, error === "not_found" ? 404 : 409, { ok: false, error });
   }
 
-  const previous = await readMlVcState(config, user.id).catch(() => null);
-  const since = previous && previous.rowId === account.id ? Date.now() - Number(previous.sentAt || 0) : Infinity;
-
-  if (since < ML_CODE_RESEND_COOLDOWN_MS) {
-    return json(res, 429, { ok: false, error: "cooldown", wait: Math.ceil((ML_CODE_RESEND_COOLDOWN_MS - since) / 1000) });
+  const token = String(body.token ?? "").trim();
+  if (!isArenaJwtFor(token, account)) {
+    return json(res, 400, { ok: false, error: "invalid_token" });
   }
 
-  try {
-    await createClient(config).sendVerificationCode(account.account_id, account.zone_id);
-  } catch (sendError) {
-    console.error("[CABINET_ML_SEND]", sendError?.message);
-    return json(res, 502, { ok: false, error: arenaErrorCode(sendError) });
-  }
-
-  await writeMlVcState(config, user.id, { rowId: account.id, sentAt: Date.now(), attempts: 0 });
-  return json(res, 200, { ok: true, ttl: ML_CODE_TTL_MS / 1000, cooldown: ML_CODE_RESEND_COOLDOWN_MS / 1000 });
-}
-
-async function handleMlVerify(res, { config, user, body }) {
-  const code = String(body.code ?? "").replace(/[\s-]/g, "");
-  if (!arena.isValidVerificationCode(code)) {
-    return json(res, 400, { ok: false, error: "invalid_format" });
-  }
-
-  const { account, error } = await findUnlinkedAccount(config, user, body.rowId);
-  if (!account) {
-    return json(res, error === "not_found" ? 404 : 409, { ok: false, error });
-  }
-
-  const vc = await readMlVcState(config, user.id);
-  if (!vc || vc.rowId !== account.id || Date.now() - Number(vc.sentAt || 0) > ML_CODE_TTL_MS) {
-    return json(res, 410, { ok: false, error: "code_expired" });
-  }
-
-  const attempts = Number(vc.attempts || 0);
-  if (attempts >= ML_CODE_MAX_ATTEMPTS) {
-    return json(res, 429, { ok: false, error: "too_many" });
-  }
-
-  const client = createClient(config);
-  let session;
-  try {
-    session = await client.login(account.account_id, account.zone_id, code);
-  } catch (loginError) {
-    if (loginError?.reason === "invalid_code") {
-      const used = attempts + 1;
-      await writeMlVcState(config, user.id, { ...vc, attempts: used });
-      return json(res, 400, { ok: false, error: used >= ML_CODE_MAX_ATTEMPTS ? "too_many" : "wrong_code", left: ML_CODE_MAX_ATTEMPTS - used });
-    }
-    console.error("[CABINET_ML_LOGIN]", loginError?.message);
-    return json(res, 502, { ok: false, error: arenaErrorCode(loginError) });
-  }
-
-  const lang = SUPPORTED_LANGS.includes(body.lang) ? body.lang : "en";
-  const info = await client.getInfo(session.jwt, lang).catch(() => ({}));
+  const nickname = String(body.nickname ?? "").replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0, 64);
   const saved = await supabaseRpc(config, "set_user_account_ml_link", {
     p_user_id: String(user.id),
     p_row_id: account.id,
-    p_token: arena.sealArenaToken(session.jwt, config.linkSecret),
-    p_nickname: info && info.name ? String(info.name).slice(0, 64) : null,
+    p_token: arena.sealArenaToken(token, config.linkSecret),
+    p_nickname: nickname || null,
   }).catch((saveError) => {
     console.error("[CABINET_ML_SAVE]", saveError?.message);
     return null;
   });
 
-  await clearMlVcState(config, user.id).catch(() => {});
-
   if (!saved || saved.ok !== true) {
-    void client.logout(session.jwt).catch(() => {});
     return json(res, 500, { ok: false, error: "save_failed" });
   }
 
   return json(res, 200, { ok: true, accounts: await listUserAccounts(config, user.id) });
+}
+
+// JWT ko'rinishi (header.payload.signature). Payload'da role/zone bo'lsa —
+// shu akkauntniki bo'lishi shart (boshqa akkaunt tokeni bilan ulab bo'lmaydi).
+function isArenaJwtFor(token, account) {
+  if (token.length < 20 || token.length > 4096 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.test(token)) {
+    return false;
+  }
+  let claims = null;
+  try {
+    claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  } catch {
+    claims = null;
+  }
+  if (!claims || typeof claims !== "object") return true;
+  const pick = (...keys) => keys.map((k) => claims[k]).find((v) => v !== undefined && v !== null && v !== "");
+  const role = pick("roleid", "role_id", "roleId");
+  const zone = pick("zoneid", "zone_id", "zoneId");
+  if (role !== undefined && String(role) !== String(account.account_id)) return false;
+  if (zone !== undefined && String(zone) !== String(account.zone_id)) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,7 +845,7 @@ function isCabinetRequest(req) {
 function serveHtml(res, filePath, color) {
   const fileName = path.basename(filePath);
   try {
-    const html = injectTelegramShell(fs.readFileSync(filePath, "utf8"), { color });
+    const html = injectArenaWeb(injectTelegramShell(fs.readFileSync(filePath, "utf8"), { color }));
     return res
       .status(200)
       .setHeader("Content-Type", "text/html; charset=utf-8")
