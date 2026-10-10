@@ -91,23 +91,38 @@
     .head-sub code { font-family: inherit; color: var(--text); opacity: .8; }
 
     /* "$" — narxlar ro'yxati. Ikonka tanga kabi aylanib turadi. */
-    .price-btn {
-      position: relative; width: 36px; height: 36px; flex: none; border-radius: 12px;
-      display: grid; place-items: center; color: #fff; font-size: 18px;
+    /* Header: balans tugmasi — bosilganda to'ldirish va balans tarixi */
+    .bal-btn {
+      position: relative; flex: none; height: 36px; max-width: 46%; padding: 0 12px 0 6px; border-radius: 12px;
+      display: flex; align-items: center; gap: 7px; color: #fff;
       background: linear-gradient(135deg, var(--green), #059669);
       box-shadow: 0 8px 22px rgba(16, 185, 129, 0.38), inset 0 1px 0 rgba(255, 255, 255, .2);
-      perspective: 200px;
+      transition: transform .15s;
     }
-    .price-btn::after {
+    .bal-btn::after {
       content: ""; position: absolute; inset: -3px; border-radius: 15px; pointer-events: none;
       border: 1.5px solid rgba(16, 185, 129, .45); animation: pulseRing 2.4s ease-out infinite;
     }
-    .price-btn i { display: block; animation: coinSpin 2.6s cubic-bezier(.45, .05, .55, .95) infinite; }
-    .price-btn:active { transform: scale(.93); }
-    @keyframes coinSpin { 0%, 35% { transform: rotateY(0) } 65%, 100% { transform: rotateY(360deg) } }
+    .bal-btn:active { transform: scale(.94); }
+    .bal-btn .bal-ico { width: 26px; height: 26px; flex: none; border-radius: 9px; display: grid; place-items: center; font-size: 14px; background: rgba(255, 255, 255, .18); }
+    .bal-btn .bal-sum { min-width: 0; font-size: 14px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bal-btn .bal-sum small { font-size: 11px; font-weight: 700; opacity: .85; }
+    .bal-btn .bal-dot { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--gold); border: 2px solid var(--bg); }
+    .bal-btn.off { background: var(--surface2); box-shadow: none; }
+    .bal-btn.off::after { display: none; }
+    /* Balans oynasi */
+    .wsheet { text-align: center; padding: 4px 0 2px; }
+    .wsheet .w-ico {
+      margin: 0 auto 10px; width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; font-size: 26px; color: #fff;
+      background: linear-gradient(135deg, var(--green), #059669); box-shadow: 0 10px 26px rgba(16, 185, 129, .35);
+    }
+    .wsheet .w-label { font-size: 13px; color: var(--text2); font-weight: 600; }
+    .wsheet .w-big { margin: 4px 0 14px; font-size: 34px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+    .wsheet .w-big small { font-size: 16px; color: var(--text2); font-weight: 700; }
+    .wsheet .pill { margin-bottom: 14px; }
     @keyframes pulseRing { 0% { opacity: .9; transform: scale(1) } 100% { opacity: 0; transform: scale(1.22) } }
     @media (prefers-reduced-motion: reduce) {
-      .price-btn i, .price-btn::after { animation: none; }
+      .bal-btn::after { animation: none; }
     }
 
     /* ------------------------------------------------------------ blocks */
@@ -354,7 +369,7 @@
     .dock.shop { flex-direction: row-reverse; }
     .nav {
       position: relative; flex: 1; min-width: 0;
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 6px;
+      display: grid; grid-template-columns: repeat(var(--tabs, 3), minmax(0, 1fr)); gap: 2px; padding: 6px;
       border-radius: 28px; background: rgba(22, 28, 48, .74); border: 1px solid rgba(255, 255, 255, .10);
       -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
       box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06);
@@ -540,7 +555,7 @@
           sent_title: "So'rov yuborildi!", sent_text: "Admin tez orada siz bilan bog'lanadi. Kutmasdan yozish uchun pastdagi tugmani bosing.",
           contact: "Admin bilan bog'lanish", close: "Yopish", notify_failed: "So'rov yuborilmadi. Admin bilan to'g'ridan-to'g'ri bog'laning.",
           not_available: "Bu mahsulot endi mavjud emas", som: "so'm", pcs: "ta",
-          shop_title: "Do'kon", sh_mail: "Pochta", sh_donat: "Donat", sh_orders: "Tarix",
+          shop_title: "Do'kon", sh_mail: "Pochta", sh_limits: "Limitlar", sh_donat: "Donat", sh_orders: "Tarix", w_topup_full: "Balansni to'ldirish", w_pending_hint: "Kutilayotgan to'lov: {sum}",
           soon: "Tez kunda!", soon_text: "Donat bo'limi ustida ishlayapmiz. Tez orada shu yerda olmos sotib olishingiz mumkin bo'ladi.",
           orders_title: "Xaridlar va to'lovlar", no_orders: "Hali xarid yoki to'lov yo'q.\nXaridlar va balansga kiritgan pullaringiz shu yerda ko'rinadi.",
           d_type: "Turi", d_price: "Summa", d_status: "Holati", d_date: "Sana", d_order: "Buyurtma", d_package: "Paket",
@@ -611,7 +626,7 @@
           sent_title: "Запрос отправлен!", sent_text: "Админ скоро свяжется с вами. Чтобы написать сразу, нажмите кнопку ниже.",
           contact: "Написать админу", close: "Закрыть", notify_failed: "Запрос не отправлен. Свяжитесь с админом напрямую.",
           not_available: "Товар больше недоступен", som: "сум", pcs: "шт",
-          shop_title: "Магазин", sh_mail: "Почта", sh_donat: "Донат", sh_orders: "История",
+          shop_title: "Магазин", sh_mail: "Почта", sh_limits: "Лимиты", sh_donat: "Донат", sh_orders: "История", w_topup_full: "Пополнить баланс", w_pending_hint: "Ожидается платёж: {sum}",
           soon: "Скоро!", soon_text: "Мы работаем над разделом доната. Скоро здесь можно будет купить алмазы.",
           orders_title: "Покупки и платежи", no_orders: "Покупок и платежей пока нет.\nЗдесь появятся покупки и пополнения баланса.",
           d_type: "Тип", d_price: "Сумма", d_status: "Статус", d_date: "Дата", d_order: "Заказ", d_package: "Пакет",
@@ -682,7 +697,7 @@
           sent_title: "Request sent!", sent_text: "The admin will contact you soon. Tap below to message them right away.",
           contact: "Contact admin", close: "Close", notify_failed: "Request failed. Please contact the admin directly.",
           not_available: "This item is no longer available", som: "UZS", pcs: "pcs",
-          shop_title: "Shop", sh_mail: "Mail", sh_donat: "Donate", sh_orders: "History",
+          shop_title: "Shop", sh_mail: "Mail", sh_limits: "Limits", sh_donat: "Donate", sh_orders: "History", w_topup_full: "Top up balance", w_pending_hint: "Pending payment: {sum}",
           soon: "Coming soon!", soon_text: "We're working on the donate section. Soon you'll be able to buy diamonds here.",
           orders_title: "Purchases & payments", no_orders: "No purchases or payments yet.\nPurchases and balance top-ups will appear here.",
           d_type: "Type", d_price: "Amount", d_status: "Status", d_date: "Date", d_order: "Order", d_package: "Pack",
@@ -732,6 +747,7 @@
         ],
         shop: [
           { id: "mail", label: "sh_mail", ico: "envelope", active: "envelope-fill" },
+          { id: "limits", label: "sh_limits", ico: "lightning-charge", active: "lightning-charge-fill" },
           { id: "donat", label: "sh_donat", ico: "gem", active: "gem" },
           { id: "orders", label: "sh_orders", ico: "receipt", active: "receipt-cutoff" }
         ]
@@ -907,6 +923,7 @@
             return '<button data-tab="' + t.id + '"><span class="nav-ico"></span><span>' + esc(L(t.label)) + "</span></button>";
           }).join("");
           nav.dataset.key = key;
+          nav.style.setProperty("--tabs", String(tabs.length));
           Array.prototype.forEach.call(nav.querySelectorAll("button"), function (b) {
             b.addEventListener("click", function () { goToTab(b.dataset.tab); });
           });
@@ -1005,7 +1022,7 @@
       function renderHeader() {
         var head = document.getElementById("head");
         head.innerHTML = headerHtml();
-        document.getElementById("priceBtn").addEventListener("click", openPrices);
+        document.getElementById("balBtn").addEventListener("click", openWalletSheet);
       }
 
       function headerHtml() {
@@ -1017,7 +1034,7 @@
         return '<div class="head">' + avatar +
           '<div class="grow"><div class="head-name ellipsis">' + esc(name) + "</div>" +
           '<div class="head-sub ellipsis">' + (u.username ? "@" + esc(u.username) + " · " : "") + "ID <code>" + esc(u.id) + "</code></div></div>" +
-          '<button class="price-btn" id="priceBtn" aria-label="' + esc(L("prices_title")) + '">' + icon("currency-dollar") + "</button></div>";
+          balanceBtnHtml() + "</div>";
       }
 
       function limitCard(kind) {
@@ -1080,7 +1097,7 @@
         }
         app.innerHTML = html;
         bindWalletCard();
-        document.getElementById("ctaBuy").addEventListener("click", openPrices);
+        document.getElementById("ctaBuy").addEventListener("click", openShopLimits);
         var more = app.querySelector("[data-goto]");
         if (more) more.addEventListener("click", function () { goToTab("history"); });
       }
@@ -1336,7 +1353,7 @@
         if (!state.data) return;
         if (fmObserver) { fmObserver.disconnect(); fmObserver = null; }
         var views = state.mode === "shop"
-          ? { mail: renderShop, donat: renderDonat, orders: renderOrders }
+          ? { mail: renderShop, limits: renderLimits, donat: renderDonat, orders: renderOrders }
           : { home: renderHome, accounts: renderAccounts, history: renderHistory };
         (views[currentTab()] || views[Object.keys(views)[0]])();
       }
@@ -1352,14 +1369,14 @@
         return item.amount + " " + L("pcs");
       }
 
-      function openPrices() {
+      // Limit paketlari ro'yxati (Do'kon → Limitlar).
+      function priceListHtml() {
         var prices = state.data.prices;
-        var html = "<h2>" + esc(L("prices_title")) + '</h2><p class="lead">' + esc(L("prices_lead")) + "</p>";
-        if (wallet()) html += '<div style="margin:-6px 0 14px"><span class="pill green">' + icon("wallet2") + " " + esc(L("w_balance")) + ": " + esc(som(wallet().balance)) + "</span></div>";
         if (!prices.length) {
-          html += '<div class="empty">' + icon("tag") + esc(L("no_prices")) + "</div>" +
-            (state.data.supportUsername ? '<button class="btn primary" id="sheetContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "");
+          return '<div class="empty">' + icon("tag") + esc(L("no_prices")) + "</div>" +
+            (state.data.supportUsername ? '<button class="btn primary" id="pricesContact">' + icon("chat-dots") + esc(L("contact")) + "</button>" : "");
         }
+        var html = "";
         Object.keys(KINDS).forEach(function (kind) {
           var items = prices.filter(function (p) { return p.kind === kind; });
           if (!items.length) return;
@@ -1373,12 +1390,28 @@
               '<div class="item-right"><div class="price-sum">' + esc(som(p.price)) + '</div><div class="price-unit">' + esc(unit) + "</div></div></button>";
           }).join("");
         });
-        var sheet = openSheet(html);
-        var contactBtn = sheet.querySelector("#sheetContact");
+        return html;
+      }
+
+      function renderLimits() {
+        var html = walletCardHtml() +
+          '<div class="section-title" style="margin-top:8px">' + esc(L("limits")) + "</div>" +
+          '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + "</div>" +
+          '<div class="section-title">' + esc(L("prices_title")) + "</div>" +
+          '<div class="item-sub" style="margin:-4px 2px 12px">' + esc(L("prices_lead")) + "</div>" +
+          priceListHtml();
+        app.innerHTML = html;
+        bindWalletCard();
+        var contactBtn = document.getElementById("pricesContact");
         if (contactBtn) contactBtn.addEventListener("click", contactAdmin);
-        Array.prototype.forEach.call(sheet.querySelectorAll("[data-price]"), function (el) {
-          el.addEventListener("click", function () { buyLimit(sheet, el.dataset.price); });
-        });
+        bindAll("[data-price]", function (el) { buyLimit(null, el.dataset.price); });
+      }
+
+      // Bosh sahifadagi "Qo'shimcha limit sotib olish" → Do'kon → Limitlar.
+      function openShopLimits() {
+        state.tabs.shop = "limits";
+        if (state.mode === "shop") { renderNav(); render(); return; }
+        switchMode("shop");
       }
 
       function showBuyResult(sheet, result) {
@@ -1409,9 +1442,10 @@
         if (!item) return;
         haptic("medium");
         var what = L("lim_" + item.kind).replace(/ ·.*$/, "") + " × " + kindAmountText(item);
-        if (lacksMoney(item.price)) { showNoMoney(sheet, item.price, wallet().balance); return; }
+        if (lacksMoney(item.price)) { showNoMoney(sheet || openSheet(""), item.price, wallet().balance); return; }
         confirmAction(L("pay_confirm", { what: what, price: som(item.price) })).then(function (ok) {
-          if (!ok || !sheet.isConnected) return;
+          if (!ok || (sheet && !sheet.isConnected)) return;
+          if (!sheet) sheet = openSheet("");
           sheetLoading(sheet);
           api("buy_limit", { id: id }).then(function (result) {
             rememberOrder(result);
@@ -1492,12 +1526,46 @@
         bindAll("[data-wallet-history]", openWalletHistory);
       }
 
+      // Header'dagi balans tugmasi ($ o'rnida).
+      function balanceBtnHtml() {
+        var w = wallet();
+        var label = esc(L("w_balance"));
+        if (!w) return '<button class="bal-btn off" id="balBtn" aria-label="' + label + '"><span class="bal-ico">' + icon("wallet2") + '</span><span class="bal-sum">—</span></button>';
+        var pending = w.topup && w.topup.status === "pending";
+        return '<button class="bal-btn" id="balBtn" aria-label="' + label + ": " + esc(som(w.balance)) + '">' +
+          (pending ? '<span class="bal-dot"></span>' : "") + '<span class="bal-ico">' + icon("wallet2") + "</span>" +
+          '<span class="bal-sum">' + esc(num(w.balance)) + " <small>" + esc(L("som")) + "</small></span></button>";
+      }
+
+      function refreshBalanceBtn() {
+        var btn = document.getElementById("balBtn");
+        if (!btn) return;
+        btn.outerHTML = balanceBtnHtml();
+        document.getElementById("balBtn").addEventListener("click", openWalletSheet);
+      }
+
+      // Balans oynasi: joriy balans, to'ldirish va balans tarixi.
+      function openWalletSheet() {
+        var w = wallet();
+        if (!w) { toast(errText("wallet_unavailable")); return; }
+        var pending = w.topup && w.topup.status === "pending";
+        var sheet = openSheet('<div class="wsheet"><div class="w-ico">' + icon("wallet2") + "</div>" +
+          '<div class="w-label">' + esc(L("w_balance")) + "</div>" +
+          '<div class="w-big">' + esc(num(w.balance)) + " <small>" + esc(L("som")) + "</small></div>" +
+          (pending ? '<span class="pill gold">' + icon("hourglass-split") + " " + esc(L("w_pending_hint", { sum: som(w.topup.pay_amount) })) + "</span>" : "") +
+          '<button class="btn green" id="wsTopup">' + icon("plus-lg") + esc(L("w_topup_full")) + "</button>" +
+          '<button class="btn" id="wsHistory">' + icon("clock-history") + esc(L("w_history")) + "</button></div>");
+        sheet.querySelector("#wsTopup").addEventListener("click", function () { openTopup(); });
+        sheet.querySelector("#wsHistory").addEventListener("click", openWalletHistory);
+      }
+
       // Balans o'zgarganda faqat kartalarni yangilaymiz (ro'yxat/scroll joyida qoladi).
       function refreshWalletCards() {
         Array.prototype.forEach.call(app.querySelectorAll(".wallet"), function (el) {
           el.outerHTML = walletCardHtml();
         });
         bindWalletCard();
+        refreshBalanceBtn();
       }
 
       function setBalance(balance) {
