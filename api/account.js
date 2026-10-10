@@ -772,6 +772,7 @@ async function handleHamyonCallback(req, res, config) {
     return json(res, 500, { error: "temporary" });
   }
 
+  console.log("[WALLET_HAMYON_CALLBACK]", fields.status || "-", fields.payment_id || "-", outcome.httpStatus, outcome.status || "-");
   if (outcome.credited && outcome.userId) {
     await notifyTopupCredited(config, { id: outcome.userId }, { pay_amount: outcome.amount }, outcome.result?.balance);
   }
