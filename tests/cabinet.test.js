@@ -8,7 +8,7 @@ const quotaLog = require("../api/_quota-log.js");
 const SUPABASE = "https://testproject.supabase.co/rest/v1";
 const ARENA = "https://arena.example.test/api";
 const BOT_TOKEN = "123456:test-token";
-const ELDERPAY = "https://elderpay.example.test";
+const HAMYON = "https://hamyon-api.example.test";
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
@@ -298,35 +298,39 @@ function installCabinetBackend() {
       if (path.startsWith("/bot_users")) return jsonResponse([{ preferred_language: "uz", user_id: 1, chat_id: 1, username: "Ksava_org" }]);
       return jsonResponse([]);
     }
-    if (href.startsWith(ELDERPAY)) {
-      const call = JSON.parse(options.body);
-      elderCalls.push(call);
-      if (call.method === "create") {
-        if (elder.conflicts > 0) {
-          elder.conflicts -= 1;
-          return jsonResponse({ status: "error", message: "Bu miqdordagi to'lov allaqachon mavjud" }, 409);
+    if (href.startsWith(HAMYON)) {
+      const url = new URL(href);
+      if (url.pathname === "/payment/create") {
+        const call = JSON.parse(options.body);
+        hamyonCalls.push({ path: url.pathname, body: call });
+        if (hamyon.conflicts > 0) {
+          hamyon.conflicts -= 1;
+          return jsonResponse({ error: "Bu summada ochiq to'lov mavjud — summani biroz o'zgartiring!" }, 400);
         }
-        const order = `ord-${elderCalls.length}`;
-        elder.orders.set(order, { amount: call.amount, status: "pending" });
-        return jsonResponse({ status: "success", order, data: { amount: String(call.amount), over: 5 } });
+        const paymentId = `pay-${hamyonCalls.length}`;
+        hamyon.orders.set(paymentId, { amount: call.amount, status: "pending" });
+        return jsonResponse({ payment_id: paymentId, card: "9860190111316492", amount: call.amount, expires_in: 300 });
       }
-      const order = elder.orders.get(call.order);
-      if (!order) return jsonResponse({ status: "error", message: "order topilmadi" }, 400);
-      if (call.method === "check") {
-        return jsonResponse({ status: "success", order: call.order, data: { amount: String(order.amount), status: order.status, date: "2026-10-09", over: 3 } });
+      if (url.pathname === "/payment/status") {
+        const order = hamyon.orders.get(url.searchParams.get("payment_id"));
+        if (!order) return jsonResponse({ error: "payment topilmadi" }, 400);
+        return jsonResponse({ payment_id: url.searchParams.get("payment_id"), amount: order.amount, status: order.status, created_at: "2026-10-09" });
       }
-      if (call.method === "cancel") {
-        order.status = "cancel";
-        return jsonResponse({ status: "success", message: "ok", order: call.order });
+      if (url.pathname === "/payment/cancel") {
+        const call = JSON.parse(options.body);
+        hamyonCalls.push({ path: url.pathname, body: call });
+        const order = hamyon.orders.get(call.payment_id);
+        if (order) order.status = "cancel";
+        return jsonResponse({ ok: true, payment_id: call.payment_id, status: "cancel" });
       }
     }
     return jsonResponse({});
   };
 
-  const elder = { orders: new Map(), conflicts: 0 };
-  const elderCalls = [];
+  const hamyon = { orders: new Map(), conflicts: 0 };
+  const hamyonCalls = [];
   return {
-    settings, accounts, telegram, arenaCalls, orders, wallet, elder, elderCalls,
+    settings, accounts, telegram, arenaCalls, orders, wallet, hamyon, hamyonCalls,
     restore: () => { global.fetch = original; },
   };
 }
@@ -343,9 +347,9 @@ function loadAccountApp() {
   delete process.env.SHOP_NOTIFY_CHAT_ID;
   process.env.WALLET_CARD_NUMBER = "8600 1234 5678 9012";
   process.env.WALLET_CARD_HOLDER = "ALI VALIYEV";
-  process.env.ELDERPAY_API_URL = ELDERPAY;
-  process.env.ELDERPAY_SHOP_ID = "123456";
-  process.env.ELDERPAY_SHOP_KEY = "shop-secret-key";
+  process.env.HAMYON_API_URL = HAMYON;
+  process.env.HAMYON_SHOP_ID = "123456";
+  process.env.HAMYON_SHOP_KEY = "shop-secret-key";
   delete require.cache[require.resolve("../api/account.js")];
   return require("../api/account.js");
 }
@@ -483,21 +487,25 @@ test("cabinet: limit is bought from the balance — insufficient funds first, th
     assert.equal(cabinet.wallet.config.auto, true);
     assert.equal((await call(app, USER, "topup_create", { amount: 100 })).body.error, "invalid_amount");
     const topup = (await call(app, USER, "topup_create", { amount: 20000 })).body.topup;
-    assert.equal(topup.pay_amount, 20000, "ElderPay rejimida aniq summa");
+    assert.equal(topup.pay_amount, 20000, "Hamyon rejimida aniq summa");
+    assert.equal(topup.card, "9860190111316492", "mijozga o'tkaziladigan karta ko'rsatiladi");
 
-    // ElderPay'da aynan shu summaga buyurtma ochildi (shop_key faqat serverda).
-    assert.deepEqual(backend.elderCalls[0], { method: "create", shop_id: "123456", shop_key: "shop-secret-key", amount: 20000, user_id: "tg_777" });
+    // Hamyon'da aynan shu summaga buyurtma ochildi (shop_key faqat serverda).
+    assert.deepEqual(backend.hamyonCalls[0], {
+      path: "/payment/create",
+      body: { shop_id: "123456", shop_key: "shop-secret-key", amount: 20000, order_id: String(topup.id) },
+    });
     assert.ok(!JSON.stringify(topup).includes("shop-secret-key"));
 
     // Pul hali tushmagan.
     const early = (await call(app, USER, "topup_check", { id: topup.id })).body;
     assert.deepEqual([early.ok, early.credited, early.topup.status], [true, false, "pending"]);
-    assert.deepEqual(backend.elderCalls.at(-1), { method: "check", order: "ord-1" });
+    assert.equal(backend.hamyon.orders.get("pay-1").status, "pending");
 
     // Boshqa user birovning so'rovini tekshira olmaydi.
     assert.equal((await call(app, { id: 888, first_name: "B" }, "topup_check", { id: topup.id })).statusCode, 404);
 
-    backend.elder.orders.get("ord-1").status = "paid";
+    backend.hamyon.orders.get("pay-1").status = "paid";
     const paid = (await call(app, USER, "topup_check", { id: topup.id })).body;
     assert.deepEqual([paid.credited, paid.balance, paid.topup.status], [true, 20000, "paid"]);
     assert.ok(backend.telegram.some((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)));
@@ -563,35 +571,35 @@ test("cabinet: firstmail from balance reveals credentials to the buyer only; agr
   }
 });
 
-test("cabinet: ElderPay — 409 picks another amount, cancel closes the order, a paid order is credited on the next cabinet open", async () => {
+test("cabinet: Hamyon — conflict picks another amount, cancel closes the order, a paid order is credited on the next cabinet open", async () => {
   const backend = installCabinetBackend();
   try {
     const app = loadAccountApp();
 
     // Shu summada boshqa faol to'lov bor — so'rov bekor qilinib, qayta yaratiladi.
-    backend.elder.conflicts = 1;
+    backend.hamyon.conflicts = 1;
     const first = (await call(app, USER, "topup_create", { amount: 50000 })).body;
     assert.equal(first.ok, true);
     assert.equal(backend.wallet.topups.length, 2);
     assert.equal(backend.wallet.topups[0].status, "cancelled");
-    assert.equal(backend.wallet.topups[1].provider_order, "ord-2");
+    assert.equal(backend.wallet.topups[1].provider_order, "pay-2");
     assert.deepEqual(backend.wallet.topups.map((t) => t.pay_amount), [50000, 50001], "band bo'lsa +1 so'm");
 
-    // Bekor qilish ElderPay'dagi buyurtmani ham yopadi.
+    // Bekor qilish Hamyon'dagi buyurtmani ham yopadi.
     assert.equal((await call(app, USER, "topup_cancel", { id: first.topup.id })).body.ok, true);
-    assert.equal(backend.elder.orders.get("ord-2").status, "cancel");
+    assert.equal(backend.hamyon.orders.get("pay-2").status, "cancel");
 
     // To'lab, oynani yopib qo'ygan foydalanuvchi: kabinet ochilganda yoziladi.
     const second = (await call(app, USER, "topup_create", { amount: 30000 })).body.topup;
     const order = backend.wallet.topups.find((t) => String(t.id) === second.id).provider_order;
-    backend.elder.orders.get(order).status = "paid";
+    backend.hamyon.orders.get(order).status = "paid";
     const cabinet = (await call(app, USER, "cabinet")).body;
     assert.equal(cabinet.wallet.balance, 30000);
     assert.deepEqual(cabinet.topups.map((t) => [t.paid_amount, t.reference]), [[30000, order]], "tarixda to'ldirish ko'rinadi");
     assert.ok(backend.telegram.some((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text)));
 
-    // ElderPay ishlamasa — foydalanuvchiga tushunarli xato, so'rov ochiq qolmaydi.
-    backend.elder.conflicts = 5;
+    // Hamyon ishlamasa — foydalanuvchiga tushunarli xato, so'rov ochiq qolmaydi.
+    backend.hamyon.conflicts = 5;
     const busy = (await call(app, USER, "topup_create", { amount: 10000 })).body;
     assert.equal(busy.error, "busy");
     assert.ok(backend.wallet.topups.every((t) => t.status !== "pending"));

@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const elderpay = require("../api/_elderpay.js");
+const hamyon = require("../api/_hamyon.js");
 const walletLib = require("../api/_wallet.js");
 
 // ---------------------------------------------------------------------------
@@ -64,6 +65,78 @@ test("elderpay: errors map to reasons and never leak the shop key", async () => 
 });
 
 // ---------------------------------------------------------------------------
+// _hamyon.js
+// ---------------------------------------------------------------------------
+function hamyonFetch(handler) {
+  const calls = [];
+  const fetchFn = async (url, options = {}) => {
+    const href = String(url);
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url: href, body });
+    const [status, payload] = handler({ href, body });
+    return new Response(JSON.stringify(payload), { status });
+  };
+  return { calls, fetchFn };
+}
+
+test("hamyon: create / check / cancel follow the REST API and return the card", async () => {
+  const config = hamyon.resolveHamyonConfig({ HAMYON_SHOP_ID: "73", HAMYON_SHOP_KEY: "k" });
+  assert.equal(config.apiUrl, "https://hamyon-api.uz");
+
+  const { calls, fetchFn } = hamyonFetch(({ href, body }) => {
+    if (body) {
+      if (href.includes("/payment/create")) return [200, { payment_id: "pay-a1b2", card: "9860190111316492", amount: 20000, expires_in: 300 }];
+      return [200, { ok: true, payment_id: body.payment_id, status: "cancel" }];
+    }
+    return [200, { payment_id: "pay-a1b2", amount: 20000, status: "paid", created_at: "2026-10-10" }];
+  });
+  const client = hamyon.createHamyonClient({ config, fetchFn });
+  assert.equal(client.enabled, true);
+
+  assert.deepEqual(await client.createOrder({ amount: 20000, orderId: "42" }), {
+    order: "pay-a1b2",
+    amount: 20000,
+    card: "9860190111316492",
+    payUrl: null,
+  });
+  assert.deepEqual(calls[0].body, { shop_id: "73", shop_key: "k", amount: 20000, order_id: "42" });
+
+  assert.deepEqual(await client.checkOrder("pay-a1b2"), { order: "pay-a1b2", status: "paid", amount: 20000, date: "2026-10-10" });
+  assert.match(calls[1].url, /payment\/status\?payment_id=pay-a1b2/);
+  assert.ok(calls[1].url.includes("shop_key=k"));
+
+  assert.equal(await client.cancelOrder("pay-a1b2"), true);
+  assert.deepEqual(calls[2].body, { shop_id: "73", shop_key: "k", payment_id: "pay-a1b2" });
+});
+
+test("hamyon: errors map to reasons, 400 conflict means busy amount, never leaks the key", async () => {
+  const off = hamyon.createHamyonClient({ config: hamyon.resolveHamyonConfig({}) });
+  assert.equal(off.enabled, false);
+  await assert.rejects(off.createOrder({ amount: 1 }), (e) => e.reason === "not_configured");
+
+  const config = hamyon.resolveHamyonConfig({ HAMYON_SHOP_ID: "1", HAMYON_SHOP_KEY: "super-secret" });
+
+  // Conflict: shu summada ochiq to'lov bor → retry.
+  const { fetchFn } = hamyonFetch(() => [400, { error: "Bu summada ochiq to'lov mavjud — summani biroz o'zgartiring!" }]);
+  const client = hamyon.createHamyonClient({ config, fetchFn });
+  await assert.rejects(client.createOrder({ amount: 1000 }), (e) => {
+    assert.equal(e.reason, "conflict");
+    assert.ok(!e.message.includes("super-secret"));
+    return true;
+  });
+
+  for (const [status, reason] of [[403, "auth"], [400, "invalid"], [500, "unavailable"]]) {
+    const { fetchFn } = hamyonFetch(() => [status, { error: "Xatolik sababi" }]);
+    const client = hamyon.createHamyonClient({ config, fetchFn });
+    await assert.rejects(client.checkOrder("x"), (e) => {
+      assert.equal(e.reason, reason);
+      assert.ok(!e.message.includes("super-secret"));
+      return true;
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // _wallet.js — konfiguratsiya
 // ---------------------------------------------------------------------------
 test("wallet: config merges admin settings over env and validates input", () => {
@@ -102,6 +175,7 @@ async function createWalletDb() {
     "019_shop_orders.sql",
     "020_wallet.sql",
     "021_wallet_exact_amount.sql",
+    "022_wallet_hamyon.sql",
   ]) {
     await db.exec(fs.readFileSync(path.join(__dirname, "..", "supabase", file), "utf8"));
   }

@@ -1548,10 +1548,11 @@
         var cfg = wallet().config;
         stopTopupTimers();
         var sum = som(topup.pay_amount);
+        var payCard = topup.card || cfg.card;
         setSheet(sheet, "<h2>" + esc(L("tp_pay_title")) + "</h2>" +
           '<div class="paybox">' +
-          (cfg.card ? payRow(L("tp_card"), cfg.card + (cfg.bank ? " · " + cfg.bank : ""), cfg.card.replace(/\s/g, "")) : "") +
-          (cfg.card && cfg.holder ? payRow(L("tp_holder"), cfg.holder) : "") +
+          (payCard ? payRow(L("tp_card"), payCard + (cfg.bank ? " · " + cfg.bank : ""), payCard.replace(/\s/g, "")) : "") +
+          (cfg.card && !topup.card && cfg.holder ? payRow(L("tp_holder"), cfg.holder) : "") +
           payRow(L("tp_exact"), sum, String(topup.pay_amount), true) + "</div>" +
           '<div class="warnbox">' + icon("exclamation-triangle") + " " + esc(L("tp_warn", { sum: sum })) + "</div>" +
           (cfg.auto
@@ -1574,7 +1575,7 @@
         }
         tick();
         topupClock = setInterval(tick, 1000);
-        // ELDER PAY tavsiyasi: 3–5 s oralig'ida tekshirish.
+        // Hamyon tavsiyasi: 3–5 s oralig'ida tekshirish.
         if (cfg.auto) topupPoll = setInterval(function () { checkTopup(sheet, topup, true); }, 5000);
         var page = sheet.querySelector("#tpPage");
         if (page) page.addEventListener("click", function () {

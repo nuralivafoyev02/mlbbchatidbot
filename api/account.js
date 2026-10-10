@@ -328,7 +328,7 @@ async function loadPreferredLanguage(config, user) {
 // akkauntlar, kimlar tekshirgani, limitlar tarixi, MLBB'ga ulash, limit
 // narxlari va Firstmail xaridi. Xaridlar balansdan (api/_wallet.js,
 // supabase/020_wallet.sql); balans karta orqali to'ldiriladi va to'lov
-// ELDER PAY orqali tekshiriladi (api/_elderpay.js). Narxi kelishiladigan pochta —
+// Hamyon API orqali tekshiriladi (api/_hamyon.js). Narxi kelishiladigan pochta —
 // eski yo'l: so'rov do'kon egasiga boradi (api/_shop-notify.js).
 // ---------------------------------------------------------------------------
 const CABINET_HISTORY_LIMIT = 50;

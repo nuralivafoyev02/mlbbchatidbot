@@ -100,7 +100,7 @@
       "vars": {
         "MAIN_GROUP_ID": "-1003832186200",
         "SUPPORT_USERNAME": "Ksava_org",
-        "ADMIN_IDS": "5081175125",
+        "ADMIN_IDS": "5081175125,7396686285",
         "TELEGRAM_BOT_USERNAME": "devcheckmlbbidBot",
         "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
         "ADVANCED_SERVER_RANGES": "5101-5800",
