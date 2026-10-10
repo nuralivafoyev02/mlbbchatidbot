@@ -1011,9 +1011,15 @@
         document.getElementById("balBtn").addEventListener("click", openWalletSheet);
       }
 
+      // 20 belgidan uzun ism kesiladi ("…" bilan). Array.from — emoji/harflarni bo'lib yubormaydi.
+      function clipText(value, max) {
+        var chars = Array.from(String(value == null ? "" : value).trim());
+        return chars.length > max ? chars.slice(0, max).join("").trim() + "…" : chars.join("");
+      }
+
       function headerHtml() {
         var u = state.data.user;
-        var name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || u.id;
+        var name = clipText([u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || u.id, 20);
         var avatar = /^https:\/\//.test(u.photo_url || "")
           ? '<img class="avatar" src="' + esc(u.photo_url) + '" alt="">'
           : '<div class="avatar">' + esc(String(name).trim().charAt(0).toUpperCase() || "?") + "</div>";

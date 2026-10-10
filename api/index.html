@@ -2296,6 +2296,30 @@
       gap: 6px
     }
 
+    /* Ochiladigan-yopiladigan kartalar (<details>) */
+    details.wl-card { padding: 0; }
+    details.wl-card > summary {
+      list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 12px;
+      -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    }
+    details.wl-card > summary::-webkit-details-marker { display: none; }
+    details.wl-card > summary h3 { margin: 0; flex: 1; min-width: 0; }
+    details.wl-card > summary .wl-count {
+      min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; font-size: 11px; font-weight: 800;
+      display: inline-grid; place-items: center; background: rgba(245, 158, 11, .16); color: var(--gold, #f59e0b);
+    }
+    details.wl-card > summary .wl-count:empty { display: none; }
+    details.wl-card > summary .wl-chev { color: var(--text2); transition: transform .25s ease; }
+    details.wl-card[open] > summary .wl-chev { transform: rotate(180deg); }
+    details.wl-card > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 14px; }
+    details.wl-card > .wl-body { padding: 0 12px 12px; }
+    details.wl-card[open] > .wl-body { animation: wlOpen .25s ease both; }
+    @keyframes wlOpen { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
+    @media (prefers-reduced-motion: reduce) {
+      details.wl-card[open] > .wl-body { animation: none; }
+      details.wl-card > summary .wl-chev { transition: none; }
+    }
+
     .wl-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -2954,28 +2978,35 @@
             <button class="refresh-btn" style="margin:0" onclick="loadWalletAdmin()"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
 
-          <div class="wl-card">
-            <h3><i class="bi bi-hourglass-split"></i> Kutilayotgan to'ldirishlar</h3>
+          <details class="wl-card" data-wl-key="pending" open>
+            <summary><h3><i class="bi bi-hourglass-split"></i> Kutilayotgan to'ldirishlar</h3><span class="wl-count" id="wlPendingCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+            <div class="wl-body">
             <div class="wl-status" id="wlStatus"></div>
             <div id="wlPending"></div>
-          </div>
+            </div>
+          </details>
 
-          <div class="wl-card">
-            <h3><i class="bi bi-person-badge"></i> Foydalanuvchi balansi</h3>
+          <details class="wl-card" data-wl-key="user">
+            <summary><h3><i class="bi bi-person-badge"></i> Foydalanuvchi balansi</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
+            <div class="wl-body">
             <div style="display:flex;gap:8px">
               <div class="modal-field" style="flex:1;margin-bottom:0"><input type="text" id="wlUserId" inputmode="numeric" placeholder="Telegram user ID"></div>
               <button class="wl-btn green" onclick="loadWalletUser()"><i class="bi bi-search"></i> Ko'rish</button>
             </div>
             <div id="wlUser"></div>
-          </div>
+            </div>
+          </details>
 
-          <div class="wl-card">
-            <h3><i class="bi bi-receipt"></i> Balansdan xaridlar</h3>
+          <details class="wl-card" data-wl-key="orders">
+            <summary><h3><i class="bi bi-receipt"></i> Balansdan xaridlar</h3><span class="wl-count" id="wlOrdersCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+            <div class="wl-body">
             <div id="wlOrders"></div>
-          </div>
+            </div>
+          </details>
 
-          <div class="wl-card">
-            <h3><i class="bi bi-credit-card-2-front"></i> Karta va sozlamalar</h3>
+          <details class="wl-card" data-wl-key="config">
+            <summary><h3><i class="bi bi-credit-card-2-front"></i> Karta va sozlamalar</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
+            <div class="wl-body">
             <div class="modal-field"><label>Karta raqami</label><input type="text" id="wlCard" inputmode="numeric" placeholder="8600 0000 0000 0000"></div>
             <div class="wl-grid">
               <div class="modal-field"><label>Karta egasi</label><input type="text" id="wlHolder" maxlength="60" placeholder="ISM FAMILIYA"></div>
@@ -2991,7 +3022,8 @@
             <div class="modal-actions" style="margin-top:6px">
               <button class="btn-save" id="wlSaveBtn" onclick="saveWalletConfig()"><i class="bi bi-floppy"></i> Saqlash</button>
             </div>
-          </div>
+            </div>
+          </details>
           <div style="height:70px"></div>
         </div>
 
@@ -5419,6 +5451,23 @@
       }
       window.openWalletAdmin = openWalletAdmin;
 
+      // Balans kartalari ochiladi/yopiladi; holati shu brauzerda eslab qolinadi.
+      (function setupWalletCards() {
+        var KEY = "wl_cards_open";
+        var saved = null;
+        try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { saved = null; }
+        var cards = document.querySelectorAll("details.wl-card[data-wl-key]");
+        Array.prototype.forEach.call(cards, function (card) {
+          if (saved && typeof saved[card.dataset.wlKey] === "boolean") card.open = saved[card.dataset.wlKey];
+          card.addEventListener("toggle", function () {
+            if (typeof hapticLight === "function") hapticLight();
+            var state = {};
+            Array.prototype.forEach.call(cards, function (c) { state[c.dataset.wlKey] = c.open; });
+            try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* xotira yopiq */ }
+          });
+        });
+      })();
+
       function closeWalletAdmin() {
         hapticLight();
         showWalletView(false);
@@ -5449,6 +5498,8 @@
           '<span class="wl-pill ' + (d.auto ? "on" : "off") + '">Hamyon ' + (d.auto ? "ulangan" : "ulanmagan") + "</span>" +
           (d.synced ? '<span class="wl-pill on">' + d.synced + " ta to'lov yozildi</span>" : "");
 
+        document.getElementById("wlPendingCount").textContent = d.pending.length ? String(d.pending.length) : "";
+        document.getElementById("wlOrdersCount").textContent = d.orders.length ? String(d.orders.length) : "";
         document.getElementById("wlPending").innerHTML = d.pending.length
           ? d.pending.map(wlTopupHtml).join("")
           : '<div class="hint" style="font-size:12px;color:var(--text2)">Kutilayotgan to\'lov yo\'q.' + (d.auto ? " Hamyon avtomatik tekshiradi." : " Hamyon ulanmagan — to'lovlarni shu yerda qo'lda tasdiqlang.") + "</div>";
