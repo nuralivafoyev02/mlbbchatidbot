@@ -330,20 +330,6 @@
 
     /* ------------------------------------------------------------ balans (hamyon) */
     .pill.red { background: rgba(244, 63, 94, .15); color: var(--red); }
-    .wallet {
-      position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px;
-      padding: 14px; border-radius: 18px; margin-bottom: 14px; border: 1px solid rgba(16, 185, 129, .32);
-      background: linear-gradient(135deg, rgba(16, 185, 129, .20), rgba(99, 102, 241, .12)), var(--surface);
-    }
-    .wallet .w-ico { width: 40px; height: 40px; border-radius: 13px; flex: none; display: grid; place-items: center; font-size: 19px; color: #fff; background: linear-gradient(135deg, var(--green), #059669); }
-    .wallet .w-label { font-size: 11.5px; color: var(--text2); font-weight: 600; }
-    .wallet .grow { min-width: 0; }
-    .wallet .w-sum { font-size: 21px; font-weight: 800; line-height: 1.15; letter-spacing: -.2px; white-space: nowrap; }
-    .wallet .w-sum small { font-size: 12px; color: var(--text2); font-weight: 700; }
-    .wallet .w-actions { display: flex; gap: 6px; flex: none; }
-    .wallet .w-btn { height: 36px; padding: 0 12px; border-radius: 12px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); }
-    .wallet .w-btn.main { background: linear-gradient(135deg, var(--green), #059669); border-color: transparent; color: #fff; }
-    .wallet .w-pending { position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(245, 158, 11, .25); }
     .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
     .chip { padding: 12px 8px; border-radius: 13px; font-weight: 800; font-size: 15px; background: var(--surface2); border: 1px solid var(--border); }
     .chip.active { border-color: var(--green); background: rgba(16, 185, 129, .14); color: #6ee7b7; }
@@ -475,8 +461,8 @@
     #app.slide-from-right { animation: slideFromRight .3s cubic-bezier(.22, .8, .3, 1) both; }
     #app.slide-from-left { animation: slideFromLeft .3s cubic-bezier(.22, .8, .3, 1) both; }
     @media (prefers-reduced-motion: no-preference) {
-      #app:is(.slide-from-right, .slide-from-left, .pop-in) > :not(:is(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox)):not(:has(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox)),
-      #app:is(.slide-from-right, .slide-from-left, .pop-in) :is(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox) > :not(:is(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox)) {
+      #app:is(.slide-from-right, .slide-from-left, .pop-in) > :not(:is(.card, .limit, .stat, .item, .acc, .seg, .price, .cta, .paybox)):not(:has(.card, .limit, .stat, .item, .acc, .seg, .price, .cta, .paybox)),
+      #app:is(.slide-from-right, .slide-from-left, .pop-in) :is(.card, .limit, .stat, .item, .acc, .seg, .price, .cta, .paybox) > :not(:is(.card, .limit, .stat, .item, .acc, .seg, .price, .cta, .paybox)) {
         animation: appFade .3s ease both;
       }
     }
@@ -495,7 +481,7 @@
     }
 
     /* Barcha karta/bo'limlar — kuchli blur (orqa fondagi rasm ustidan "chiqib" ketmasin) */
-    .card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox {
+    .card, .limit, .stat, .item, .acc, .seg, .price, .cta, .paybox {
       -webkit-backdrop-filter: var(--surface-blur);
       backdrop-filter: var(--surface-blur);
     }
@@ -1080,8 +1066,7 @@
       function renderHome() {
         var d = state.data;
         var used = d.history.filter(function (h) { return h.delta < 0 && h.source === "use"; }).length;
-        var html = walletCardHtml() +
-          '<div class="section-title">' + esc(L("limits")) + "</div>" +
+        var html = '<div class="section-title">' + esc(L("limits")) + "</div>" +
           '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + "</div>" +
           '<div class="stats">' +
           '<div class="stat"><b>' + d.accounts.length + "<small class=\"muted\" style=\"font-size:12px\">/" + d.accountMax + "</small></b><span>" + esc(L("st_accounts")) + "</span></div>" +
@@ -1096,7 +1081,6 @@
             recent.map(historyItemHtml).join("");
         }
         app.innerHTML = html;
-        bindWalletCard();
         document.getElementById("ctaBuy").addEventListener("click", openShopLimits);
         var more = app.querySelector("[data-goto]");
         if (more) more.addEventListener("click", function () { goToTab("history"); });
@@ -1174,14 +1158,13 @@
 
       function renderShop() {
         var d = state.data;
-        var html = walletCardHtml() + '<div class="section-title" style="margin-top:8px">' + esc(L("shop_fm")) + " · " + esc(d.firstmailTotal || d.firstmails.length) + "</div>" +
+        var html = '<div class="section-title" style="margin-top:4px">' + esc(L("shop_fm")) + " · " + esc(d.firstmailTotal || d.firstmails.length) + "</div>" +
           '<div class="item-sub" style="margin:-4px 2px 12px">' + esc(L("shop_fm_lead")) + "</div>";
         html += d.firstmails.length
           ? '<div id="fmList">' + d.firstmails.map(fmItemHtml).join("") + "</div>" +
             '<div class="fm-more' + (d.firstmailHasMore ? "" : " hidden") + '" id="fmMore"><div class="spinner"></div></div>'
           : '<div class="empty">' + icon("inbox") + esc(L("no_fm")) + "</div>";
         app.innerHTML = html;
-        bindWalletCard();
         bindFmItems(app);
 
         var more = document.getElementById("fmMore");
@@ -1248,12 +1231,11 @@
       function renderOrders() {
         var d = state.data;
         var rows = timeline();
-        var html = walletCardHtml() + '<div class="section-title" style="margin-top:8px">' + esc(L("orders_title")) + (rows.length ? " · " + rows.length : "") + "</div>";
+        var html = '<div class="section-title" style="margin-top:4px">' + esc(L("orders_title")) + (rows.length ? " · " + rows.length : "") + "</div>";
         html += rows.length
           ? rows.map(function (r) { return r.html; }).join("")
           : '<div class="empty">' + icon("receipt") + esc(L(d.ordersAvailable === false ? "no_orders_setup" : "no_orders")).replace(/\n/g, "<br>") + "</div>";
         app.innerHTML = html;
-        bindWalletCard();
         bindAll("[data-order]", function (el) {
           var o = (state.data.orders || []).filter(function (x) { return String(x.id) === el.dataset.order; })[0];
           if (o) openOrderDetail(o);
@@ -1394,14 +1376,12 @@
       }
 
       function renderLimits() {
-        var html = walletCardHtml() +
-          '<div class="section-title" style="margin-top:8px">' + esc(L("limits")) + "</div>" +
+        var html = '<div class="section-title" style="margin-top:4px">' + esc(L("limits")) + "</div>" +
           '<div class="limits">' + limitCard("full_info") + limitCard("reset_pw") + "</div>" +
           '<div class="section-title">' + esc(L("prices_title")) + "</div>" +
           '<div class="item-sub" style="margin:-4px 2px 12px">' + esc(L("prices_lead")) + "</div>" +
           priceListHtml();
         app.innerHTML = html;
-        bindWalletCard();
         var contactBtn = document.getElementById("pricesContact");
         if (contactBtn) contactBtn.addEventListener("click", contactAdmin);
         bindAll("[data-price]", function (el) { buyLimit(null, el.dataset.price); });
@@ -1509,23 +1489,6 @@
         return Boolean(w) && Number(price) > 0 && w.balance < Number(price);
       }
 
-      function walletCardHtml() {
-        var w = wallet();
-        if (!w) return "";
-        var pending = w.topup && w.topup.status === "pending";
-        return '<div class="wallet">' + (pending ? '<span class="w-pending"></span>' : "") +
-          '<div class="w-ico">' + icon("wallet2") + "</div>" +
-          '<div class="grow"><div class="w-label">' + esc(L("w_balance")) + (pending ? " · " + esc(L("w_pending")) : "") + "</div>" +
-          '<div class="w-sum">' + esc(num(w.balance)) + " <small>" + esc(L("som")) + "</small></div></div>" +
-          '<div class="w-actions"><button class="w-btn" data-wallet-history aria-label="' + esc(L("w_history")) + '">' + icon("clock-history") + "</button>" +
-          '<button class="w-btn main" data-wallet-topup>' + icon("plus-lg") + esc(L("w_topup")) + "</button></div></div>";
-      }
-
-      function bindWalletCard() {
-        bindAll("[data-wallet-topup]", function () { openTopup(); });
-        bindAll("[data-wallet-history]", openWalletHistory);
-      }
-
       // Header'dagi balans tugmasi ($ o'rnida).
       function balanceBtnHtml() {
         var w = wallet();
@@ -1559,20 +1522,12 @@
         sheet.querySelector("#wsHistory").addEventListener("click", openWalletHistory);
       }
 
-      // Balans o'zgarganda faqat kartalarni yangilaymiz (ro'yxat/scroll joyida qoladi).
-      function refreshWalletCards() {
-        Array.prototype.forEach.call(app.querySelectorAll(".wallet"), function (el) {
-          el.outerHTML = walletCardHtml();
-        });
-        bindWalletCard();
-        refreshBalanceBtn();
-      }
 
       function setBalance(balance) {
         var w = wallet();
         if (!w || typeof balance !== "number") return;
         w.balance = balance;
-        refreshWalletCards();
+        refreshBalanceBtn();
       }
 
       function copyText(text) {
@@ -1695,7 +1650,7 @@
             if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
             haptic("success");
             w.topup = result.topup;
-            refreshWalletCards();
+            refreshBalanceBtn();
             if (sheet.isConnected) showPayStep(sheet, result.topup);
           });
         });
@@ -1748,7 +1703,7 @@
         sheet.querySelector("#tpCancel").addEventListener("click", function () {
           api("topup_cancel", { id: topup.id });
           wallet().topup = null;
-          refreshWalletCards();
+          refreshBalanceBtn();
           closeSheet();
         });
       }
@@ -1756,7 +1711,7 @@
       function showExpired(sheet) {
         stopTopupTimers();
         wallet().topup = null;
-        refreshWalletCards();
+        refreshBalanceBtn();
         setSheet(sheet, '<div class="result"><div class="big warn">' + icon("hourglass-bottom") + "</div><h2>" + esc(L("tp_title")) + "</h2><p>" + esc(L("tp_expired")) + "</p>" +
           '<button class="btn green" id="tpRenew">' + icon("plus-lg") + esc(L("tp_new")) + "</button>" +
           '<button class="btn" id="resClose">' + esc(L("close")) + "</button></div>");
@@ -1850,7 +1805,7 @@
           resumeChecking = false;
           var status = result.topup && result.topup.status;
           if (status === "paid") onTopupPaid(result.topup, result.balance);
-          else if (status === "expired" || status === "cancelled") { w.topup = null; refreshWalletCards(); }
+          else if (status === "expired" || status === "cancelled") { w.topup = null; refreshBalanceBtn(); }
         });
       }
 
