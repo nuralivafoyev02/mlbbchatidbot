@@ -146,9 +146,14 @@ function createArenaClient(options = {}) {
 
     const reason = classifyArenaFailure(response.status, payload);
     const detailType = payload?.details?.type || "";
+    // JSON bo'lmagan javob (masalan Cloudflare blok sahifasi) yoki proxy xatosi
+    // logda ko'rinsin: qaysi hostga ketdi va javob boshi.
+    const detail = payload
+      ? `${String(payload.code ?? payload.error ?? "")} ${String(payload.message || payload.msg || "").slice(0, 160)}`
+      : text.replace(/\s+/g, " ").slice(0, 120);
     const error = new ArenaError(
       reason,
-      `Arena ${method} ${path}: HTTP ${response.status} ${String(payload?.code ?? "")} ${String(payload?.message || payload?.msg || "").slice(0, 160)}`.trim(),
+      `Arena ${method} ${path} (${url.host}): HTTP ${response.status} ${detail}`.trim(),
       { status: response.status, code: payload?.code ?? null }
     );
     error.detailType = detailType;

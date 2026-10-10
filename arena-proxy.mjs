@@ -87,6 +87,7 @@ export async function handleArenaProxy(request, env = {}, fetchImpl = fetch) {
     clearTimeout(timer);
   }
 
+  if (!upstream.ok) console.error("[ARENA_PROXY]", request.method, path, upstream.status);
   return new Response(await upstream.text(), {
     status: upstream.status,
     headers: {
