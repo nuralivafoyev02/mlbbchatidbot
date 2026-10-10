@@ -409,6 +409,7 @@
     .warp.out { clip-path: circle(150% at var(--wx, 50%) var(--wy, 100%)); animation: warpOut .38s ease both; }
     .warp-ico {
       width: 92px; height: 92px; border-radius: 30px; display: grid; place-items: center; font-size: 42px; color: #fff;
+      margin: 0 auto; /* yozuv (masalan "Shaxsiy kabinet") ikonadan keng bo'lsa ham markazda */
       background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .18);
       box-shadow: 0 20px 50px rgba(0, 0, 0, .35); animation: warpIco .5s cubic-bezier(.34, 1.56, .64, 1) .12s both;
     }
@@ -417,7 +418,8 @@
     @keyframes warpOut { from { opacity: 1 } to { opacity: 0 } }
     @keyframes warpIco { from { opacity: 0; transform: scale(.4) rotate(-20deg) } to { opacity: 1; transform: none } }
     @keyframes popIn { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.98) } to { opacity: 1; transform: none } }
-    .pop-in { animation: popIn .4s cubic-bezier(.22, .8, .3, 1) both; }
+    @keyframes appPop { from { transform: translate3d(0, 14px, 0) scale(.98) } to { transform: none } }
+    #app.pop-in { animation: appPop .4s cubic-bezier(.22, .8, .3, 1) both; }
 
     /* Donat — "Tez kunda!" ekran o'rtasida */
     .soon {
@@ -438,12 +440,25 @@
 
     .pill.red { background: rgba(244, 63, 94, .15); color: var(--red); }
 
-    @keyframes slideFromRight { from { opacity: 0; transform: translate3d(28px, 0, 0) } to { opacity: 1; transform: none } }
-    @keyframes slideFromLeft { from { opacity: 0; transform: translate3d(-28px, 0, 0) } to { opacity: 1; transform: none } }
-    .slide-from-right { animation: slideFromRight .3s cubic-bezier(.22, .8, .3, 1) both; }
-    .slide-from-left { animation: slideFromLeft .3s cubic-bezier(.22, .8, .3, 1) both; }
+    /* Bo'lim almashinuvi. #app ning o'zi faqat siljiydi (transform). Unga opacity
+       berilsa u "backdrop root"ga aylanadi: ichidagi kartalarning backdrop-filter
+       blur'i animatsiya davomida orqa fon rasmini ko'rmaydi va rasm tiniq chiqib
+       qoladi. Blurli kartaning o'zi ham so'ndirilmaydi (yarim shaffof karta
+       ortidan tiniq rasm ko'rinadi) — u darhol blur bilan chiqadi va siljiydi,
+       so'nish faqat kartalar ichidagi kontentga va blursiz bloklarga beriladi. */
+    @keyframes slideFromRight { from { transform: translate3d(28px, 0, 0) } to { transform: none } }
+    @keyframes slideFromLeft { from { transform: translate3d(-28px, 0, 0) } to { transform: none } }
+    @keyframes appFade { from { opacity: 0 } to { opacity: 1 } }
+    #app.slide-from-right { animation: slideFromRight .3s cubic-bezier(.22, .8, .3, 1) both; }
+    #app.slide-from-left { animation: slideFromLeft .3s cubic-bezier(.22, .8, .3, 1) both; }
+    @media (prefers-reduced-motion: no-preference) {
+      #app:is(.slide-from-right, .slide-from-left, .pop-in) > :not(:is(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox)):not(:has(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox)),
+      #app:is(.slide-from-right, .slide-from-left, .pop-in) :is(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox) > :not(:is(.card, .limit, .stat, .item, .acc, .seg, .price, .wallet, .cta, .paybox)) {
+        animation: appFade .3s ease both;
+      }
+    }
     @media (prefers-reduced-motion: reduce) {
-      .slide-from-right, .slide-from-left, .pop-in, .sheet, .sheet-backdrop, .bg-blob, .soon .big,
+      #app.slide-from-right, #app.slide-from-left, #app.pop-in, .sheet, .sheet-backdrop, .bg-blob, .soon .big,
       .dock-side.to-shop .bi, .dock-side.to-shop::before { animation: none; }
       .nav-indicator.ready { transition: none; }
     }
