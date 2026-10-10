@@ -6,6 +6,7 @@ import {
   runBroadcastSlice,
 } from "./broadcast-core.mjs";
 import { AsyncRunner, getBindRunnerName } from "./async-runner.mjs";
+import { handleArenaProxy, isArenaProxyRequest } from "./arena-proxy.mjs";
 import {
   createInternalRequest,
   createVercelRequest,
@@ -27,6 +28,11 @@ export { AsyncRunner };
 
 export default {
   async fetch(request, env, ctx) {
+    // Shaxsiy kabinet (Vercel) → Arena: Vercel IP'lari Arena'da bloklangan.
+    if (isArenaProxyRequest(request)) {
+      return handleArenaProxy(request, env);
+    }
+
     const body = await parseRequestBody(request);
     const req = createVercelRequest(request, body);
 

@@ -42,6 +42,9 @@ function getConfig() {
     supabaseKey: resolveServiceKey(process.env),
     arenaUrl: cleanEnv(process.env.MLBB_ARENA_API_URL) || arena.DEFAULT_ARENA_API_URL,
     arenaTimeoutMs: Number(process.env.MLBB_ARENA_TIMEOUT_MS) > 0 ? Number(process.env.MLBB_ARENA_TIMEOUT_MS) : 12000,
+    // Vercel IP'lari Arena'da bloklangan — MLBB_ARENA_API_URL Cloudflare Worker
+    // proxy'siga (…/arena-proxy) qaratiladi, kalit shu yerdan yuboriladi.
+    arenaProxyKey: cleanEnv(process.env.ARENA_PROXY_KEY),
     linkSecret: arena.resolveLinkSecret(process.env),
   };
 }
@@ -304,7 +307,11 @@ function publicLink(link) {
 }
 
 function createClient(config) {
-  return arena.createArenaClient({ baseUrl: config.arenaUrl, timeoutMs: config.arenaTimeoutMs });
+  return arena.createArenaClient({
+    baseUrl: config.arenaUrl,
+    timeoutMs: config.arenaTimeoutMs,
+    headers: config.arenaProxyKey ? { "x-arena-proxy-key": config.arenaProxyKey } : undefined,
+  });
 }
 
 function parseRowId(value) {
