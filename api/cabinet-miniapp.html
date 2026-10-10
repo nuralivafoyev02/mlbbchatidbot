@@ -471,7 +471,7 @@
           d_type: "Turi", d_price: "Summa", d_status: "Holati", d_date: "Sana", d_order: "Buyurtma", d_package: "Paket",
           d_refunded_at: "Qaytarilgan vaqt", d_reason: "Sabab", d_paid_sum: "Balansga tushdi", d_requested: "Tanlangan summa",
           d_paid_at: "To'langan vaqt", d_created: "So'rov yaratilgan", d_method: "To'lov usuli", d_ref: "To'lov kodi",
-          m_elderpay: "Karta (ElderPay)", m_manual: "Admin tasdiqladi", ev_topup: "Balans to'ldirildi", d_manual_hint: "Bu so'rov admin orqali bajariladi — kerak bo'lsa bog'laning.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
+          m_hamyon: "Karta (Hamyon)", m_manual: "Admin tasdiqladi", ev_topup: "Balans to'ldirildi", d_manual_hint: "Bu so'rov admin orqali bajariladi — kerak bo'lsa bog'laning.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
           ord_pending: "Kutilmoqda", ord_done: "Bajarildi", ord_cancelled: "Bekor qilindi",
           ord_firstmail: "Firstmail pochta", ord_limit: "Limit paketi", ord_donat: "Donat",
           ord_refunded: "Qaytarildi",
@@ -541,7 +541,7 @@
           d_type: "Тип", d_price: "Сумма", d_status: "Статус", d_date: "Дата", d_order: "Заказ", d_package: "Пакет",
           d_refunded_at: "Время возврата", d_reason: "Причина", d_paid_sum: "Зачислено", d_requested: "Выбранная сумма",
           d_paid_at: "Время оплаты", d_created: "Заявка создана", d_method: "Способ оплаты", d_ref: "Код платежа",
-          m_elderpay: "Карта (ElderPay)", m_manual: "Подтвердил админ", ev_topup: "Пополнение баланса", d_manual_hint: "Этот запрос выполняет админ — при необходимости свяжитесь.", no_orders_setup: "История покупок скоро появится здесь.",
+          m_hamyon: "Карта (Hamyon)", m_manual: "Подтвердил админ", ev_topup: "Пополнение баланса", d_manual_hint: "Этот запрос выполняет админ — при необходимости свяжитесь.", no_orders_setup: "История покупок скоро появится здесь.",
           ord_pending: "Ожидает", ord_done: "Выполнено", ord_cancelled: "Отменено",
           ord_firstmail: "Почта Firstmail", ord_limit: "Пакет лимитов", ord_donat: "Донат",
           ord_refunded: "Возврат",
@@ -611,7 +611,7 @@
           d_type: "Type", d_price: "Amount", d_status: "Status", d_date: "Date", d_order: "Order", d_package: "Pack",
           d_refunded_at: "Refunded at", d_reason: "Reason", d_paid_sum: "Credited", d_requested: "Chosen amount",
           d_paid_at: "Paid at", d_created: "Request created", d_method: "Payment method", d_ref: "Payment code",
-          m_elderpay: "Card (ElderPay)", m_manual: "Confirmed by admin", ev_topup: "Balance top-up", d_manual_hint: "This request is handled by the admin — contact them if needed.", no_orders_setup: "Your purchase history will appear here soon.",
+          m_hamyon: "Card (Hamyon)", m_manual: "Confirmed by admin", ev_topup: "Balance top-up", d_manual_hint: "This request is handled by the admin — contact them if needed.", no_orders_setup: "Your purchase history will appear here soon.",
           ord_pending: "Pending", ord_done: "Completed", ord_cancelled: "Cancelled",
           ord_firstmail: "Firstmail mailbox", ord_limit: "Limit pack", ord_donat: "Donate",
           ord_refunded: "Refunded",
@@ -1126,7 +1126,7 @@
         var sum = t.paid_amount || t.pay_amount;
         return '<button class="item tappable" data-topup="' + esc(t.id) + '"><div class="item-ico green">' + icon("plus-circle") + "</div>" +
           '<div class="grow"><div class="item-title ellipsis">' + esc(L("ev_topup")) + "</div>" +
-          '<div class="item-sub">' + esc(L(t.provider === "manual" ? "m_manual" : "m_elderpay")) + " · " + esc(fmtDate(t.paid_at || t.created_at)) + "</div></div>" +
+          '<div class="item-sub">' + esc(L(t.provider === "manual" ? "m_manual" : "m_hamyon")) + " · " + esc(fmtDate(t.paid_at || t.created_at)) + "</div></div>" +
           '<div class="item-right"><div class="delta plus" style="font-size:14px">+' + esc(som(sum)) + "</div>" +
           '<div style="margin-top:5px"><span class="pill green">' + esc(L("ord_done")) + "</span></div></div></button>";
       }
@@ -1198,7 +1198,7 @@
           payRow(L("d_requested"), som(t.amount)) +
           payRow(L("d_paid_at"), fmtDate(t.paid_at)) +
           payRow(L("d_created"), fmtDate(t.created_at)) +
-          payRow(L("d_method"), L(t.provider === "manual" ? "m_manual" : "m_elderpay")) +
+          payRow(L("d_method"), L(t.provider === "manual" ? "m_manual" : (t.provider === "hamyon" ? "m_hamyon" : "m_hamyon"))) +
           (t.reference ? payRow(L("d_ref"), t.reference, t.reference) : "");
         var sheet = openSheet(detailHead("plus-circle", "green", "+" + som(t.paid_amount || t.pay_amount),
           '<span class="pill green">' + esc(L("ev_topup")) + "</span>") +
