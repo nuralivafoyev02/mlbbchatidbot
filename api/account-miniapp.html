@@ -339,9 +339,41 @@
     .notice p { font-size: 13px; color: var(--text2); line-height: 1.45; margin-top: 3px; }
 
     .toast {
-      position: fixed; left: 16px; right: 16px; bottom: calc(96px + var(--safe-bottom, 0px)); z-index: 40;
-      padding: 12px 14px; border-radius: 14px; background: #1e2740; border: 1px solid var(--border); font-weight: 600;
+      /* iOS uslubi — tepadan tushadi, tepaga chiqib ketadi */
+      position: fixed; left: 16px; right: 16px; top: calc(10px + var(--top-space, 0px)); z-index: 70;
+      max-width: 420px; margin: 0 auto; padding: 12px 16px; border-radius: 18px; text-align: center;
+      font-weight: 600; font-size: 14px; line-height: 1.35; color: #fff;
+      background: rgba(30, 39, 64, .78); border: 1px solid rgba(255, 255, 255, .1);
+      -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, .4);
+      transform: translateY(calc(-100% - 24px - var(--top-space, 0px))) scale(.96); opacity: 0; pointer-events: none;
+      transition: transform .32s cubic-bezier(.4, 0, 1, 1), opacity .25s ease .05s;
     }
+    .toast.show {
+      transform: none; opacity: 1; pointer-events: auto;
+      transition: transform .5s cubic-bezier(.34, 1.45, .55, 1), opacity .2s ease;
+    }
+
+    /* Nav ikonkasi — bosilganda o'ziga xos harakat bir marta (ICON_ANIM) */
+    .ico-play { display: inline-block; transform-origin: 50% 55%; }
+    .ico-play[data-anim="spin"] { animation: icoSpin .7s cubic-bezier(.45, .05, .25, 1) both; }
+    .ico-play[data-anim="gear"] { animation: icoGear .7s cubic-bezier(.45, .05, .25, 1) both; }
+    .ico-play[data-anim="bounce"] { animation: icoBounce .55s ease both; transform-origin: 50% 100%; }
+    .ico-play[data-anim="pop"] { animation: icoPop .45s ease both; }
+    .ico-play[data-anim="wiggle"] { animation: icoWiggle .55s ease both; }
+    .ico-play[data-anim="zap"] { animation: icoZap .5s ease both; }
+    .ico-play[data-anim="flip"] { animation: icoFlip .65s ease both; }
+    .ico-play[data-anim="drop"] { animation: icoDrop .5s cubic-bezier(.3, 1.4, .5, 1) both; }
+    @keyframes icoSpin { from { transform: rotate(0) } to { transform: rotate(-360deg) } }
+    @keyframes icoGear { from { transform: rotate(0) } to { transform: rotate(180deg) } }
+    @keyframes icoBounce { 0%, 100% { transform: none } 30% { transform: translateY(-4px) scaleY(1.08) } 55% { transform: translateY(0) scaleY(.9) } 75% { transform: scaleY(1.03) } }
+    @keyframes icoPop { 0%, 100% { transform: none } 40% { transform: scale(1.25) } 70% { transform: scale(.92) } }
+    @keyframes icoWiggle { 0%, 100% { transform: none } 20% { transform: rotate(-14deg) } 40% { transform: rotate(10deg) } 60% { transform: rotate(-6deg) } 80% { transform: rotate(3deg) } }
+    @keyframes icoZap { 0%, 100% { transform: none; opacity: 1 } 30% { transform: scale(1.22) rotate(-8deg) } 45% { opacity: .35 } 60% { opacity: 1; transform: scale(1.08) rotate(4deg) } }
+    @keyframes icoFlip { from { transform: perspective(80px) rotateY(0) } to { transform: perspective(80px) rotateY(360deg) } }
+    @keyframes icoDrop { 0% { transform: translateY(-6px); opacity: .3 } 100% { transform: none; opacity: 1 } }
+    @media (prefers-reduced-motion: reduce) { .ico-play { animation: none !important; } }
+
   </style>
 </head>
 <body>
@@ -357,7 +389,7 @@
   <nav class="nav hidden" id="nav"></nav>
   <div id="sheetRoot"></div>
   <div id="dlgRoot"></div>
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <!-- arena-web -->
   <script>
@@ -436,6 +468,7 @@
         }
       };
 
+      var ICON_ANIM = { profile: "pop", matches: "wiggle", heroes: "bounce", friends: "bounce", settings: "gear" };
       var TABS = [
         { id: "profile", ico: "person-circle", active: "person-circle" },
         { id: "matches", ico: "controller", active: "controller" },
@@ -584,13 +617,37 @@
         } catch (e) { /* eski Telegram mijozlari */ }
       }
 
+      // iOS uslubidagi toast: tepadan tushadi, ~2.4 s turadi, tepaga chiqib ketadi; bosilsa darhol yopiladi.
       var toastTimer = null;
       function toast(text) {
         var el = document.getElementById("toast");
+        if (!el.dataset.bound) {
+          el.dataset.bound = "1";
+          el.addEventListener("click", function () { clearTimeout(toastTimer); el.classList.remove("show"); });
+        }
+        var shown = el.classList.contains("show");
         el.textContent = text;
-        el.classList.remove("hidden");
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.classList.add("hidden"); }, 2200);
+        if (shown) {
+          // Ustma-ust kelgan yangi xabar — qayta tepadan tushadi.
+          el.classList.remove("show");
+          void el.offsetWidth;
+        }
+        el.classList.add("show");
+        toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
+      }
+
+      // Nav ikonkasini bir marta harakatlantirish (bosilganda).
+      function playIcon(el, kind) {
+        if (!el || !kind) return;
+        el.classList.remove("ico-play");
+        void el.offsetWidth;
+        el.setAttribute("data-anim", kind);
+        el.classList.add("ico-play");
+        el.addEventListener("animationend", function done() {
+          el.classList.remove("ico-play");
+          el.removeEventListener("animationend", done);
+        });
       }
 
       // O'yin ma'lumotlari Arena'dan telefonning o'zidan olinadi (serverdan
@@ -754,7 +811,10 @@
           }).join("");
           nav.dataset.lang = state.lang;
           Array.prototype.forEach.call(nav.querySelectorAll("button"), function (btn) {
-            btn.addEventListener("click", function () { goToTab(btn.dataset.tab); });
+            btn.addEventListener("click", function () {
+              goToTab(btn.dataset.tab);
+              playIcon(btn.querySelector(".nav-ico .bi"), ICON_ANIM[btn.dataset.tab]);
+            });
           });
           wasHidden = true;
         }

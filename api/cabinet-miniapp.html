@@ -263,6 +263,26 @@
     .fm-hint .bi { color: var(--green); margin-top: 1px; }
     .detail-head .pill { font-size: 12px; padding: 4px 9px; }
 
+    /* Nav ikonkasi — bosilganda o'ziga xos harakat bir marta (ICON_ANIM) */
+    .ico-play { display: inline-block; transform-origin: 50% 55%; }
+    .ico-play[data-anim="spin"] { animation: icoSpin .7s cubic-bezier(.45, .05, .25, 1) both; }
+    .ico-play[data-anim="gear"] { animation: icoGear .7s cubic-bezier(.45, .05, .25, 1) both; }
+    .ico-play[data-anim="bounce"] { animation: icoBounce .55s ease both; transform-origin: 50% 100%; }
+    .ico-play[data-anim="pop"] { animation: icoPop .45s ease both; }
+    .ico-play[data-anim="wiggle"] { animation: icoWiggle .55s ease both; }
+    .ico-play[data-anim="zap"] { animation: icoZap .5s ease both; }
+    .ico-play[data-anim="flip"] { animation: icoFlip .65s ease both; }
+    .ico-play[data-anim="drop"] { animation: icoDrop .5s cubic-bezier(.3, 1.4, .5, 1) both; }
+    @keyframes icoSpin { from { transform: rotate(0) } to { transform: rotate(-360deg) } }
+    @keyframes icoGear { from { transform: rotate(0) } to { transform: rotate(180deg) } }
+    @keyframes icoBounce { 0%, 100% { transform: none } 30% { transform: translateY(-4px) scaleY(1.08) } 55% { transform: translateY(0) scaleY(.9) } 75% { transform: scaleY(1.03) } }
+    @keyframes icoPop { 0%, 100% { transform: none } 40% { transform: scale(1.25) } 70% { transform: scale(.92) } }
+    @keyframes icoWiggle { 0%, 100% { transform: none } 20% { transform: rotate(-14deg) } 40% { transform: rotate(10deg) } 60% { transform: rotate(-6deg) } 80% { transform: rotate(3deg) } }
+    @keyframes icoZap { 0%, 100% { transform: none; opacity: 1 } 30% { transform: scale(1.22) rotate(-8deg) } 45% { opacity: .35 } 60% { opacity: 1; transform: scale(1.08) rotate(4deg) } }
+    @keyframes icoFlip { from { transform: perspective(80px) rotateY(0) } to { transform: perspective(80px) rotateY(360deg) } }
+    @keyframes icoDrop { 0% { transform: translateY(-6px); opacity: .3 } 100% { transform: none; opacity: 1 } }
+    @media (prefers-reduced-motion: reduce) { .ico-play { animation: none !important; } }
+
     /* ------------------------------------------------------------ sozlamalar */
     .prof { text-align: center; padding: 6px 0 2px; }
     .prof-ava {
@@ -297,11 +317,18 @@
     .lang-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px; font-weight: 700; text-align: left; }
     .lang-opt.active { border-color: rgba(16, 185, 129, .45); background: rgba(16, 185, 129, .08); }
     .lang-opt .bi-check-circle-fill { margin-left: auto; color: var(--green); }
+    .lang-opt.loading::after {
+      content: ""; margin-left: auto; width: 18px; height: 18px; flex: none; border-radius: 50%;
+      border: 2.5px solid rgba(255, 255, 255, .18); border-top-color: var(--green); animation: spin .7s linear infinite;
+    }
+    .lang-list.busy .lang-opt:not(.loading) { opacity: .5; pointer-events: none; }
 
     /* "Animatsiyalar" o'chirilgan — hamma harakat deyarli bir zumda */
-    html.no-motion *, html.no-motion *::before, html.no-motion *::after {
-      animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important;
-    }
+    html.no-motion *, html.no-motion *::before, html.no-motion *::after { animation: none !important; transition: none !important; }
+    html.no-motion .spinner { animation: spin .8s linear infinite !important; }
+    html.no-motion .btn.busy::after, html.no-motion .link-btn.busy::after { animation: spin .7s linear infinite !important; }
+    html.no-motion .lang-opt.loading::after { animation: spin .7s linear infinite !important; }
+    html.no-motion .ld-ring { animation: spin 1.1s linear infinite !important; }
 
     /* ------------------------------------------------------------ yuklanish ekrani */
     .loader {
@@ -596,12 +623,21 @@
     }
 
     .toast {
-      /* Tepada — pastdagi oyna (sheet) tugmalari va input'larini yopmasin */
-      position: fixed; left: 16px; right: 16px; top: calc(10px + var(--top-space, 0px)); z-index: 40;
-      max-width: 520px; margin: 0 auto; padding: 12px 14px; border-radius: 14px;
-      background: #1e2540; border: 1px solid var(--border); font-weight: 600; font-size: 14px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, .45); animation: fade .2s both;
+      /* Tepada — pastdagi oyna (sheet) tugmalari va input'larini yopmasin. iOS uslubi. */
+      position: fixed; left: 16px; right: 16px; top: calc(10px + var(--top-space, 0px)); z-index: 70;
+      max-width: 420px; margin: 0 auto; padding: 12px 16px; border-radius: 18px; text-align: center;
+      font-weight: 600; font-size: 14px; line-height: 1.35; color: #fff;
+      background: rgba(30, 37, 64, .78); border: 1px solid rgba(255, 255, 255, .1);
+      -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, .4);
+      transform: translateY(calc(-100% - 24px - var(--top-space, 0px))) scale(.96); opacity: 0; pointer-events: none;
+      transition: transform .32s cubic-bezier(.4, 0, 1, 1), opacity .25s ease .05s;
     }
+    .toast.show {
+      transform: none; opacity: 1; pointer-events: auto;
+      transition: transform .5s cubic-bezier(.34, 1.45, .55, 1), opacity .2s ease;
+    }
+
 
     /* Barcha karta/bo'limlar — kuchli blur (orqa fondagi rasm ustidan "chiqib" ketmasin) */
     .card, .limit, .stat, .item, .acc, .seg, .price, .cta, .paybox {
@@ -626,7 +662,7 @@
   <div class="warp hidden" id="warp"></div>
   <div id="sheetRoot"></div>
   <div id="dlgRoot"></div>
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <!-- arena-web -->
   <script>
@@ -907,6 +943,21 @@
         ]
       };
 
+      // Har bir bo'lim ikonkasining harakati: tarix — soat strelkasi bir marta aylanadi va h.k.
+      var ICON_ANIM = { home: "bounce", accounts: "pop", history: "spin", mail: "wiggle", limits: "zap", donat: "flip", orders: "drop" };
+      // Nav ikonkasini bir marta harakatlantirish (bosilganda).
+      function playIcon(el, kind) {
+        if (!el || !kind) return;
+        el.classList.remove("ico-play");
+        void el.offsetWidth;
+        el.setAttribute("data-anim", kind);
+        el.classList.add("ico-play");
+        el.addEventListener("animationend", function done() {
+          el.classList.remove("ico-play");
+          el.removeEventListener("animationend", done);
+        });
+      }
+
       var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "limits", data: null, view: null };
 
       // Shu qurilmadagi sozlamalar (Sozlamalar → Tizim sozlamalari).
@@ -986,13 +1037,24 @@
         el.disabled = Boolean(on);
       }
 
+      // iOS uslubidagi toast: tepadan tushadi, ~2.4 s turadi, tepaga chiqib ketadi; bosilsa darhol yopiladi.
       var toastTimer = null;
       function toast(text) {
         var el = document.getElementById("toast");
+        if (!el.dataset.bound) {
+          el.dataset.bound = "1";
+          el.addEventListener("click", function () { clearTimeout(toastTimer); el.classList.remove("show"); });
+        }
+        var shown = el.classList.contains("show");
         el.textContent = text;
-        el.classList.remove("hidden");
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.classList.add("hidden"); }, 2400);
+        if (shown) {
+          // Ustma-ust kelgan yangi xabar — qayta tepadan tushadi.
+          el.classList.remove("show");
+          void el.offsetWidth;
+        }
+        el.classList.add("show");
+        toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
       }
 
       function api(action, payload) {
@@ -1127,7 +1189,10 @@
           nav.dataset.key = key;
           nav.style.setProperty("--tabs", String(tabs.length));
           Array.prototype.forEach.call(nav.querySelectorAll("button"), function (b) {
-            b.addEventListener("click", function () { goToTab(b.dataset.tab); });
+            b.addEventListener("click", function () {
+              goToTab(b.dataset.tab);
+              playIcon(b.querySelector(".nav-ico .bi"), ICON_ANIM[b.dataset.tab]);
+            });
           });
 
           var side = document.getElementById("dockSide");
@@ -2463,18 +2528,25 @@
       }
 
       function openLangSheet() {
-        var sheet = openSheet("<h2>" + esc(L("set_lang_title")) + '</h2><p class="lead">' + esc(L("set_lang_sub")) + "</p>" +
+        var sheet = openSheet("<h2>" + esc(L("set_lang_title")) + '</h2><p class="lead">' + esc(L("set_lang_sub")) + '</p><div class="lang-list">' +
           Object.keys(LANG_NAMES).map(function (code) {
             return '<button class="lang-opt' + (code === state.lang ? " active" : "") + '" data-lang="' + code + '">' + esc(LANG_NAMES[code]) +
               (code === state.lang ? icon("check-circle-fill") : "") + "</button>";
-          }).join(""));
+          }).join("") + "</div>");
+        var list = sheet.querySelector(".lang-list");
         Array.prototype.forEach.call(sheet.querySelectorAll("[data-lang]"), function (b) {
           b.addEventListener("click", function () {
             var code = b.dataset.lang;
             if (code === state.lang) { closeSheet(); return; }
-            setBusy(b, true);
+            if (list.classList.contains("busy")) return;
+            haptic("select");
+            list.classList.add("busy");
+            b.classList.add("loading");
+            b.setAttribute("aria-busy", "true");
             api("set_lang", { value: code }).then(function (result) {
-              setBusy(b, false);
+              list.classList.remove("busy");
+              b.classList.remove("loading");
+              b.removeAttribute("aria-busy");
               if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
               haptic("success");
               state.lang = code;
