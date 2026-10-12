@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const hamyon = require("../api/_hamyon.js");
+const elderpay = require("../api/_elderpay.js");
 const walletLib = require("../api/_wallet.js");
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,51 @@ test("hamyon: create / check / cancel follow the REST API and return the card", 
 
   assert.equal(await client.cancelOrder("pay-a1b2"), true);
   assert.deepEqual(calls[2].body, { shop_id: "73", shop_key: "k", payment_id: "pay-a1b2" });
+});
+
+test("elderpay: create / check / cancel speak JSON to /api; errors map to reasons without leaking the key", async () => {
+  const config = elderpay.resolveElderPayConfig({ ELDERPAY_SHOP_ID: "445188", ELDERPAY_SHOP_KEY: "top-secret" });
+  assert.equal(config.apiUrl, "https://pay.elder.uz");
+  const calls = [];
+  let next = [200, {}];
+  const fetchFn = async (url, options) => {
+    calls.push({ url: String(url), body: JSON.parse(options.body), headers: options.headers });
+    return new Response(JSON.stringify(next[1]), { status: next[0] });
+  };
+  const client = elderpay.createElderPayClient({ config, fetchFn });
+  assert.equal(client.provider, "elderpay");
+
+  next = [200, { status: "success", order: "o-1", pay_url: "https://pay.elder.uz/pay/t", data: { amount: "20000", over: 0 } }];
+  assert.deepEqual(await client.createOrder({ amount: 20000, userId: 9 }), { order: "o-1", amount: 20000, card: null, payUrl: "https://pay.elder.uz/pay/t" });
+  assert.equal(calls[0].url, "https://pay.elder.uz/api");
+  assert.equal(calls[0].headers["Content-Type"], "application/json");
+  assert.deepEqual(calls[0].body, { method: "create", shop_id: "445188", shop_key: "top-secret", amount: 20000, user_id: "tg_9" });
+
+  next = [200, { status: "success", order: "o-1", data: { amount: 20000, status: "PAID", date: "2026-10-12" } }];
+  assert.deepEqual(await client.checkOrder("o-1"), { order: "o-1", status: "paid", amount: 20000, date: "2026-10-12" });
+  assert.deepEqual(calls[1].body, { method: "check", order: "o-1" });
+
+  next = [200, { status: "success", message: "ok", order: "o-1" }];
+  assert.equal(await client.cancelOrder("o-1"), true);
+  assert.deepEqual(calls[2].body, { method: "cancel", order: "o-1", shop_id: "445188", shop_key: "top-secret" });
+
+  for (const [status, reason] of [[400, "invalid"], [403, "auth"], [409, "conflict"], [500, "unavailable"]]) {
+    next = [status, { status: "error", message: "Oylik to'lov qilinmagan!" }];
+    const error = await client.createOrder({ amount: 1000 }).catch((e) => e);
+    assert.equal(error.reason, reason);
+    assert.ok(!error.message.includes("top-secret"));
+  }
+  assert.equal(client.parseCallback({}).ok, false);
+
+  const off = elderpay.createElderPayClient({ config: elderpay.resolveElderPayConfig({}) });
+  assert.equal(off.enabled, false);
+  assert.equal((await off.createOrder({ amount: 1 }).catch((e) => e)).reason, "not_configured");
+});
+
+test("wallet: ElderPay keys take priority over Hamyon; otherwise Hamyon stays", () => {
+  const both = { ELDERPAY_SHOP_ID: "1", ELDERPAY_SHOP_KEY: "a", HAMYON_SHOP_ID: "2", HAMYON_SHOP_KEY: "b" };
+  assert.equal(walletLib.createPayClient(both).provider, "elderpay");
+  assert.equal(walletLib.createPayClient({ HAMYON_SHOP_ID: "2", HAMYON_SHOP_KEY: "b" }).provider, "hamyon");
 });
 
 test("hamyon: callback sign = md5(shop_id + payment_id + amount + shop_key)", () => {

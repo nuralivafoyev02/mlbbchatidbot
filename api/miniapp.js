@@ -1204,6 +1204,7 @@ async function handleWalletOverview(req, res) {
       data: {
         config,
         auto: wallet.payClient.enabled,
+        provider: wallet.payClient.provider,
         synced: synced.length,
         pending,
         topups: recent,

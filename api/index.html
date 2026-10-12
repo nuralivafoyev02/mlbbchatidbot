@@ -5493,16 +5493,17 @@
       function renderWalletAdmin() {
         var d = wlData;
         var c = d.config;
+        var pn = d.provider === "elderpay" ? "ElderPay" : "Hamyon";
         document.getElementById("wlStatus").innerHTML =
           '<span class="wl-pill ' + (c.enabled && (c.cardNumber || d.auto) ? "on" : "off") + '">To\'ldirish ' + (c.enabled && (c.cardNumber || d.auto) ? "yoqilgan" : "o'chiq") + "</span>" +
-          '<span class="wl-pill ' + (d.auto ? "on" : "off") + '">Hamyon ' + (d.auto ? "ulangan" : "ulanmagan") + "</span>" +
+          '<span class="wl-pill ' + (d.auto ? "on" : "off") + '">' + pn + " " + (d.auto ? "ulangan" : "ulanmagan") + "</span>" +
           (d.synced ? '<span class="wl-pill on">' + d.synced + " ta to'lov yozildi</span>" : "");
 
         document.getElementById("wlPendingCount").textContent = d.pending.length ? String(d.pending.length) : "";
         document.getElementById("wlOrdersCount").textContent = d.orders.length ? String(d.orders.length) : "";
         document.getElementById("wlPending").innerHTML = d.pending.length
           ? d.pending.map(wlTopupHtml).join("")
-          : '<div class="hint" style="font-size:12px;color:var(--text2)">Kutilayotgan to\'lov yo\'q.' + (d.auto ? " Hamyon avtomatik tekshiradi." : " Hamyon ulanmagan — to'lovlarni shu yerda qo'lda tasdiqlang.") + "</div>";
+          : '<div class="hint" style="font-size:12px;color:var(--text2)">Kutilayotgan to\'lov yo\'q.' + (d.auto ? " " + pn + " avtomatik tekshiradi." : " " + pn + " ulanmagan — to'lovlarni shu yerda qo'lda tasdiqlang.") + "</div>";
 
         document.getElementById("wlOrders").innerHTML = d.orders.length
           ? d.orders.map(wlOrderHtml).join("")

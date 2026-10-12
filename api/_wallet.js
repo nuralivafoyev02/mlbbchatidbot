@@ -3,25 +3,28 @@
 //
 // Pul bilan bog'liq har bir amal Postgres funksiyasida (bitta tranzaksiya):
 // bu yerda faqat chaqiruv, natijani normallashtirish va to'ldirishni
-// Hamyon API orqali ochish/tekshirish (api/_hamyon.js) bor.
+// to'lov provayderi orqali ochish/tekshirish bor: ELDER PAY (api/_elderpay.js,
+// ELDERPAY_SHOP_ID/KEY berilgan bo'lsa), aks holda Hamyon API (api/_hamyon.js).
+// Ikkalasi bir xil interfeysga ega (createOrder/checkOrder/cancelOrder/parseCallback).
 //
 // Karta rekvizitlari: bot_settings `wallet_config` (admin panel) → env
 // (WALLET_CARD_NUMBER / WALLET_CARD_HOLDER / WALLET_CARD_BANK).
 // ---------------------------------------------------------------------------
 
 const hamyon = require("./_hamyon.js");
+const elderpay = require("./_elderpay.js");
 
 const WALLET_CONFIG_KEY = "wallet_config";
 const TOPUP_DEFAULTS = Object.freeze({
   min: 5000,
   max: 5000000,
-  // Hamyon buyurtmasi 5 daqiqa amal qiladi; Hamyon ulanmagan bo'lsa
-  // (admin qo'lda tasdiqlaydi) so'rov 30 daqiqa turadi.
-  ttlMinutes: hamyon.ORDER_TTL_MINUTES,
+  // Provayder (ElderPay/Hamyon) buyurtmasi 5 daqiqa amal qiladi; provayder
+  // ulanmagan bo'lsa (admin qo'lda tasdiqlaydi) so'rov 30 daqiqa turadi.
+  ttlMinutes: elderpay.ORDER_TTL_MINUTES,
   manualTtlMinutes: 30,
   graceMinutes: 60,
-  // Hamyon rejimida bekor qilingan/muddati o'tgan summa shuncha vaqt
-  // boshqaga berilmaydi (Hamyon buyurtmasi 5 daqiqa yashaydi).
+  // Avto rejimda bekor qilingan/muddati o'tgan summa shuncha vaqt
+  // boshqaga berilmaydi (provayder buyurtmasi 5 daqiqa yashaydi).
   exactGraceMinutes: 10,
   // To'lanmagan buyurtmalar shuncha vaqt orqaga qayta tekshiriladi.
   syncWindowMinutes: 180,
@@ -112,6 +115,15 @@ function normalizeWalletConfigInput(input = {}) {
   };
 }
 
+// ElderPay kalitlari berilgan bo'lsa — ElderPay, aks holda Hamyon API.
+function createPayClient(env = process.env, fetchFn = fetch) {
+  const elder = elderpay.resolveElderPayConfig(env);
+  if (elder.shopId && elder.shopKey) {
+    return elderpay.createElderPayClient({ config: elder, fetchFn });
+  }
+  return hamyon.createHamyonClient({ config: hamyon.resolveHamyonConfig(env), fetchFn });
+}
+
 function toPublicTopup(row) {
   if (!row || !row.id) return null;
   const expiresMs = Date.parse(row.expires_at || "");
@@ -149,7 +161,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
   }
 
   const rpc = (name, args) => requestFn(`/rpc/${name}`, { method: "POST", body: args });
-  const client = payClient || hamyon.createHamyonClient({ config: hamyon.resolveHamyonConfig(env), fetchFn });
+  const client = payClient || createPayClient(env, fetchFn);
 
   async function getConfig() {
     let stored = null;
@@ -177,7 +189,8 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
   // Kabinet uchun: konfiguratsiyaning foydalanuvchiga ko'rinadigan qismi.
   function publicConfig(config) {
     return {
-      // Hamyon page rejimida karta o'rniga to'lov kartasi (topup.card) bo'ladi.
+      // Hamyon har to'lovga o'z kartasini (topup.card), ElderPay page rejimida
+      // pay_url beradi; ElderPay api rejimida — admin kartasi.
       enabled: Boolean(config.enabled && (config.cardNumber || client.enabled)),
       card: formatCardNumber(config.cardNumber),
       holder: config.cardHolder,
@@ -186,6 +199,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
       max: config.max,
       presets: config.presets,
       auto: client.enabled,
+      provider: client.enabled ? client.provider : null,
     };
   }
 
@@ -243,7 +257,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     return rpc("wallet_cancel_topup", { p_user_id: String(userId), p_topup_id: String(topupId) });
   }
 
-  // Hamyon ulangan bo'lsa — aniq summa (band bo'lsa +1, +2 so'm, 021),
+  // Provayder ulangan bo'lsa — aniq summa (band bo'lsa +1, +2 so'm, 021),
   // aks holda tasodifiy +1..999 (summa to'lovni ajratadigan yagona belgi).
   async function createTopupRow(userId, amount) {
     const args = {
@@ -265,8 +279,8 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     }
   }
 
-  // 1) bazada noyob summali so'rov; 2) Hamyon API'da shu summaga buyurtma.
-  // Hamyon conflict qaytarsa (shu summada boshqa faol to'lov) — so'rov bekor
+  // 1) bazada noyob summali so'rov; 2) provayderda shu summaga buyurtma.
+  // Provayder conflict qaytarsa (shu summada boshqa faol to'lov) — so'rov bekor
   // qilinadi va boshqa summa bilan qayta uriniladi.
   async function createTopup(userId, amountRaw) {
     const config = await getConfig();
@@ -297,20 +311,29 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
       } catch (error) {
         await rpcCancel(userId, topup.id).catch(() => {});
         if (error.reason === "conflict") continue;
-        console.error("[WALLET_HAMYON_CREATE]", error.message);
+        console.error("[WALLET_PAY_CREATE]", client.provider, error.message);
         return { ok: false, error: "provider_unavailable" };
       }
 
-      // Hamyon summani o'zgartirib yuborsa — foydalanuvchi noto'g'ri summa
+      // Provayder summani o'zgartirib yuborsa — foydalanuvchi noto'g'ri summa
       // o'tkazmasligi uchun so'rovni yopamiz.
       if (order.amount !== Number(topup.pay_amount)) {
-        console.error("[WALLET_HAMYON_AMOUNT]", topup.pay_amount, order.amount);
+        console.error("[WALLET_PAY_AMOUNT]", client.provider, topup.pay_amount, order.amount);
         await client.cancelOrder(order.order).catch(() => {});
         await rpcCancel(userId, topup.id).catch(() => {});
         return { ok: false, error: "provider_unavailable" };
       }
 
-      // Hamyon'dagi to'lov bazaga bog'lanmasa — uni tekshirib bo'lmaydi.
+      // ElderPay api rejimida qayerga o'tkazishni faqat admin kartasi
+      // ko'rsatadi — u yo'q bo'lsa to'lovni ochiq qoldirmaymiz.
+      if (!order.card && !order.payUrl && !config.cardNumber) {
+        console.error("[WALLET_PAY_NO_CARD]", client.provider, topup.id);
+        await client.cancelOrder(order.order).catch(() => {});
+        await rpcCancel(userId, topup.id).catch(() => {});
+        return { ok: false, error: "topup_disabled" };
+      }
+
+      // Provayderdagi to'lov bazaga bog'lanmasa — uni tekshirib bo'lmaydi.
       // Ochiq qoldirmaymiz: ikkala tomonda ham yopiladi (023 migratsiyasi
       // qo'llanmagan bo'lsa shu yerga tushadi).
       try {
@@ -318,14 +341,15 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
           provider: client.provider,
           provider_order: order.order,
           card: order.card || null,
+          pay_url: order.payUrl || null,
         });
       } catch (error) {
-        console.error("[WALLET_HAMYON_SAVE]", topup.id, error.message);
+        console.error("[WALLET_PAY_SAVE]", topup.id, error.message);
         await client.cancelOrder(order.order).catch(() => {});
         await rpcCancel(userId, topup.id).catch(() => {});
         return { ok: false, error: "wallet_unavailable" };
       }
-      return { ok: true, topup: toPublicTopup({ ...topup, card: order.card }) };
+      return { ok: true, topup: toPublicTopup({ ...topup, card: order.card, pay_url: order.payUrl }) };
     }
 
     return { ok: false, error: "busy" };
@@ -335,13 +359,13 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     const row = await getTopup(userId, topupId);
     if (!row) return { ok: false };
     if (row.provider_order && row.status === "pending") {
-      await client.cancelOrder(row.provider_order).catch((error) => console.error("[WALLET_HAMYON_CANCEL]", error.message));
+      await client.cancelOrder(row.provider_order).catch((error) => console.error("[WALLET_PAY_CANCEL]", error.message));
     }
     const result = await rpcCancel(userId, topupId);
     return { ok: Boolean(result && result.ok) };
   }
 
-  // Bitta tushumni balansga yozish (Hamyon check yoki admin).
+  // Bitta tushumni balansga yozish (provayder check yoki admin).
   async function creditIncoming(txn, { topupId = null, confirmedBy = null, provider = client.provider } = {}) {
     return rpc("wallet_credit_topup", {
       p_provider: provider,
@@ -354,13 +378,13 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     });
   }
 
-  // Hamyon "paid" deb tasdiqlagan to'lovni balansga yozadi. Summa — o'z
-  // bazamizdan (Hamyon tavsiyasi); Hamyon boshqa summa aytsa yozilmaydi,
+  // Provayder "paid" deb tasdiqlagan to'lovni balansga yozadi. Summa — o'z
+  // bazamizdan; provayder boshqa summa aytsa yozilmaydi,
   // admin panelda qo'lda ko'riladi. Idempotent (wallet_credit_topup).
   async function creditPaidRow(row, { amount, paidAt } = {}) {
     const expected = Number(row.pay_amount);
     if (amount !== null && amount !== undefined && Number(amount) !== expected) {
-      console.error("[WALLET_HAMYON_AMOUNT_MISMATCH]", row.id, expected, amount);
+      console.error("[WALLET_PAY_AMOUNT_MISMATCH]", row.id, expected, amount);
       return { credited: false, status: "amount_mismatch" };
     }
     const result = await creditIncoming(
@@ -370,11 +394,16 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     return { credited: result?.status === "credited", status: "paid", result };
   }
 
-  // Bitta so'rov holatini Hamyon'dan olib, to'langan bo'lsa balansga yozadi.
+  // Bitta so'rov holatini provayderdan olib, to'langan bo'lsa balansga yozadi.
   // Natija: { credited, status, result? }
   async function syncTopupRow(row) {
     if (!row || row.status === "paid" || !row.provider_order || !client.enabled) {
       return { credited: false, status: row?.status || null };
+    }
+    // Boshqa provayderda ochilgan buyurtma (masalan ElderPay'ga o'tishdan
+    // oldingi Hamyon to'lovi) — uni bu mijoz bilan tekshirib bo'lmaydi.
+    if (row.provider && row.provider !== client.provider) {
+      return { credited: false, status: row.status };
     }
 
     const remote = await client.checkOrder(row.provider_order);
@@ -408,7 +437,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     try {
       sync = await syncTopupRow(row);
     } catch (error) {
-      console.error("[WALLET_HAMYON_CHECK]", error.message);
+      console.error("[WALLET_PAY_CHECK]", client.provider, error.message);
       return { ok: false, error: "provider_unavailable", topup: toPublicTopup(row) };
     }
 
@@ -430,6 +459,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     const params = new URLSearchParams({
       status: "neq.paid",
       provider_order: "not.is.null",
+      provider: `eq.${client.provider}`,
       created_at: `gt.${new Date(Date.now() - TOPUP_DEFAULTS.syncWindowMinutes * 60000).toISOString()}`,
       select: "*",
       order: "created_at.desc",
@@ -444,7 +474,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
         const sync = await syncTopupRow(row);
         if (sync.credited) credited.push(sync.result);
       } catch (error) {
-        console.error("[WALLET_HAMYON_SYNC]", row.id, error.message);
+        console.error("[WALLET_PAY_SYNC]", row.id, error.message);
       }
     }
     return credited;
@@ -521,7 +551,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
     const rows = await requestFn(`/wallet_topups?${params.toString()}`);
     return (Array.isArray(rows) ? rows : []).map((row) => ({
       ...toPublicTopup(row),
-      provider: row.provider === "manual" ? "manual" : row.provider ? "hamyon" : null,
+      provider: row.provider === "manual" ? "manual" : row.provider || null,
       reference: row.provider_order || null,
     }));
   }
@@ -592,6 +622,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
 module.exports = {
   TOPUP_DEFAULTS,
   WALLET_CONFIG_KEY,
+  createPayClient,
   createWallet,
   formatCardNumber,
   normalizeWalletConfig,

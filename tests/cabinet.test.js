@@ -9,6 +9,7 @@ const SUPABASE = "https://testproject.supabase.co/rest/v1";
 const ARENA = "https://arena.example.test/api";
 const BOT_TOKEN = "123456:test-token";
 const HAMYON = "https://hamyon-api.example.test";
+const ELDER = "https://pay.elder.example.test";
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
@@ -327,18 +328,47 @@ function installCabinetBackend() {
         return jsonResponse({ ok: true, payment_id: call.payment_id, status: "cancel" });
       }
     }
+    if (href === `${ELDER}/api`) {
+      const call = JSON.parse(options.body);
+      elderCalls.push(call);
+      if (call.method === "create") {
+        if (elder.conflicts > 0) {
+          elder.conflicts -= 1;
+          return jsonResponse({ status: "error", message: "Shu summada faol to'lov mavjud" }, 409);
+        }
+        const order = `ep-${elderCalls.length}`;
+        elder.orders.set(order, { amount: call.amount, status: "pending" });
+        return jsonResponse({
+          status: "success",
+          order,
+          ...(elder.page ? { pay_url: `https://pay.elder.uz/pay/${order}` } : {}),
+          data: { amount: call.amount, over: 0 },
+        });
+      }
+      const found = elder.orders.get(call.order);
+      if (!found) return jsonResponse({ status: "error", message: "order topilmadi" }, 400);
+      if (call.method === "check") {
+        return jsonResponse({ status: "success", order: call.order, data: { amount: found.amount, status: found.status, date: "2026-10-12" } });
+      }
+      if (call.method === "cancel") {
+        found.status = "cancel";
+        return jsonResponse({ status: "success", message: "cancelled", order: call.order });
+      }
+    }
     return jsonResponse({});
   };
 
+  const elder = { orders: new Map(), conflicts: 0, page: false };
+  const elderCalls = [];
   const hamyon = { orders: new Map(), conflicts: 0 };
   const hamyonCalls = [];
   return {
-    settings, accounts, telegram, arenaCalls, orders, wallet, hamyon, hamyonCalls,
+    settings, accounts, telegram, arenaCalls, orders, wallet, hamyon, hamyonCalls, elder, elderCalls,
     restore: () => { global.fetch = original; },
   };
 }
 
-function loadAccountApp() {
+function loadAccountApp({ provider = "hamyon", card = "8600 1234 5678 9012" } = {}) {
   process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
   process.env.TELEGRAM_BOT_USERNAME = "checkmlbbidBot";
   process.env.SUPABASE_URL = "https://testproject.supabase.co";
@@ -348,11 +378,19 @@ function loadAccountApp() {
   process.env.SUPPORT_USERNAME = "Ksava_org";
   process.env.ADMIN_IDS = "5081175125";
   delete process.env.SHOP_NOTIFY_CHAT_ID;
-  process.env.WALLET_CARD_NUMBER = "8600 1234 5678 9012";
+  process.env.WALLET_CARD_NUMBER = card;
   process.env.WALLET_CARD_HOLDER = "ALI VALIYEV";
   process.env.HAMYON_API_URL = HAMYON;
   process.env.HAMYON_SHOP_ID = "123456";
   process.env.HAMYON_SHOP_KEY = "shop-secret-key";
+  if (provider === "elderpay") {
+    process.env.ELDERPAY_API_URL = ELDER;
+    process.env.ELDERPAY_SHOP_ID = "445100";
+    process.env.ELDERPAY_SHOP_KEY = "elder-secret-key";
+  } else {
+    delete process.env.ELDERPAY_SHOP_ID;
+    delete process.env.ELDERPAY_SHOP_KEY;
+  }
   delete require.cache[require.resolve("../api/account.js")];
   return require("../api/account.js");
 }
@@ -613,6 +651,74 @@ test("cabinet: Hamyon — conflict picks another amount, cancel closes the order
     const busy = (await call(app, USER, "topup_create", { amount: 10000 })).body;
     assert.equal(busy.error, "busy");
     assert.ok(backend.wallet.topups.every((t) => t.status !== "pending"));
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: ElderPay — admin card, 409 picks another amount, polling credits once, cancel closes the order", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const app = loadAccountApp({ provider: "elderpay" });
+    assert.equal((await call(app, USER, "wallet")).body.config.provider, "elderpay");
+
+    // 409 — shu summada faol to'lov bor: +1 so'm bilan qayta.
+    backend.elder.conflicts = 1;
+    const created = (await call(app, USER, "topup_create", { amount: 50000 })).body;
+    assert.equal(created.ok, true);
+    assert.equal(created.topup.pay_amount, 50001);
+    assert.equal(created.topup.card, null, "api rejimida admin kartasi ko'rsatiladi");
+    assert.deepEqual(backend.elderCalls[1], { method: "create", shop_id: "445100", shop_key: "elder-secret-key", amount: 50001, user_id: "tg_777" });
+    const row = backend.wallet.topups.find((t) => String(t.id) === created.topup.id);
+    assert.equal(row.provider, "elderpay");
+    assert.equal(row.provider_order, "ep-2");
+
+    // Hali to'lanmagan — kabinet polling'i kutadi.
+    const waiting = (await call(app, USER, "topup_check", { id: created.topup.id })).body;
+    assert.equal(waiting.credited, false);
+    assert.equal(waiting.topup.status, "pending");
+
+    // To'landi — polling balansga yozadi (animatsiya status=paid bo'yicha), ikkinchi marta yozmaydi.
+    backend.elder.orders.get("ep-2").status = "paid";
+    const paid = (await call(app, USER, "topup_check", { id: created.topup.id })).body;
+    assert.equal(paid.credited, true);
+    assert.equal(paid.topup.status, "paid");
+    assert.equal(paid.balance, 50001);
+    const again = (await call(app, USER, "topup_check", { id: created.topup.id })).body;
+    assert.equal(again.credited, false);
+    assert.equal(again.balance, 50001);
+    assert.equal(backend.telegram.filter((m) => /Balans to'ldirildi/.test(m.text)).length, 1);
+
+    const cabinet = (await call(app, USER, "cabinet")).body;
+    assert.deepEqual(cabinet.topups.map((t) => [t.provider, t.paid_amount, t.reference]), [["elderpay", 50001, "ep-2"]]);
+
+    // Bekor qilish ElderPay'dagi buyurtmani ham yopadi.
+    const next = (await call(app, USER, "topup_create", { amount: 20000 })).body.topup;
+    assert.equal((await call(app, USER, "topup_cancel", { id: next.id })).body.ok, true);
+    assert.equal(backend.elder.orders.get("ep-5").status, "cancel");
+    assert.ok(!JSON.stringify(backend.telegram).includes("elder-secret-key"));
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: ElderPay page mode saves pay_url; api mode without an admin card refuses to open a payment", async () => {
+  const backend = installCabinetBackend();
+  try {
+    backend.elder.page = true;
+    let app = loadAccountApp({ provider: "elderpay" });
+    const page = (await call(app, USER, "topup_create", { amount: 30000 })).body;
+    assert.equal(page.topup.pay_url, "https://pay.elder.uz/pay/ep-1");
+    assert.equal(backend.wallet.topups[0].pay_url, "https://pay.elder.uz/pay/ep-1");
+    await call(app, USER, "topup_cancel", { id: page.topup.id });
+
+    backend.elder.page = false;
+    app = loadAccountApp({ provider: "elderpay", card: "" });
+    const refused = (await call(app, USER, "topup_create", { amount: 30000 })).body;
+    assert.equal(refused.ok, false);
+    assert.equal(refused.error, "topup_disabled");
+    assert.ok(backend.wallet.topups.every((t) => t.status !== "pending"));
+    assert.ok([...backend.elder.orders.values()].every((o) => o.status === "cancel"));
   } finally {
     backend.restore();
   }
