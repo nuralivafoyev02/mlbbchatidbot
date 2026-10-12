@@ -328,7 +328,7 @@
     .state h2 { font-size: 18px; margin-bottom: 8px; }
     .state p { color: var(--text2); line-height: 1.5; margin-bottom: 18px; }
 
-    /* ------------------------------------------------------------ balans (hamyon) */
+    /* ------------------------------------------------------------ balans */
     .pill.red { background: rgba(244, 63, 94, .15); color: var(--red); }
     .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
     .chip { padding: 12px 8px; border-radius: 13px; font-weight: 800; font-size: 15px; background: var(--surface2); border: 1px solid var(--border); }
@@ -344,6 +344,17 @@
     .warnbox { font-size: 12.5px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; margin-bottom: 12px; color: #fcd34d; background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .28); }
     .waiting { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; color: var(--text2); margin: 4px 0 12px; }
     .waiting .spinner { width: 16px; height: 16px; border-width: 2px; }
+    /* KsavaPay — to'lov tekshiruvi brendi */
+    .kp-brand {
+      font-weight: 800; letter-spacing: .2px; white-space: nowrap;
+      background: linear-gradient(135deg, #a5b4fc, #f0abfc); -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .kp-badge {
+      display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; margin: -4px auto 12px;
+      padding: 5px 10px; border-radius: 12px; font-size: 10.5px; line-height: 1.35; color: var(--text2);
+      background: rgba(99, 102, 241, .1); border: 1px solid rgba(129, 140, 248, .32);
+    }
+    .kp-badge > i { color: #a5b4fc; font-size: 12px; flex-shrink: 0; }
     .creds { text-align: left; }
     .link-btn { display: block; margin: 10px auto 0; font-size: 13px; color: var(--text2); text-decoration: underline; }
 
@@ -547,7 +558,7 @@
           d_type: "Turi", d_price: "Summa", d_status: "Holati", d_date: "Sana", d_order: "Buyurtma", d_package: "Paket",
           d_refunded_at: "Qaytarilgan vaqt", d_reason: "Sabab", d_paid_sum: "Balansga tushdi", d_requested: "Tanlangan summa",
           d_paid_at: "To'langan vaqt", d_created: "So'rov yaratilgan", d_method: "To'lov usuli", d_ref: "To'lov kodi",
-          m_hamyon: "Karta (Hamyon)", m_elderpay: "Karta (ElderPay)", m_manual: "Admin tasdiqladi", ev_topup: "Balans to'ldirildi", d_manual_hint: "Bu so'rov admin orqali bajariladi — kerak bo'lsa bog'laning.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
+          m_auto: "{brand} orqali tekshirildi", m_manual: "Admin tasdiqladi", ev_topup: "Balans to'ldirildi", d_manual_hint: "Bu so'rov admin orqali bajariladi — kerak bo'lsa bog'laning.", no_orders_setup: "Xaridlar tarixi tez orada shu yerda ko'rinadi.",
           ord_pending: "Kutilmoqda", ord_done: "Bajarildi", ord_cancelled: "Bekor qilindi",
           ord_firstmail: "Firstmail pochta", ord_limit: "Limit paketi", ord_donat: "Donat",
           ord_refunded: "Qaytarildi",
@@ -558,7 +569,7 @@
           tp_pay_title: "Kartaga o'tkazing", tp_card: "Karta raqami", tp_holder: "Karta egasi", tp_exact: "O'tkaziladigan summa",
           tp_warn: "Aynan {sum} o'tkazing — yaxlitlamang. Summa boshqacha bo'lsa to'lov avtomatik aniqlanmaydi.",
           tp_expires: "So'rov muddati: {t}", tp_expired: "So'rov muddati tugadi. Yangisini yarating.", tp_new: "Yangi so'rov",
-          tp_waiting: "To'lov kutilmoqda — avtomatik tekshirilyapti", tp_open_page: "To'lov sahifasini ochish", tp_check: "To'ladim — tekshirish", tp_cancel: "So'rovni bekor qilish",
+          tp_waiting: "To'lov kutilmoqda — avtomatik tekshirilyapti", tp_brand: "{brand} to'lov tizimi orqali hisob to'ldirilishi tekshirilmoqda", tp_open_page: "To'lov sahifasini ochish", tp_check: "To'ladim — tekshirish", tp_cancel: "So'rovni bekor qilish",
           tp_manual: "To'lov admin tomonidan tasdiqlanadi. O'tkazgandan keyin chekni adminga yuboring.",
           tp_not_yet: "To'lov hali kelmadi. Bir-ikki daqiqadan keyin yana tekshiring.",
           tp_done_title: "Balans to'ldirildi!", tp_done_text: "+{sum} hisobingizga qo'shildi. Joriy balans: {bal}",
@@ -618,7 +629,7 @@
           d_type: "Тип", d_price: "Сумма", d_status: "Статус", d_date: "Дата", d_order: "Заказ", d_package: "Пакет",
           d_refunded_at: "Время возврата", d_reason: "Причина", d_paid_sum: "Зачислено", d_requested: "Выбранная сумма",
           d_paid_at: "Время оплаты", d_created: "Заявка создана", d_method: "Способ оплаты", d_ref: "Код платежа",
-          m_hamyon: "Карта (Hamyon)", m_elderpay: "Карта (ElderPay)", m_manual: "Подтвердил админ", ev_topup: "Пополнение баланса", d_manual_hint: "Этот запрос выполняет админ — при необходимости свяжитесь.", no_orders_setup: "История покупок скоро появится здесь.",
+          m_auto: "Проверено через {brand}", m_manual: "Подтвердил админ", ev_topup: "Пополнение баланса", d_manual_hint: "Этот запрос выполняет админ — при необходимости свяжитесь.", no_orders_setup: "История покупок скоро появится здесь.",
           ord_pending: "Ожидает", ord_done: "Выполнено", ord_cancelled: "Отменено",
           ord_firstmail: "Почта Firstmail", ord_limit: "Пакет лимитов", ord_donat: "Донат",
           ord_refunded: "Возврат",
@@ -629,7 +640,7 @@
           tp_pay_title: "Переведите на карту", tp_card: "Номер карты", tp_holder: "Владелец карты", tp_exact: "Сумма перевода",
           tp_warn: "Переведите ровно {sum}. Если сумма будет другой, платёж не определится автоматически.",
           tp_expires: "Заявка действует: {t}", tp_expired: "Срок заявки истёк. Создайте новую.", tp_new: "Новая заявка",
-          tp_waiting: "Ожидаем оплату — проверяем автоматически", tp_open_page: "Открыть страницу оплаты", tp_check: "Я оплатил — проверить", tp_cancel: "Отменить заявку",
+          tp_waiting: "Ожидаем оплату — проверяем автоматически", tp_brand: "Пополнение счёта проверяется платёжной системой {brand}", tp_open_page: "Открыть страницу оплаты", tp_check: "Я оплатил — проверить", tp_cancel: "Отменить заявку",
           tp_manual: "Платёж подтверждает админ. После перевода отправьте ему чек.",
           tp_not_yet: "Платёж ещё не поступил. Проверьте через минуту-другую.",
           tp_done_title: "Баланс пополнен!", tp_done_text: "+{sum} зачислено. Текущий баланс: {bal}",
@@ -689,7 +700,7 @@
           d_type: "Type", d_price: "Amount", d_status: "Status", d_date: "Date", d_order: "Order", d_package: "Pack",
           d_refunded_at: "Refunded at", d_reason: "Reason", d_paid_sum: "Credited", d_requested: "Chosen amount",
           d_paid_at: "Paid at", d_created: "Request created", d_method: "Payment method", d_ref: "Payment code",
-          m_hamyon: "Card (Hamyon)", m_elderpay: "Card (ElderPay)", m_manual: "Confirmed by admin", ev_topup: "Balance top-up", d_manual_hint: "This request is handled by the admin — contact them if needed.", no_orders_setup: "Your purchase history will appear here soon.",
+          m_auto: "Verified via {brand}", m_manual: "Confirmed by admin", ev_topup: "Balance top-up", d_manual_hint: "This request is handled by the admin — contact them if needed.", no_orders_setup: "Your purchase history will appear here soon.",
           ord_pending: "Pending", ord_done: "Completed", ord_cancelled: "Cancelled",
           ord_firstmail: "Firstmail mailbox", ord_limit: "Limit pack", ord_donat: "Donate",
           ord_refunded: "Refunded",
@@ -700,7 +711,7 @@
           tp_pay_title: "Transfer to the card", tp_card: "Card number", tp_holder: "Card holder", tp_exact: "Amount to send",
           tp_warn: "Send exactly {sum}. A different amount won't be detected automatically.",
           tp_expires: "Request valid for: {t}", tp_expired: "This request has expired. Create a new one.", tp_new: "New request",
-          tp_waiting: "Waiting for payment — checking automatically", tp_open_page: "Open the payment page", tp_check: "I've paid — check", tp_cancel: "Cancel request",
+          tp_waiting: "Waiting for payment — checking automatically", tp_brand: "Your top-up is being verified by the {brand} payment system", tp_open_page: "Open the payment page", tp_check: "I've paid — check", tp_cancel: "Cancel request",
           tp_manual: "The admin confirms the payment. Send them the receipt after transferring.",
           tp_not_yet: "Payment hasn't arrived yet. Check again in a minute or two.",
           tp_done_title: "Balance topped up!", tp_done_text: "+{sum} added. Current balance: {bal}",
@@ -1220,7 +1231,7 @@
         var sum = t.paid_amount || t.pay_amount;
         return '<button class="item tappable" data-topup="' + esc(t.id) + '"><div class="item-ico green">' + icon("plus-circle") + "</div>" +
           '<div class="grow"><div class="item-title ellipsis">' + esc(L("ev_topup")) + "</div>" +
-          '<div class="item-sub">' + esc(L(methodKey(t.provider))) + " · " + esc(fmtDate(t.paid_at || t.created_at)) + "</div></div>" +
+          '<div class="item-sub">' + methodHtml(t.provider) + " · " + esc(fmtDate(t.paid_at || t.created_at)) + "</div></div>" +
           '<div class="item-right"><div class="delta plus" style="font-size:14px">+' + esc(som(sum)) + "</div>" +
           '<div style="margin-top:5px"><span class="pill green">' + esc(L("ord_done")) + "</span></div></div></button>";
       }
@@ -1291,7 +1302,7 @@
           payRow(L("d_requested"), som(t.amount)) +
           payRow(L("d_paid_at"), fmtDate(t.paid_at)) +
           payRow(L("d_created"), fmtDate(t.created_at)) +
-          payRow(L("d_method"), L(methodKey(t.provider))) +
+          payRowHtml(L("d_method"), methodHtml(t.provider)) +
           (t.reference ? payRow(L("d_ref"), t.reference, t.reference) : "");
         var sheet = openSheet(detailHead("plus-circle", "green", "+" + som(t.paid_amount || t.pay_amount),
           '<span class="pill green">' + esc(L("ev_topup")) + "</span>") +
@@ -1562,6 +1573,11 @@
         });
       }
 
+      // value — tayyor (xavfsiz) HTML.
+      function payRowHtml(label, valueHtml) {
+        return '<div class="payrow"><div class="grow"><div class="k">' + esc(label) + '</div><div class="v">' + valueHtml + "</div></div></div>";
+      }
+
       function payRow(label, value, copy, big) {
         return '<div class="payrow"><div class="grow"><div class="k">' + esc(label) + '</div><div class="v' + (big ? " big" : "") + '">' + esc(value) + "</div></div>" +
           (copy ? '<button class="copy" data-copy="' + esc(copy) + '" aria-label="copy">' + icon("copy") + "</button>" : "") + "</div>";
@@ -1662,8 +1678,13 @@
         });
       }
 
-      function methodKey(provider) {
-        return provider === "manual" ? "m_manual" : provider === "elderpay" ? "m_elderpay" : "m_hamyon";
+      // Mijozga texnik provayder (Hamyon/ElderPay) emas — o'z brendimiz.
+      var PAY_BRAND = "KsavaPay";
+      function brandHtml(key) {
+        return L(key).split("{brand}").map(esc).join('<span class="kp-brand">' + PAY_BRAND + "</span>");
+      }
+      function methodHtml(provider) {
+        return provider === "manual" ? esc(L("m_manual")) : brandHtml("m_auto");
       }
 
       function showPayStep(sheet, topup) {
@@ -1671,7 +1692,7 @@
         stopTopupTimers();
         paySheet = { sheet: sheet, topup: topup };
         var sum = som(topup.pay_amount);
-        // Hamyon har bir to'lovga o'z kartasini beradi; ElderPay — yo'q (admin kartasi yoki pay_url).
+        // Provayder (Hamyon) har bir to'lovga o'z kartasini beradi; bo'lmasa — admin kartasi yoki pay_url.
         var payCard = topup.card ? String(topup.card).replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ") : cfg.card;
         setSheet(sheet, "<h2>" + esc(L("tp_pay_title")) + "</h2>" +
           '<div class="paybox">' +
@@ -1680,7 +1701,8 @@
           payRow(L("tp_exact"), sum, String(topup.pay_amount), true) + "</div>" +
           '<div class="warnbox">' + icon("exclamation-triangle") + " " + esc(L("tp_warn", { sum: sum })) + "</div>" +
           (cfg.auto
-            ? '<div class="waiting"><div class="spinner"></div><span>' + esc(L("tp_waiting")) + "</span></div>"
+            ? '<div class="waiting"><div class="spinner"></div><span>' + esc(L("tp_waiting")) + "</span></div>" +
+              '<div class="kp-badge">' + icon("shield-check") + "<span>" + brandHtml("tp_brand") + "</span></div>"
             : '<div class="hint" style="text-align:center">' + esc(L("tp_manual")) + "</div>") +
           '<div class="hint" style="text-align:center" id="tpClock"></div>' +
           (topup.pay_url ? '<button class="btn primary" id="tpPage">' + icon("box-arrow-up-right") + esc(L("tp_open_page")) + "</button>" : "") +
@@ -1699,7 +1721,7 @@
         }
         tick();
         topupClock = setInterval(tick, 1000);
-        // ElderPay/Hamyon tavsiyasi: 3–5 s oralig'ida tekshirish.
+        // Provayder tavsiyasi: 3–5 s oralig'ida tekshirish.
         if (cfg.auto) topupPoll = setInterval(function () { checkTopup(sheet, topup, true); }, 5000);
         var page = sheet.querySelector("#tpPage");
         if (page) page.addEventListener("click", function () {
