@@ -86,6 +86,10 @@
       background: linear-gradient(135deg, var(--accent), var(--pink));
       box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
+    /* Rasm + ism — bosilganda Sozlamalar ochiladi */
+    .head-prof { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left; border-radius: 12px; transition: transform .15s; }
+    .head-prof:active { transform: scale(.97); }
+    .head-prof .grow { min-width: 0; }
     .head-name { font-size: 14.5px; font-weight: 700; line-height: 1.2; }
     .head-sub { font-size: 11px; color: var(--text2); margin-top: 1px; }
     .head-sub code { font-family: inherit; color: var(--text); opacity: .8; }
@@ -259,6 +263,76 @@
     .fm-hint .bi { color: var(--green); margin-top: 1px; }
     .detail-head .pill { font-size: 12px; padding: 4px 9px; }
 
+    /* ------------------------------------------------------------ sozlamalar */
+    .prof { text-align: center; padding: 6px 0 2px; }
+    .prof-ava {
+      width: 84px; height: 84px; border-radius: 28px; margin: 0 auto 12px; object-fit: cover; display: grid; place-items: center;
+      font-size: 32px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--accent), var(--pink));
+      box-shadow: 0 10px 30px rgba(99, 102, 241, .3); border: 1px solid var(--border);
+    }
+    .prof-name { font-size: 19px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+    .prof-nick { font-size: 13.5px; color: var(--text2); margin-top: 3px; }
+    .prof-id { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 10px; border-radius: 10px; font-size: 12px; color: var(--text2); background: var(--surface); border: 1px solid var(--border); }
+    .prof-id code { font-family: inherit; color: var(--text); font-weight: 700; }
+    .set-group { border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); overflow: hidden; margin-top: 12px; }
+    .set-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; text-align: left; }
+    .set-row + .set-row { border-top: 1px solid var(--border); }
+    button.set-row:active, label.set-row:active { background: rgba(255, 255, 255, .03); }
+    label.set-row { cursor: pointer; }
+    .set-row.disabled { cursor: default; }
+    .set-row.disabled .set-ico, .set-row.disabled .set-body { opacity: .5; }
+    .set-ico { width: 34px; height: 34px; border-radius: 11px; flex: none; display: grid; place-items: center; font-size: 16px; background: var(--surface2); color: #c4b5fd; }
+    .set-body { flex: 1; min-width: 0; }
+    .set-title { font-size: 14px; font-weight: 700; }
+    .set-sub { font-size: 12px; color: var(--text2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .set-val { flex: none; font-size: 13px; color: var(--text2); display: flex; align-items: center; gap: 4px; }
+    .soon-badge { flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 4px 8px; border-radius: 8px; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); }
+    .tgl { position: relative; flex: none; width: 44px; height: 26px; }
+    .tgl input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .tgl i { position: absolute; inset: 0; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border); transition: background .2s; pointer-events: none; }
+    .tgl i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+    .tgl input:checked + i { background: var(--green); border-color: transparent; }
+    .tgl input:checked + i::after { transform: translateX(18px); }
+    .tgl input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .lang-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px; font-weight: 700; text-align: left; }
+    .lang-opt.active { border-color: rgba(16, 185, 129, .45); background: rgba(16, 185, 129, .08); }
+    .lang-opt .bi-check-circle-fill { margin-left: auto; color: var(--green); }
+
+    /* "Animatsiyalar" o'chirilgan — hamma harakat deyarli bir zumda */
+    html.no-motion *, html.no-motion *::before, html.no-motion *::after {
+      animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important;
+    }
+
+    /* ------------------------------------------------------------ yuklanish ekrani */
+    .loader {
+      position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px;
+      background: radial-gradient(circle at 50% 36%, rgba(99, 102, 241, .22), transparent 62%), var(--bg);
+      transition: opacity .3s ease, visibility .3s;
+    }
+    .loader.done { opacity: 0; visibility: hidden; pointer-events: none; }
+    .ld-box { width: 100%; max-width: 320px; text-align: center; }
+    .ld-orb { position: relative; width: 120px; height: 120px; margin: 0 auto 26px; }
+    .ld-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--accent2); border-right-color: rgba(139, 92, 246, .35); animation: spin 1.1s linear infinite; }
+    .ld-ring.r2 { inset: 13px; border-top-color: var(--green); border-right-color: transparent; border-left-color: rgba(16, 185, 129, .3); animation-duration: 1.7s; animation-direction: reverse; }
+    .ld-core {
+      position: absolute; inset: 30px; border-radius: 20px; display: grid; place-items: center; font-size: 26px; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 12px 40px rgba(99, 102, 241, .45);
+      animation: ldPulse 1.6s ease-in-out infinite;
+    }
+    .ld-title { font-size: 17px; font-weight: 800; }
+    .ld-text { position: relative; height: 22px; margin-top: 8px; overflow: hidden; color: var(--text2); font-size: 13.5px; }
+    .ld-text span { position: absolute; left: 0; right: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: ldTextIn .45s cubic-bezier(.22, .8, .3, 1) both; }
+    .ld-text span.out { animation: ldTextOut .35s ease both; }
+    .ld-bar { width: 170px; height: 4px; border-radius: 99px; margin: 20px auto 0; background: var(--surface2); overflow: hidden; }
+    .ld-bar i { display: block; width: 40%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--green)); animation: ldBar 1.3s ease-in-out infinite; }
+    @keyframes ldPulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.07) } }
+    @keyframes ldTextIn { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+    @keyframes ldTextOut { from { opacity: 1; transform: none } to { opacity: 0; transform: translateY(-12px) } }
+    @keyframes ldBar { 0% { transform: translateX(-110%) } 100% { transform: translateX(260%) } }
+    @media (prefers-reduced-motion: reduce) {
+      .ld-core, .ld-text span, .ld-text span.out, .ld-ring, .ld-bar i { animation: none; }
+    }
+
     /* Tasdiqlash oynasi (brauzer/Telegram alert o'rniga) */
     .dlg-backdrop {
       position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
@@ -427,6 +501,7 @@
       background: linear-gradient(135deg, rgba(16, 185, 129, .32), rgba(99, 102, 241, .22));
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 4px 14px rgba(16, 185, 129, .22);
     }
+    .nav.no-active .nav-indicator.ready { opacity: 0; }
     .nav-indicator.ready { opacity: 1; transition: transform .42s cubic-bezier(.34, 1.36, .5, 1), width .42s cubic-bezier(.34, 1.36, .5, 1), opacity .2s; }
 
     /* Do'kon (asosiy rejimda o'ngda) / Asosiy (do'konda chapda) — appbardan ajralgan alohida tugma */
@@ -537,6 +612,14 @@
 </head>
 <body>
   <div class="bg-wrap" aria-hidden="true"><div class="bg-blob"></div><div class="bg-blob"></div></div>
+  <div class="loader" id="loader" role="status" aria-live="polite">
+    <div class="ld-box">
+      <div class="ld-orb"><div class="ld-ring"></div><div class="ld-ring r2"></div><div class="ld-core"><i class="bi bi-person-badge" aria-hidden="true"></i></div></div>
+      <div class="ld-title" id="ldTitle"></div>
+      <div class="ld-text" id="ldText"></div>
+      <div class="ld-bar"><i></i></div>
+    </div>
+  </div>
   <header id="head"></header>
   <div id="app"></div>
   <div class="dock hidden" id="dock"><nav class="nav" id="nav"></nav><button class="dock-side" id="dockSide"></button></div>
@@ -555,6 +638,11 @@
 
       var I18N = {
         uz: {
+          set_title: "Sozlamalar", set_open: "Sozlamalarni ochish", set_referral: "Referal tizimi", set_referral_sub: "Do'stlarni taklif qiling — bonus oling",
+          set_system: "Tizim sozlamalari", set_lang: "Til", set_lang_sub: "Bot va kabinet tili", set_haptics: "Vibratsiya", set_haptics_sub: "Bosilganda yengil titrash",
+          set_motion: "Animatsiyalar", set_motion_sub: "O'tish va oyna animatsiyalari", set_groups: "Guruhlarimiz", set_help: "Yordam", set_help_sub: "Savol yoki muammo bo'lsa yozing",
+          set_lang_saved: "Til saqlandi", set_lang_title: "Tilni tanlang", soon_badge: "Soon",
+          ld_title: "Shaxsiy kabinet ochilmoqda", ld_texts: ["Telegram orqali tasdiqlanmoqda…", "Balans va limitlar yuklanmoqda…", "Akkauntlaringiz tekshirilmoqda…", "Do'kon mahsulotlari tayyorlanmoqda…", "Xaridlar tarixi yig'ilmoqda…", "Deyarli tayyor…"],
           title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_history: "Tarix", tab_shop: "Do'kon",
           not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «Mening profilim» → «Shaxsiy kabinet» tugmasi orqali ochiladi.",
           error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
@@ -633,6 +721,11 @@
           err_purchase_failed: "Xarid amalga oshmadi — pul yechilmadi"
         },
         ru: {
+          set_title: "Настройки", set_open: "Открыть настройки", set_referral: "Реферальная система", set_referral_sub: "Приглашайте друзей — получайте бонусы",
+          set_system: "Настройки системы", set_lang: "Язык", set_lang_sub: "Язык бота и кабинета", set_haptics: "Вибрация", set_haptics_sub: "Лёгкий отклик при нажатии",
+          set_motion: "Анимации", set_motion_sub: "Анимации переходов и окон", set_groups: "Наши группы", set_help: "Помощь", set_help_sub: "Напишите, если есть вопрос или проблема",
+          set_lang_saved: "Язык сохранён", set_lang_title: "Выберите язык", soon_badge: "Soon",
+          ld_title: "Открываем личный кабинет", ld_texts: ["Проверяем вход через Telegram…", "Загружаем баланс и лимиты…", "Проверяем ваши аккаунты…", "Готовим товары магазина…", "Собираем историю покупок…", "Почти готово…"],
           title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
           not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте: «Мой профиль» → «Личный кабинет».",
           error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
@@ -711,6 +804,11 @@
           err_purchase_failed: "Покупка не прошла — деньги не списаны"
         },
         en: {
+          set_title: "Settings", set_open: "Open settings", set_referral: "Referral program", set_referral_sub: "Invite friends — earn bonuses",
+          set_system: "System settings", set_lang: "Language", set_lang_sub: "Bot and cabinet language", set_haptics: "Vibration", set_haptics_sub: "Light feedback on tap",
+          set_motion: "Animations", set_motion_sub: "Transition and window animations", set_groups: "Our groups", set_help: "Help", set_help_sub: "Write to us if you have a question",
+          set_lang_saved: "Language saved", set_lang_title: "Choose a language", soon_badge: "Soon",
+          ld_title: "Opening your cabinet", ld_texts: ["Verifying via Telegram…", "Loading balance and limits…", "Checking your accounts…", "Preparing shop items…", "Collecting purchase history…", "Almost ready…"],
           title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
           not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot: “My profile” → “Personal cabinet”.",
           error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
@@ -809,7 +907,23 @@
         ]
       };
 
-      var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "limits", data: null };
+      var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "limits", data: null, view: null };
+
+      // Shu qurilmadagi sozlamalar (Sozlamalar → Tizim sozlamalari).
+      var PREFS_KEY = "mlbb_cabinet_prefs";
+      var prefs = { haptics: true, motion: true };
+      try {
+        var savedPrefs = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
+        if (savedPrefs && typeof savedPrefs === "object") {
+          prefs.haptics = savedPrefs.haptics !== false;
+          prefs.motion = savedPrefs.motion !== false;
+        }
+      } catch (e) { /* xotira yopiq */ }
+      function savePrefs() {
+        try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* xotira yopiq */ }
+      }
+      function applyMotionPref() { document.documentElement.classList.toggle("no-motion", !prefs.motion); }
+      applyMotionPref();
       var app = document.getElementById("app");
 
       // ---------------------------------------------------------------- utils
@@ -857,7 +971,7 @@
 
       function haptic(kind) {
         try {
-          if (!tg || !tg.HapticFeedback) return;
+          if (!prefs.haptics || !tg || !tg.HapticFeedback) return;
           if (kind === "select") tg.HapticFeedback.selectionChanged();
           else if (kind === "success" || kind === "error" || kind === "warning") tg.HapticFeedback.notificationOccurred(kind);
           else tg.HapticFeedback.impactOccurred(kind || "light");
@@ -1023,20 +1137,23 @@
           side.setAttribute("aria-label", L(toShop ? "tab_shop" : "tab_home"));
           dock.classList.toggle("shop", !toShop);
         }
+        var activeTab = state.view ? null : currentTab();
         tabs.forEach(function (t) {
           var b = nav.querySelector('button[data-tab="' + t.id + '"]');
-          b.classList.toggle("active", currentTab() === t.id);
-          b.querySelector(".nav-ico").innerHTML = icon(currentTab() === t.id ? t.active : t.ico);
+          b.classList.toggle("active", activeTab === t.id);
+          b.querySelector(".nav-ico").innerHTML = icon(activeTab === t.id ? t.active : t.ico);
         });
+        nav.classList.toggle("no-active", !activeTab);
         dock.classList.remove("hidden");
         moveNavIndicator(nav, !fresh);
       }
 
       function goToTab(id) {
-        if (currentTab() === id) return;
+        if (currentTab() === id && !state.view) return;
         var ids = MODES[state.mode].map(function (t) { return t.id; });
-        var from = ids.indexOf(currentTab());
+        var from = state.view ? -1 : ids.indexOf(currentTab());
         haptic("select");
+        state.view = null;
         state.tabs[state.mode] = id;
         renderNav();
         render();
@@ -1059,6 +1176,7 @@
         var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         var apply = function () {
           state.mode = mode;
+          state.view = null;
           closeSheet();
           renderNav();
           render();
@@ -1095,7 +1213,7 @@
       // Telegram "Orqaga": avval oyna (sheet), keyin do'kondan asosiyga.
       function syncBackButton() {
         if (!tg || !tg.BackButton) return;
-        var open = Boolean(dlgClose) || Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop";
+        var open = Boolean(dlgClose) || Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop" || Boolean(state.view);
         if (open) tg.BackButton.show(); else tg.BackButton.hide();
       }
 
@@ -1104,6 +1222,7 @@
         var cel = document.querySelector(".cel:not(.closing) [data-cel-close]");
         if (cel) { cel.click(); return; }
         if (document.querySelector("#sheetRoot .sheet:not(.closing)")) { closeSheet(); return; }
+        if (state.view) { closeSettings(); return; }
         if (state.mode === "shop") switchMode("main");
       }
 
@@ -1112,6 +1231,7 @@
         var head = document.getElementById("head");
         head.innerHTML = headerHtml();
         document.getElementById("balBtn").addEventListener("click", openWalletSheet);
+        document.getElementById("headProf").addEventListener("click", openSettings);
       }
 
       // 20 belgidan uzun ism kesiladi ("…" bilan). Array.from — emoji/harflarni bo'lib yubormaydi.
@@ -1126,9 +1246,9 @@
         var avatar = /^https:\/\//.test(u.photo_url || "")
           ? '<img class="avatar" src="' + esc(u.photo_url) + '" alt="">'
           : '<div class="avatar">' + esc(String(name).trim().charAt(0).toUpperCase() || "?") + "</div>";
-        return '<div class="head">' + avatar +
+        return '<div class="head"><button class="head-prof" id="headProf" aria-label="' + esc(L("set_open")) + '">' + avatar +
           '<div class="grow"><div class="head-name ellipsis">' + esc(name) + "</div>" +
-          '<div class="head-sub ellipsis">' + (u.username ? "@" + esc(u.username) + " · " : "") + "ID <code>" + esc(u.id) + "</code></div></div>" +
+          '<div class="head-sub ellipsis">' + (u.username ? "@" + esc(u.username) + " · " : "") + "ID <code>" + esc(u.id) + "</code></div></div></button>" +
           balanceBtnHtml() + "</div>";
       }
 
@@ -1483,6 +1603,7 @@
       function render() {
         if (!state.data) return;
         if (fmObserver) { fmObserver.disconnect(); fmObserver = null; }
+        if (state.view === "settings") { renderSettings(); return; }
         var views = state.mode === "shop"
           ? { mail: renderShop, limits: renderLimits, donat: renderDonat, orders: renderOrders }
           : { home: renderHome, accounts: renderAccounts, history: renderHistory };
@@ -2238,6 +2359,176 @@
         });
       }
 
+      // ---------------------------------------------------------------- sozlamalar
+      var LANG_NAMES = { uz: "O'zbekcha", ru: "Русский", en: "English" };
+
+      // Header'dagi rasm/ism bosilganda (do'kondan ham) — Sozlamalar.
+      function openSettings() {
+        if (state.view === "settings" || warping) return;
+        haptic("light");
+        closeSheet();
+        state.mode = "main";
+        state.view = "settings";
+        renderNav();
+        render();
+        window.scrollTo(0, 0);
+        animateApp("pop-in");
+        syncBackButton();
+      }
+
+      function closeSettings() {
+        if (!state.view) return;
+        haptic("light");
+        state.view = null;
+        renderNav();
+        render();
+        window.scrollTo(0, 0);
+        animateApp("slide-from-left");
+        syncBackButton();
+      }
+
+      function setRow(ico, title, sub, right, tag, attrs) {
+        tag = tag || "div";
+        return "<" + tag + ' class="set-row"' + (attrs || "") + '><span class="set-ico">' + icon(ico) + "</span>" +
+          '<span class="set-body"><span class="set-title" style="display:block">' + esc(title) + "</span>" +
+          (sub ? '<span class="set-sub" style="display:block">' + esc(sub) + "</span>" : "") + "</span>" + (right || "") + "</" + tag + ">";
+      }
+
+      function toggleHtml(id, on) {
+        return '<span class="tgl"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + '><i></i></span>';
+      }
+
+      function renderSettings() {
+        var d = state.data;
+        var u = d.user;
+        var name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || String(u.id);
+        var ava = /^https:\/\//.test(u.photo_url || "")
+          ? '<img class="prof-ava" src="' + esc(u.photo_url) + '" alt="">'
+          : '<div class="prof-ava">' + esc(Array.from(String(name).trim())[0] || "?").toUpperCase() + "</div>";
+        var groups = d.groups || [];
+        var html = '<div class="prof">' + ava + '<div class="prof-name">' + esc(name) + "</div>" +
+          (u.username ? '<div class="prof-nick">@' + esc(u.username) + "</div>" : "") +
+          '<button class="prof-id" data-copy="' + esc(u.id) + '">ID <code>' + esc(u.id) + "</code>" + icon("copy") + "</button></div>" +
+
+          // Referal — hozircha bosib bo'lmaydi.
+          '<div class="set-group">' + setRow("gift", L("set_referral"), L("set_referral_sub"), '<span class="soon-badge">' + esc(L("soon_badge")) + "</span>", "div", ' aria-disabled="true"').replace('class="set-row"', 'class="set-row disabled"') + "</div>" +
+
+          '<div class="section-title">' + esc(L("set_system")) + "</div>" +
+          '<div class="set-group" style="margin-top:0">' +
+          setRow("translate", L("set_lang"), L("set_lang_sub"), '<span class="set-val">' + esc(LANG_NAMES[state.lang]) + icon("chevron-right") + "</span>", "button", ' id="setLang"') +
+          setRow("phone-vibrate", L("set_haptics"), L("set_haptics_sub"), toggleHtml("setHaptics", prefs.haptics), "label", ' for="setHaptics"') +
+          setRow("magic", L("set_motion"), L("set_motion_sub"), toggleHtml("setMotion", prefs.motion), "label", ' for="setMotion"') +
+          "</div>";
+
+        if (groups.length) {
+          html += '<div class="section-title">' + esc(L("set_groups")) + "</div>" +
+            '<div class="set-group" style="margin-top:0">' + groups.map(function (g) {
+              var host = "";
+              try { host = new URL(g.link).host + new URL(g.link).pathname.replace(/\/$/, ""); } catch (e) { host = g.link; }
+              return setRow(g.telegram ? "telegram" : "link-45deg", g.name, host, '<span class="set-val">' + icon("box-arrow-up-right") + "</span>", "button", ' data-group="' + esc(g.id) + '"');
+            }).join("") + "</div>";
+        }
+
+        if (d.supportUsername) {
+          html += '<div class="set-group">' + setRow("chat-dots", L("set_help"), "@" + d.supportUsername, '<span class="set-val">' + icon("chevron-right") + "</span>", "button", ' id="setHelp"') + "</div>";
+        }
+        app.innerHTML = html + '<div style="height:8px"></div>';
+
+        bindCopy(app);
+        document.getElementById("setLang").addEventListener("click", openLangSheet);
+        document.getElementById("setHaptics").addEventListener("change", function () {
+          prefs.haptics = this.checked;
+          savePrefs();
+          haptic("select");
+        });
+        document.getElementById("setMotion").addEventListener("change", function () {
+          prefs.motion = this.checked;
+          savePrefs();
+          applyMotionPref();
+          haptic("select");
+        });
+        var help = document.getElementById("setHelp");
+        if (help) help.addEventListener("click", contactAdmin);
+        bindAll("[data-group]", function (el) {
+          var g = groups.filter(function (x) { return x.id === el.dataset.group; })[0];
+          if (g) openGroupLink(g);
+        });
+      }
+
+      function openGroupLink(g) {
+        haptic("light");
+        if (g.telegram && tg && tg.openTelegramLink) { try { tg.openTelegramLink(g.link); return; } catch (e) { /* fallback */ } }
+        if (tg && tg.openLink) { try { tg.openLink(g.link); return; } catch (e) { /* fallback */ } }
+        window.open(g.link, "_blank");
+      }
+
+      function openLangSheet() {
+        var sheet = openSheet("<h2>" + esc(L("set_lang_title")) + '</h2><p class="lead">' + esc(L("set_lang_sub")) + "</p>" +
+          Object.keys(LANG_NAMES).map(function (code) {
+            return '<button class="lang-opt' + (code === state.lang ? " active" : "") + '" data-lang="' + code + '">' + esc(LANG_NAMES[code]) +
+              (code === state.lang ? icon("check-circle-fill") : "") + "</button>";
+          }).join(""));
+        Array.prototype.forEach.call(sheet.querySelectorAll("[data-lang]"), function (b) {
+          b.addEventListener("click", function () {
+            var code = b.dataset.lang;
+            if (code === state.lang) { closeSheet(); return; }
+            setBusy(b, true);
+            api("set_lang", { value: code }).then(function (result) {
+              setBusy(b, false);
+              if (!result.ok) { haptic("error"); toast(errText(result.error)); return; }
+              haptic("success");
+              state.lang = code;
+              document.documentElement.lang = code;
+              document.title = L("title");
+              closeSheet();
+              renderHeader();
+              renderNav();
+              render();
+              toast(L("set_lang_saved"));
+            });
+          });
+        });
+      }
+
+      // ---- yuklanish ekrani: aylanuvchi halqalar + almashib turadigan matnlar.
+      // Til serverdan kelguncha noma'lum — Telegram tilidan taxmin qilinadi.
+      var ldTimer = null;
+      var ldIndex = 0;
+      function ldLang() {
+        if (state.data) return state.lang;
+        var code = String((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code) || "").slice(0, 2);
+        return I18N[code] ? code : "uz";
+      }
+      function ldT(key) { return (I18N[ldLang()] || I18N.uz)[key]; }
+      function ldNext() {
+        var box = document.getElementById("ldText");
+        var texts = ldT("ld_texts");
+        var old = box.querySelector("span:not(.out)");
+        if (old) {
+          old.classList.add("out");
+          setTimeout(function () { if (old.parentNode) old.parentNode.removeChild(old); }, 350);
+        }
+        var span = document.createElement("span");
+        span.textContent = texts[ldIndex % texts.length];
+        // Oxirgi matn ("Deyarli tayyor") qayta-qayta aylanmasin — undan oldingilari aylanadi.
+        ldIndex = ldIndex + 1 >= texts.length ? 1 : ldIndex + 1;
+        box.appendChild(span);
+      }
+      function showLoader() {
+        document.getElementById("ldTitle").textContent = ldT("ld_title");
+        document.getElementById("loader").classList.remove("done");
+        if (ldTimer) return;
+        ldIndex = 0;
+        document.getElementById("ldText").innerHTML = "";
+        ldNext();
+        ldTimer = setInterval(ldNext, 1600);
+      }
+      function hideLoader() {
+        document.getElementById("loader").classList.add("done");
+        clearInterval(ldTimer);
+        ldTimer = null;
+      }
+
       // ---------------------------------------------------------------- boot
       function renderState(iconName, title, text, action) {
         app.innerHTML = '<div class="state"><div class="big">' + icon(iconName) + "</div><h2>" + esc(title) + "</h2><p>" + esc(text) + "</p>" +
@@ -2248,15 +2539,17 @@
       function boot() {
         document.getElementById("dock").classList.add("hidden");
         document.getElementById("head").innerHTML = "";
-        app.innerHTML = '<div class="skeleton" style="height:56px;margin-bottom:18px"></div><div class="skeleton" style="height:110px"></div>' +
-          '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+        app.innerHTML = "";
 
         if (!tg || !tg.initData) {
+          hideLoader();
           renderState("phone", L("not_telegram_title"), L("not_telegram_text"));
           return;
         }
 
+        showLoader();
         api("cabinet").then(function (result) {
+          hideLoader();
           if (!result.ok) {
             renderState("exclamation-triangle", L("error_title"), L("error_text"), { label: L("retry"), onClick: boot });
             return;

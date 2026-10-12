@@ -461,6 +461,27 @@ test("cabinet: returns limits, accounts, viewers, history, prices and only avail
   }
 });
 
+test("cabinet: groups from the admin panel show in settings; language is saved for bot and cabinet", async () => {
+  const backend = installCabinetBackend();
+  try {
+    const groups = require("../api/_cabinet-groups.js").createCabinetGroupsStore(backend.settings.handle);
+    assert.equal((await groups.save([{ name: "Asosiy guruh", link: "@ksava_chat" }, { name: "Sayt", link: "https://ksava.uz/info" }])).ok, true);
+
+    const app = loadAccountApp();
+    const d = (await call(app, USER, "cabinet")).body;
+    assert.deepEqual(d.groups.map((g) => [g.name, g.link, g.telegram]), [
+      ["Asosiy guruh", "https://t.me/ksava_chat", true],
+      ["Sayt", "https://ksava.uz/info", false],
+    ]);
+
+    assert.equal((await call(app, USER, "set_lang", { value: "de" })).statusCode, 400);
+    const saved = await call(app, USER, "set_lang", { value: "ru" });
+    assert.deepEqual([saved.statusCode, saved.body.lang], [200, "ru"]);
+  } finally {
+    backend.restore();
+  }
+});
+
 test("cabinet: add / remove accounts with validation", async () => {
   const backend = installCabinetBackend();
   try {

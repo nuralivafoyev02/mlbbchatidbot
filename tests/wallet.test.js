@@ -466,3 +466,27 @@ test("pay events: secrets are scrubbed, repeated problems throttled, missing tab
   assert.equal(calls, 1, "jadval yo'q bo'lsa qayta urinilmaydi");
   assert.deepEqual(await broken.list(), { available: false, events: [] });
 });
+
+// ---------------------------------------------------------------------------
+// Kabinet guruhlari (admin panel → Sozlamalar)
+// ---------------------------------------------------------------------------
+test("cabinet groups: links are normalized, bad input rejected, ids kept stable", () => {
+  const groups = require("../api/_cabinet-groups.js");
+  assert.equal(groups.normalizeGroupLink("@ksava_chat"), "https://t.me/ksava_chat");
+  assert.equal(groups.normalizeGroupLink("t.me/+AbCdEf123"), "https://t.me/+AbCdEf123");
+  assert.equal(groups.normalizeGroupLink("https://ksava.uz/a"), "https://ksava.uz/a");
+  for (const bad of ["http://t.me/x", "javascript:alert(1)", "@ab", "https://user:pw@t.me/x", "ftp://x.uz", "nope"]) {
+    assert.equal(groups.normalizeGroupLink(bad), "", bad);
+  }
+
+  const ok = groups.normalizeGroupsInput([{ id: "abc123", name: "  Chat  <b>", link: "@ksava_chat" }, { name: "Kanal", link: "https://t.me/ksava" }]);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.items[0].id, "abc123", "mavjud id saqlanadi");
+  assert.equal(ok.items[0].name, "Chat b", "HTML belgilar olib tashlanadi");
+  assert.match(ok.items[1].id, /^[a-f0-9]{10}$/);
+
+  assert.deepEqual(groups.normalizeGroupsInput([{ name: "", link: "@ksava_chat" }]), { ok: false, error: "group_name_invalid", index: 0 });
+  assert.deepEqual(groups.normalizeGroupsInput([{ name: "A", link: "http://x" }]), { ok: false, error: "group_link_invalid", index: 0 });
+  assert.equal(groups.normalizeGroupsInput(Array.from({ length: 13 }, () => ({ name: "A", link: "@ksava_chat" }))).error, "groups_limit");
+  assert.deepEqual(groups.toPublicGroup({ id: "1", name: "A", link: "https://t.me/x" }), { id: "1", name: "A", link: "https://t.me/x", telegram: true });
+});

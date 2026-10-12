@@ -6,6 +6,7 @@ const donat = require("./_donat.js");
 const limitPrices = require("./_limit-prices.js");
 const quotaLog = require("./_quota-log.js");
 const walletLib = require("./_wallet.js");
+const cabinetGroups = require("./_cabinet-groups.js");
 const shopOrders = require("./_shop-orders.js");
 const adminAuth = require("./_admin-auth.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
@@ -113,6 +114,10 @@ module.exports = async function handler(req, res) {
           return handleUpdateSettings(req, res, body);
         case "get_admins":
           return handleGetAdmins(req, res);
+        case "cabinet_groups_list":
+          return handleCabinetGroupsList(req, res);
+        case "cabinet_groups_save":
+          return handleCabinetGroupsSave(req, res, body);
         case "update_admins":
           return handleUpdateAdmins(req, res, body);
         case "get_active_users":
@@ -584,6 +589,43 @@ async function handleGetAdmins(req, res) {
     return json(res, 200, { ok: true, data: { adminIds: ids } });
   } catch {
     return json(res, 200, { ok: true, data: { adminIds: ADMIN_IDS } });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shaxsiy kabinet → Sozlamalar → "Guruhlarimiz" (api/_cabinet-groups.js)
+// ---------------------------------------------------------------------------
+const CABINET_GROUP_ERROR_TEXTS = {
+  groups_limit: `Ko'pi bilan ${cabinetGroups.CABINET_GROUPS_MAX} ta guruh bo'ladi`,
+  group_name_invalid: "Guruh nomini kiriting (40 belgigacha)",
+  group_link_invalid: "Havola https://... yoki @username ko'rinishida bo'lsin",
+};
+
+function getCabinetGroupsStore() {
+  return cabinetGroups.createCabinetGroupsStore((reqPath, options) => supabaseRequest(reqPath, options));
+}
+
+async function handleCabinetGroupsList(req, res) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    return json(res, 200, { ok: true, data: { items: await getCabinetGroupsStore().list(), max: cabinetGroups.CABINET_GROUPS_MAX } });
+  } catch (e) {
+    console.error("[CABINET_GROUPS_LIST]", e.message);
+    return json(res, 500, { ok: false, error: "server_error", message: "Yuklab bo'lmadi" });
+  }
+}
+
+async function handleCabinetGroupsSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    const result = await getCabinetGroupsStore().save(body.items);
+    if (!result.ok) {
+      return json(res, 400, { ok: false, error: result.error, index: result.index ?? null, message: CABINET_GROUP_ERROR_TEXTS[result.error] || "Xatolik" });
+    }
+    return json(res, 200, { ok: true, data: { items: result.items } });
+  } catch (e) {
+    console.error("[CABINET_GROUPS_SAVE]", e.message);
+    return json(res, 500, { ok: false, error: "server_error", message: "Saqlab bo'lmadi" });
   }
 }
 

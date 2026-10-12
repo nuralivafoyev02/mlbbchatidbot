@@ -1481,6 +1481,67 @@
       margin: 3px
     }
 
+    /* Kabinet guruhlari (Sozlamalar) */
+    .cg-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06)
+    }
+
+    .cg-item:first-child { border-top: 0 }
+
+    .cg-item > i {
+      font-size: 16px;
+      color: var(--accent3);
+      flex-shrink: 0
+    }
+
+    .cg-body {
+      flex: 1;
+      min-width: 0
+    }
+
+    .cg-name {
+      font-size: 13px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .cg-link {
+      font-size: 11.5px;
+      color: var(--text2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .cg-act {
+      width: 30px;
+      height: 30px;
+      flex-shrink: 0;
+      border-radius: 9px;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text2);
+      cursor: pointer;
+      font-size: 13px
+    }
+
+    .cg-act.red { color: var(--red) }
+    .cg-act:disabled { opacity: .35; cursor: default }
+
+    .cg-form {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px
+    }
+
+    .cg-form .admin-add-row { margin-top: 0 }
+
     .admin-add-row {
       display: flex;
       gap: 8px;
@@ -3411,6 +3472,23 @@
           </div>
           </div></div>
         </div>
+        <div class="card collapsible">
+          <button type="button" class="collapse-head" onclick="toggleSettingsCard(this)" aria-expanded="false">
+            <span class="collapse-title"><i class="bi bi-people-fill"></i>Kabinet guruhlari</span>
+            <i class="bi bi-chevron-down collapse-chevron"></i>
+          </button>
+          <div class="collapse-body"><div class="collapse-inner">
+          <div style="color:var(--text2);font-size:12px;line-height:1.45;margin-bottom:8px">Shaxsiy kabinet → Sozlamalar → «Guruhlarimiz» ro'yxati. Havola: https://t.me/… yoki @username.</div>
+          <div id="cgList"></div>
+          <div class="cg-form">
+            <input class="settings-input" type="text" id="cgName" maxlength="40" placeholder="Guruh nomi">
+            <div class="admin-add-row">
+              <input class="settings-input" type="text" id="cgLink" autocomplete="off" spellcheck="false" placeholder="https://t.me/guruh yoki @guruh">
+              <button id="cgAddBtn" onclick="addCabinetGroup()">+ Qo'shish</button>
+            </div>
+          </div>
+          </div></div>
+        </div>
       </div>
     </div>
 
@@ -4060,7 +4138,7 @@
         });
         moveNavIndicator(document.getElementById("bottomNav"), changed);
         if (name === "Users" && allUsers.length === 0) loadUsers();
-        if (name === "Settings") { loadSettings(); loadMandatorySettings(); }
+        if (name === "Settings") { loadSettings(); loadMandatorySettings(); loadCabinetGroups(); }
         if (name === "Shop") {
           if (fmView === "list") reloadFirstmailsKeepingPosition();
           else if (dnView !== "none") loadDonat();
@@ -4913,6 +4991,94 @@
         });
       }
       window.addAdmin = addAdmin;
+
+      /* -----------------------------------------------------------------------
+         Kabinet guruhlari — Shaxsiy kabinet → Sozlamalar → «Guruhlarimiz»
+      ----------------------------------------------------------------------- */
+      var cgItems = [];
+      var cgEditId = null;
+
+      function loadCabinetGroups() {
+        api("cabinet_groups_list").then(function (result) {
+          if (!result.ok) return;
+          cgItems = result.data.items || [];
+          renderCabinetGroups();
+        });
+      }
+
+      function renderCabinetGroups() {
+        var box = document.getElementById("cgList");
+        if (!cgItems.length) {
+          box.innerHTML = '<div style="color:var(--text2);font-size:13px">Hali guruh qo\'shilmagan</div>';
+          return;
+        }
+        box.innerHTML = cgItems.map(function (g, i) {
+          var tgLink = /^https:\/\/(t|telegram)\.me\//i.test(g.link);
+          return '<div class="cg-item"><i class="bi bi-' + (tgLink ? "telegram" : "link-45deg") + '"></i>' +
+            '<div class="cg-body"><div class="cg-name">' + esc(g.name) + '</div><div class="cg-link">' + esc(g.link) + "</div></div>" +
+            '<button class="cg-act" data-cg-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="Yuqoriga"><i class="bi bi-arrow-up"></i></button>' +
+            '<button class="cg-act" data-cg-edit="' + i + '" aria-label="Tahrirlash"><i class="bi bi-pencil"></i></button>' +
+            '<button class="cg-act red" data-cg-del="' + i + '" aria-label="O\'chirish"><i class="bi bi-trash3"></i></button></div>';
+        }).join("");
+        box.querySelectorAll("[data-cg-up]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var i = Number(el.getAttribute("data-cg-up"));
+            var next = cgItems.slice();
+            next.splice(i - 1, 0, next.splice(i, 1)[0]);
+            saveCabinetGroups(next, "✅ Tartib saqlandi");
+          });
+        });
+        box.querySelectorAll("[data-cg-edit]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var g = cgItems[Number(el.getAttribute("data-cg-edit"))];
+            cgEditId = g.id;
+            document.getElementById("cgName").value = g.name;
+            document.getElementById("cgLink").value = g.link;
+            document.getElementById("cgAddBtn").textContent = "Saqlash";
+            document.getElementById("cgName").focus();
+          });
+        });
+        box.querySelectorAll("[data-cg-del]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var i = Number(el.getAttribute("data-cg-del"));
+            saveCabinetGroups(cgItems.filter(function (_, j) { return j !== i; }), "✅ Guruh o'chirildi");
+          });
+        });
+      }
+
+      function saveCabinetGroups(items, okText) {
+        var btn = document.getElementById("cgAddBtn");
+        btn.disabled = true;
+        return api("cabinet_groups_save", { items: items }).then(function (result) {
+          btn.disabled = false;
+          if (!result.ok) { showToast("❌ " + (result.message || "Xatolik"), "error"); return false; }
+          cgItems = result.data.items;
+          renderCabinetGroups();
+          showToast(okText, "success");
+          return true;
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+          return false;
+        });
+      }
+
+      function addCabinetGroup() {
+        var name = document.getElementById("cgName").value.trim();
+        var link = document.getElementById("cgLink").value.trim();
+        if (!name || !link) { showToast("❌ Nom va havolani kiriting", "error"); return; }
+        var next = cgEditId
+          ? cgItems.map(function (g) { return g.id === cgEditId ? { id: g.id, name: name, link: link } : g; })
+          : cgItems.concat([{ name: name, link: link }]);
+        saveCabinetGroups(next, cgEditId ? "✅ Guruh yangilandi" : "✅ Guruh qo'shildi").then(function (ok) {
+          if (!ok) return;
+          cgEditId = null;
+          document.getElementById("cgName").value = "";
+          document.getElementById("cgLink").value = "";
+          document.getElementById("cgAddBtn").textContent = "+ Qo'shish";
+        });
+      }
+      window.addCabinetGroup = addCabinetGroup;
 
       function removeAdmin(id) {
         adminIds = adminIds.filter(function (a) { return a !== id; });

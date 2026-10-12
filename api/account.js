@@ -20,6 +20,7 @@ const shop = require("./_shop.js");
 const limitPrices = require("./_limit-prices.js");
 const shopOrders = require("./_shop-orders.js");
 const walletLib = require("./_wallet.js");
+const cabinetGroups = require("./_cabinet-groups.js");
 const {
   createShopNotifier,
   buildFirstmailBuyText,
@@ -96,6 +97,9 @@ module.exports = async function handler(req, res) {
       // Shaxsiy kabinet (?view=cabinet)
       case "cabinet":
         return await handleCabinet(res, ctx);
+      // Kabinet → Sozlamalar: til (bot bilan umumiy — bot_users.preferred_language).
+      case "set_lang":
+        return await handleSetLang(res, ctx);
       case "account_add":
         return await handleAccountAdd(res, ctx);
       case "account_remove":
@@ -329,7 +333,7 @@ async function handleCabinet(res, { config, user }) {
   const wallet = createWalletFor(config);
   // Oyna yopilib qolgan to'lovlar — balansni ko'rsatishdan oldin yoziladi.
   await settle(syncUserTopups(config, wallet, user), "TOPUP_SYNC");
-  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup, paidTopups] = await Promise.all([
+  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup, paidTopups, groups] = await Promise.all([
     loadPreferredLanguage(config, user),
     settle(listUserAccounts(config, userId), "ACCOUNTS"),
     settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
@@ -346,6 +350,7 @@ async function handleCabinet(res, { config, user }) {
     settle(wallet.getConfig(), "WALLET_CONFIG"),
     settle(wallet.getActiveTopup(userId), "TOPUP"),
     settle(wallet.listPaidTopups(userId, CABINET_HISTORY_LIMIT), "TOPUPS"),
+    settle(cabinetGroups.createCabinetGroupsStore(storeRequest(config)).list(), "GROUPS"),
   ]);
 
   return json(res, 200, {
@@ -381,7 +386,21 @@ async function handleCabinet(res, { config, user }) {
       : null,
     // Tarix: balansga tushgan to'ldirishlar (xaridlar bilan bitta lentada).
     topups: Array.isArray(paidTopups) ? paidTopups : [],
+    // Sozlamalar → "Guruhlarimiz" (admin panelda boshqariladi).
+    groups: (groups || []).map(cabinetGroups.toPublicGroup),
   });
+}
+
+async function handleSetLang(res, { config, user, body }) {
+  const lang = String(body.value || "");
+  if (!SUPPORTED_LANGS.includes(lang)) return json(res, 400, { ok: false, error: "invalid_input" });
+  try {
+    await supabaseRpc(config, "set_user_preferred_language", { p_user_id: String(user.id), p_language: lang });
+  } catch (error) {
+    console.error("[ACCOUNT_SET_LANG]", error?.message);
+    return json(res, 502, { ok: false, error: "save_failed" });
+  }
+  return json(res, 200, { ok: true, lang });
 }
 
 // Sotuvdagi pochtalarning bitta sahifasi (offset dan boshlab 30 ta).
