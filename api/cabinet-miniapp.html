@@ -344,17 +344,14 @@
     .warnbox { font-size: 12.5px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; margin-bottom: 12px; color: #fcd34d; background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .28); }
     .waiting { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; color: var(--text2); margin: 4px 0 12px; }
     .waiting .spinner { width: 16px; height: 16px; border-width: 2px; }
-    /* KsavaPay — to'lov tekshiruvi brendi */
-    .kp-brand {
-      font-weight: 800; letter-spacing: .2px; white-space: nowrap;
-      background: linear-gradient(135deg, #a5b4fc, #f0abfc); -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
+    /* KsavaPay — to'lov tekshiruvi brendi (minimal: rang yo'q, faqat qalinlik) */
+    .kp-brand { font-weight: 700; color: var(--text); white-space: nowrap; }
     .kp-badge {
-      display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; margin: -4px auto 12px;
-      padding: 5px 10px; border-radius: 12px; font-size: 10.5px; line-height: 1.35; color: var(--text2);
-      background: rgba(99, 102, 241, .1); border: 1px solid rgba(129, 140, 248, .32);
+      display: flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%; margin: -4px auto 12px;
+      padding: 5px 10px; border-radius: 10px; font-size: 10.5px; line-height: 1.35; color: var(--text2);
+      background: rgba(255, 255, 255, .03); border: 1px solid var(--border);
     }
-    .kp-badge > i { color: #a5b4fc; font-size: 12px; flex-shrink: 0; }
+    .kp-badge > i { font-size: 11px; flex-shrink: 0; opacity: .8; }
     .creds { text-align: left; }
     .link-btn { display: block; margin: 10px auto 0; font-size: 13px; color: var(--text2); text-decoration: underline; }
 
