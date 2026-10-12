@@ -32,6 +32,8 @@ const DEFAULT_API_URL = "https://hamyon-api.uz";
 const ORDER_TTL_MINUTES = 5;
 const ORDER_STATUSES = Object.freeze(["pending", "paid", "cancel"]);
 const CONFLICT_HINT = /ochiq to'lov|band|allaqachon|mavjud|o'zgartiring/i;
+// Noto'g'ri shop_id/shop_key — Hamyon 400 "Do'kon topilmadi!" qaytaradi (403 emas).
+const AUTH_HINT = /do'kon topilmadi|shop_key|kalit|ruxsat|faol emas|bloklangan/i;
 
 function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^['"]|['"]$/g, "");
@@ -51,7 +53,7 @@ class HamyonError extends Error {
   constructor(message, reason, httpStatus = 0) {
     super(message);
     this.name = "HamyonError";
-    // not_configured | invalid | auth | conflict | unavailable | timeout
+    // not_configured | invalid | auth | conflict | not_found | unavailable | timeout
     this.reason = reason;
     this.httpStatus = httpStatus;
   }
@@ -60,8 +62,9 @@ class HamyonError extends Error {
 function reasonForStatus(status, payload) {
   const message = String(payload?.error || payload?.message || "");
   if (status === 400 && CONFLICT_HINT.test(message)) return "conflict";
+  if (status === 403 || AUTH_HINT.test(message)) return "auth";
+  if (status === 404) return "not_found";
   if (status === 400) return "invalid";
-  if (status === 403) return "auth";
   return "unavailable";
 }
 

@@ -276,6 +276,16 @@ function installCabinetBackend() {
         const userId = new URL(`https://x${path}`).searchParams.get("user_id").slice(3);
         return jsonResponse(orders.filter((o) => String(o.user_id) === userId));
       }
+      if (path.startsWith("/wallet_events")) {
+        if (String(options.method || "GET").toUpperCase() === "POST") {
+          walletEvents.unshift({ id: walletEvents.length + 1, created_at: new Date().toISOString(), ...body });
+          return jsonResponse([]);
+        }
+        const params = new URL(`https://x${path}`).searchParams;
+        return jsonResponse(walletEvents.filter((e) =>
+          ["level", "kind", "provider"].every((f) => !params.get(f) || !params.get(f).startsWith("eq.") || String(e[f]) === params.get(f).slice(3))
+        ).slice(0, Number(params.get("limit") || 100)));
+      }
       if (path.startsWith("/wallet_topups")) {
         const params = new URL(`https://x${path}`).searchParams;
         const matches = (t) =>
@@ -358,12 +368,14 @@ function installCabinetBackend() {
     return jsonResponse({});
   };
 
+  const walletEvents = [];
+  require("../api/_pay-events.js").resetThrottle();
   const elder = { orders: new Map(), conflicts: 0, page: false };
   const elderCalls = [];
   const hamyon = { orders: new Map(), conflicts: 0 };
   const hamyonCalls = [];
   return {
-    settings, accounts, telegram, arenaCalls, orders, wallet, hamyon, hamyonCalls, elder, elderCalls,
+    settings, accounts, telegram, arenaCalls, orders, wallet, hamyon, hamyonCalls, elder, elderCalls, walletEvents,
     restore: () => { global.fetch = original; },
   };
 }
@@ -656,10 +668,17 @@ test("cabinet: Hamyon — conflict picks another amount, cancel closes the order
   }
 });
 
+function useProvider(backend, mode, extra = {}) {
+  backend.settings.handle("/bot_settings?on_conflict=key", { method: "POST", body: { key: "wallet_provider", value: { mode, ...extra } } });
+}
+
 test("cabinet: ElderPay — admin card, 409 picks another amount, polling credits once, cancel closes the order", async () => {
   const backend = installCabinetBackend();
   try {
     const app = loadAccountApp({ provider: "elderpay" });
+    // Env'da kalit bo'lsa ham default — Hamyon; ElderPay panelda tanlanadi.
+    assert.equal((await call(app, USER, "wallet")).body.config.provider, "hamyon");
+    useProvider(backend, "elderpay");
     assert.equal((await call(app, USER, "wallet")).body.config.provider, "elderpay");
 
     // 409 — shu summada faol to'lov bor: +1 so'm bilan qayta.
@@ -706,6 +725,7 @@ test("cabinet: ElderPay page mode saves pay_url; api mode without an admin card 
   const backend = installCabinetBackend();
   try {
     backend.elder.page = true;
+    useProvider(backend, "elderpay");
     let app = loadAccountApp({ provider: "elderpay" });
     const page = (await call(app, USER, "topup_create", { amount: 30000 })).body;
     assert.equal(page.topup.pay_url, "https://pay.elder.uz/pay/ep-1");
@@ -778,6 +798,64 @@ test("cabinet: Hamyon complete_url callback credits once, verifies the sign and 
     const cancel = { payment_id: nextRow.provider_order, order_id: next.id, shop_id: "123456", amount: "15000", status: "cancel", reason: "timeout" };
     assert.equal((await hamyonCallback(app, { ...cancel, sign: hamyonSign(nextRow.provider_order, "15000") })).statusCode, 200);
     assert.equal(nextRow.status, "cancelled");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: panel keys beat env; switching provider keeps in-flight Hamyon payments working; journal records it all", async () => {
+  const backend = installCabinetBackend();
+  try {
+    // Panelda boshqa Hamyon do'koni — create shu kalit bilan, callback imzosi ham shu bilan.
+    useProvider(backend, "hamyon", { hamyon: { shopId: "999", shopKey: "panel-key-1" } });
+    const app = loadAccountApp({ provider: "elderpay" });
+    const topup = (await call(app, USER, "topup_create", { amount: 40000 })).body.topup;
+    assert.deepEqual([backend.hamyonCalls[0].body.shop_id, backend.hamyonCalls[0].body.shop_key], ["999", "panel-key-1"]);
+    const row = backend.wallet.topups.find((t) => String(t.id) === topup.id);
+    assert.equal(row.provider, "hamyon");
+
+    // Admin ElderPay'ga o'tdi — ochiq Hamyon to'lovi baribir Hamyon bilan tekshiriladi.
+    useProvider(backend, "elderpay", { hamyon: { shopId: "999", shopKey: "panel-key-1" } });
+    backend.hamyon.orders.get(row.provider_order).status = "paid";
+    const checked = (await call(app, USER, "topup_check", { id: topup.id })).body;
+    assert.deepEqual([checked.credited, checked.topup.status, checked.balance], [true, "paid", 40000]);
+    assert.equal(backend.elderCalls.length, 0, "Hamyon to'lovi ElderPay'ga yuborilmaydi");
+
+    // Hamyon callback'i ham (imzo panel kaliti bilan) qabul qilinadi; env kaliti bilan — yo'q.
+    const sign = (key, id, amount) => crypto.createHash("md5").update(`999${id}${amount}${key}`).digest("hex");
+    const fields = { payment_id: row.provider_order, order_id: topup.id, shop_id: "999", amount: "40000", status: "paid" };
+    assert.equal((await hamyonCallback(app, { ...fields, sign: sign("shop-secret-key", row.provider_order, "40000") })).statusCode, 403);
+    assert.equal((await hamyonCallback(app, { ...fields, sign: sign("panel-key-1", row.provider_order, "40000") })).statusCode, 200);
+    assert.equal(backend.wallet.balances.get("777"), 40000, "qayta yozilmaydi");
+
+    // "Tekshirish" test to'lovining callback'i — 200, hech narsa o'zgarmaydi.
+    const health = { payment_id: "pay-health", order_id: "health-1767225431", shop_id: "999", amount: "1042", status: "cancel" };
+    const before = JSON.stringify(backend.wallet.topups);
+    assert.equal((await hamyonCallback(app, { ...health, sign: sign("panel-key-1", "pay-health", "1042") })).statusCode, 200);
+    assert.equal(JSON.stringify(backend.wallet.topups), before);
+
+    const kinds = backend.walletEvents.map((e) => `${e.level}:${e.kind}`);
+    for (const expected of ["info:create", "info:credit", "warn:callback", "info:callback"]) {
+      assert.ok(kinds.includes(expected), `${expected} jurnalda bo'lishi kerak: ${kinds.join(", ")}`);
+    }
+    assert.ok(backend.walletEvents.some((e) => /Test to'lov callback'i keldi/.test(e.message)));
+    assert.ok(!JSON.stringify(backend.walletEvents).includes("panel-key-1"), "kalit jurnalga tushmaydi");
+    assert.ok(!JSON.stringify(backend.walletEvents).match(/"sign"/), "imzo jurnalga tushmaydi");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: manual mode shows the admin card and opens no provider payment", async () => {
+  const backend = installCabinetBackend();
+  try {
+    useProvider(backend, "manual");
+    const app = loadAccountApp();
+    const wallet = (await call(app, USER, "wallet")).body;
+    assert.deepEqual([wallet.config.auto, wallet.config.provider, wallet.config.card], [false, null, "8600 1234 5678 9012"]);
+    const topup = (await call(app, USER, "topup_create", { amount: 20000 })).body.topup;
+    assert.ok(topup.pay_amount > 20000 && topup.pay_amount < 21000, "qo'lda rejimda noyob summa");
+    assert.equal(backend.hamyonCalls.length, 0);
   } finally {
     backend.restore();
   }

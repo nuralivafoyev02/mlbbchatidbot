@@ -4,7 +4,8 @@
 // GET  → account-miniapp.html (Mini App)
 // POST → { action, initData, ... } JSON API
 // POST ?hook=hamyon → Hamyon API callback (prepare_url / complete_url), imzo
-//      md5(shop_id + payment_id + amount + shop_key) bilan tekshiriladi.
+//      md5(shop_id + payment_id + amount + shop_key) bilan tekshiriladi
+//      (kalitlar admin panel → Feat yoki env'dan).
 //
 // Autentifikatsiya: Telegram WebApp initData imzosi (TELEGRAM_BOT_TOKEN).
 // Arena JWT faqat serverda ochiladi (user_accounts.ml_token) va hech qachon
@@ -579,12 +580,17 @@ async function handleHamyonCallback(req, res, config) {
   }
 
   const fields = parseFormBody(req.body);
+  const wallet = createWalletFor(config);
   let outcome;
   try {
-    outcome = await createWalletFor(config).handleProviderCallback(fields);
+    outcome = await wallet.handleProviderCallback(fields, "hamyon");
   } catch (error) {
     // 2xx bo'lmasa Hamyon qayta yuboradi — vaqtinchalik xatoda shu kerak.
     console.error("[WALLET_HAMYON_CALLBACK]", error?.message);
+    await wallet.events.record("error", "callback", `Callback'ni qayta ishlashda xato: ${error?.message}`, {
+      provider: "hamyon",
+      data: { payment_id: fields.payment_id || null, status: fields.status || null },
+    });
     return json(res, 500, { error: "temporary" });
   }
 

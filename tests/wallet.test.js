@@ -6,6 +6,7 @@ const test = require("node:test");
 const hamyon = require("../api/_hamyon.js");
 const elderpay = require("../api/_elderpay.js");
 const walletLib = require("../api/_wallet.js");
+const payEvents = require("../api/_pay-events.js");
 
 // ---------------------------------------------------------------------------
 // _hamyon.js
@@ -92,10 +93,38 @@ test("elderpay: create / check / cancel speak JSON to /api; errors map to reason
   assert.equal((await off.createOrder({ amount: 1 }).catch((e) => e)).reason, "not_configured");
 });
 
-test("wallet: ElderPay keys take priority over Hamyon; otherwise Hamyon stays", () => {
-  const both = { ELDERPAY_SHOP_ID: "1", ELDERPAY_SHOP_KEY: "a", HAMYON_SHOP_ID: "2", HAMYON_SHOP_KEY: "b" };
-  assert.equal(walletLib.createPayClient(both).provider, "elderpay");
-  assert.equal(walletLib.createPayClient({ HAMYON_SHOP_ID: "2", HAMYON_SHOP_KEY: "b" }).provider, "hamyon");
+test("wallet: Hamyon is the default; ElderPay / manual only when chosen in the panel; panel keys beat env", () => {
+  const both = { ELDERPAY_SHOP_ID: "1", ELDERPAY_SHOP_KEY: "aaaa", HAMYON_SHOP_ID: "2", HAMYON_SHOP_KEY: "bbbb" };
+  assert.equal(walletLib.createPayClient(both).provider, "hamyon");
+  assert.equal(walletLib.createPayClient(both, fetch, { mode: "elderpay" }).provider, "elderpay");
+  assert.equal(walletLib.createPayClient(both, fetch, { mode: "manual" }).enabled, false);
+
+  const s = walletLib.normalizeProviderSettings({ hamyon: { shopId: "77", shopKey: "panel-key" } }, both);
+  assert.deepEqual(s.hamyon, { shopId: "77", shopKey: "panel-key", source: "panel" });
+  assert.deepEqual(s.elderpay, { shopId: "1", shopKey: "aaaa", source: "env" });
+  const pub = walletLib.publicProviderSettings(s);
+  assert.deepEqual(pub.hamyon, { shopId: "77", keySet: true, keyHint: "••••-key", source: "panel" });
+  assert.ok(!JSON.stringify(pub).includes("panel-key"), "shop_key panelga chiqmaydi");
+
+  // Bo'sh kalit — eskisi qoladi; clear — panel kalitlari o'chadi; noto'g'ri qiymatlar rad etiladi.
+  const stored = { mode: "hamyon", hamyon: { shopId: "77", shopKey: "panel-key" } };
+  assert.deepEqual(walletLib.normalizeProviderInput({ mode: "hamyon", hamyon: { shopId: "78", shopKey: "" } }, stored).value.hamyon, { shopId: "78", shopKey: "panel-key" });
+  assert.deepEqual(walletLib.normalizeProviderInput({ mode: "hamyon", hamyon: { clear: true } }, stored).value.hamyon, {});
+  assert.equal(walletLib.normalizeProviderInput({ mode: "paypal" }).error, "provider_invalid");
+  assert.equal(walletLib.normalizeProviderInput({ mode: "hamyon", hamyon: { shopId: "a b" } }).error, "shop_id_invalid");
+  assert.equal(walletLib.normalizeProviderInput({ mode: "hamyon", hamyon: { shopId: "1", shopKey: "x" } }).error, "shop_key_invalid");
+});
+
+test("hamyon: wrong shop (400 'Do'kon topilmadi') is an auth error; unknown payment is not_found", async () => {
+  const config = hamyon.resolveHamyonConfig({ HAMYON_SHOP_ID: "1", HAMYON_SHOP_KEY: "bad-key" });
+  let reply = [400, { error: "Do'kon topilmadi!" }];
+  const { fetchFn } = hamyonFetch(() => reply);
+  const client = hamyon.createHamyonClient({ config, fetchFn });
+  assert.equal((await client.createOrder({ amount: 1000 }).catch((e) => e)).reason, "auth");
+  reply = [404, { error: "To'lov yaratilmagan!" }];
+  assert.equal((await client.checkOrder("x").catch((e) => e)).reason, "not_found");
+  reply = [400, { error: "amount noto'g'ri!" }];
+  assert.equal((await client.createOrder({ amount: 0 }).catch((e) => e)).reason, "invalid");
 });
 
 test("hamyon: callback sign = md5(shop_id + payment_id + amount + shop_key)", () => {
@@ -369,4 +398,71 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     }
     delete require.cache[modulePath];
   }
+});
+
+// ---------------------------------------------------------------------------
+// Feat: statistika va jurnal
+// ---------------------------------------------------------------------------
+test("wallet stats: today / 7 days in Tashkent time, success rate and per-card income", async () => {
+  const now = Date.parse("2026-10-12T10:00:00Z"); // Toshkent 15:00
+  const at = (h) => new Date(now - h * 3600000).toISOString();
+  const topups = [
+    { id: 1, status: "paid", pay_amount: 50001, paid_amount: 50001, provider: "hamyon", card: "9860190111316492", created_at: at(1), paid_at: at(1) },
+    { id: 2, status: "paid", pay_amount: 20000, paid_amount: 20000, provider: "hamyon", card: "9860 1901 1131 6492", created_at: at(30), paid_at: at(30) },
+    { id: 3, status: "paid", pay_amount: 30500, paid_amount: 30500, provider: "manual", card: null, created_at: at(2), paid_at: at(2) },
+    { id: 4, status: "expired", pay_amount: 10000, provider: "hamyon", card: "8600000000000001", created_at: at(3), expires_at: at(3) },
+    { id: 5, status: "cancelled", pay_amount: 10000, provider: "hamyon", created_at: at(40) },
+    // Toshkent bo'yicha kecha (UTC 18:30 = 23:30 TAS) — bugunga kirmaydi.
+    { id: 6, status: "paid", pay_amount: 7000, paid_amount: 7000, provider: "hamyon", card: "9860190111316492", created_at: "2026-10-11T18:30:00Z", paid_at: "2026-10-11T18:30:00Z" },
+  ];
+  const requestFn = async (path) => {
+    if (path.startsWith("/bot_settings") && path.includes("wallet_config")) return [{ value: { cardNumber: "8600123412341234" } }];
+    if (path.startsWith("/wallet_topups")) return topups;
+    return [];
+  };
+  const stats = await walletLib.createWallet(requestFn, { env: {} }).getStats({ now });
+  assert.deepEqual([stats.today.paid, stats.today.paidSum, stats.today.created], [2, 80501, 3]);
+  assert.deepEqual([stats.week.paid, stats.week.paidSum, stats.week.expired, stats.week.cancelled], [4, 107501, 1, 1]);
+  assert.equal(stats.week.successRate, 67);
+  assert.equal(stats.daily.length, 7);
+  assert.equal(stats.daily[6].day, "2026-10-12");
+  assert.equal(stats.daily[6].paidSum, 80501);
+  assert.equal(stats.daily[5].paidSum, 27000, "kecha: 20 000 (30 soat oldin) + 7 000 (23:30 TAS)");
+
+  const byCard = Object.fromEntries(stats.cards.map((c) => [c.card, c]));
+  assert.deepEqual([byCard["9860190111316492"].paid, byCard["9860190111316492"].paidSum, byCard["9860190111316492"].todaySum], [3, 77001, 50001]);
+  assert.deepEqual([byCard["8600123412341234"].isAdminCard, byCard["8600123412341234"].paidSum, byCard["8600123412341234"].providers], [true, 30500, ["manual"]]);
+  assert.equal(byCard["8600000000000001"].paid, 0, "Hamyon bergan, hali to'lov olmagan karta ham ko'rinadi");
+});
+
+test("pay events: secrets are scrubbed, repeated problems throttled, missing table never breaks payments", async () => {
+  payEvents.resetThrottle();
+  const writes = [];
+  let clock = 1000000;
+  const events = payEvents.createPayEvents(async (path, options) => {
+    if (options?.method === "POST") writes.push(options.body);
+    return [];
+  }, { now: () => clock });
+
+  await events.record("error", "check", "hamyon_status_500", { provider: "hamyon", topupId: 7, data: { shop_key: "x", sign: "y", reason: "unavailable" } });
+  await events.record("error", "check", "hamyon_status_500", { provider: "hamyon", topupId: 7 });
+  await events.record("error", "check", "hamyon_status_500", { provider: "hamyon", topupId: 8 });
+  clock += 61000;
+  await events.record("error", "check", "hamyon_status_500", { provider: "hamyon", topupId: 7 });
+  await events.record("info", "create", "ok", { topupId: "abc" });
+  await events.record("info", "create", "ok", {});
+  assert.equal(writes.length, 5, "bir xil xato 60 s ichida bir marta; info har doim");
+  assert.deepEqual(writes[0].data, { reason: "unavailable" });
+  assert.equal(writes[0].topup_id, "7");
+  assert.equal(writes[3].topup_id, null, "raqam bo'lmagan id saqlanmaydi");
+
+  let calls = 0;
+  const broken = payEvents.createPayEvents(async () => {
+    calls += 1;
+    throw new Error('Supabase HTTP 404: {"code":"PGRST205","message":"Could not find the table wallet_events"}');
+  });
+  await broken.record("info", "create", "a");
+  await broken.record("info", "create", "b");
+  assert.equal(calls, 1, "jadval yo'q bo'lsa qayta urinilmaydi");
+  assert.deepEqual(await broken.list(), { available: false, events: [] });
 });

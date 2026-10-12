@@ -535,7 +535,7 @@
       .door { transition-duration: .2s }
     }
 
-    /* Feat bo'limi — texnik ishlar ekrani */
+    /* Feat bo'limi — to'lovlar markazi (to'liq ekran, o'z scroll'i bilan) */
     .feat-screen {
       position: fixed;
       inset: 0;
@@ -543,11 +543,9 @@
       padding-top: var(--top-space, 0px);
       display: none;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
       /* Admin panel fon rasmi (?asset=bg) — ustidan qoraytiruvchi va indigo nur */
       background:
-        radial-gradient(circle at 50% 38%, rgba(99, 102, 241, 0.16), transparent 60%),
+        radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.16), transparent 60%),
         linear-gradient(180deg, rgba(6, 9, 20, 0.62) 0%, rgba(6, 9, 20, 0.48) 45%, rgba(6, 9, 20, 0.78) 100%),
         url("?asset=bg") center / cover no-repeat,
         var(--bg)
@@ -557,62 +555,379 @@
       display: flex
     }
 
-    .feat-body {
+    .feat-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 14px 16px calc(var(--nav-space) + 8px);
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain
+    }
+
+    /* To'lovlar markazi */
+    .pay-hero {
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 12px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .pay-hero-top {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .pay-hero-body {
+      flex: 1;
+      min-width: 0
+    }
+
+    .pay-hero-title {
+      font-size: 15px;
+      font-weight: 800
+    }
+
+    .pay-hero-sub {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 2px;
+      overflow-wrap: anywhere
+    }
+
+    .pay-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--text2);
+      box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.15)
+    }
+
+    .pay-dot.ok { background: var(--green); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18); animation: payPulse 2.4s ease-in-out infinite }
+    .pay-dot.warn { background: var(--yellow); box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18) }
+    .pay-dot.err { background: var(--red); box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2) }
+
+    @keyframes payPulse {
+      50% { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0.05) }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pay-dot.ok { animation: none }
+    }
+
+    .pay-test-result {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 12.5px;
+      line-height: 1.45;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border)
+    }
+
+    .pay-test-result.ok { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3) }
+    .pay-test-result.err { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3) }
+    .pay-test-result b { display: block; margin-bottom: 2px }
+
+    .pay-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px
+    }
+
+    .pay-stat {
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 11px 12px;
+      min-width: 0;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .pay-stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      display: flex;
+      align-items: center;
+      gap: 5px
+    }
+
+    .pay-stat-value {
+      font-size: 18px;
+      font-weight: 800;
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums
+    }
+
+    .pay-stat-sub {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 1px
+    }
+
+    .pay-chart {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      align-items: end;
+      height: 74px;
+      padding: 10px 12px 6px;
+      margin-bottom: 12px;
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .pay-chart:empty { display: none }
+
+    .pay-bar {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
-      padding: 0 28px 96px;
-      text-align: center
+      gap: 3px;
+      height: 100%;
+      justify-content: flex-end;
+      min-width: 0
     }
 
-    .feat-gears {
-      position: relative;
-      width: 130px;
-      height: 100px;
+    .pay-bar i {
+      display: block;
+      width: 100%;
+      max-width: 26px;
+      min-height: 3px;
+      border-radius: 5px 5px 2px 2px;
+      background: linear-gradient(180deg, var(--accent3), var(--accent))
+    }
+
+    .pay-bar.zero i { background: rgba(255, 255, 255, 0.1) }
+    .pay-bar.today i { background: linear-gradient(180deg, #34d399, var(--green)) }
+
+    .pay-bar span {
+      font-size: 9.5px;
+      color: var(--text2)
+    }
+
+    .pay-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 9px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06)
+    }
+
+    .pay-row:first-child { border-top: 0; padding-top: 2px }
+
+    .pay-row > i {
+      font-size: 16px;
+      margin-top: 1px;
+      width: 18px;
+      text-align: center;
+      flex-shrink: 0
+    }
+
+    .pay-row-body {
+      flex: 1;
+      min-width: 0
+    }
+
+    .pay-row-title {
+      font-size: 12.5px;
+      font-weight: 700
+    }
+
+    .pay-row-sub {
+      font-size: 11.5px;
+      color: var(--text2);
+      margin-top: 1px;
+      overflow-wrap: anywhere
+    }
+
+    .pay-ok { color: var(--green) }
+    .pay-warn { color: var(--yellow) }
+    .pay-err { color: var(--red) }
+    .pay-mute { color: var(--text2) }
+
+    .pay-hint {
+      font-size: 11.5px;
+      color: var(--text2);
+      line-height: 1.45;
+      margin-bottom: 10px
+    }
+
+    .pay-count-plain {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: var(--text2) !important
+    }
+
+    .pay-card {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      margin-bottom: 8px
+    }
+
+    .pay-card-num {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: .5px;
+      font-variant-numeric: tabular-nums
+    }
+
+    .pay-card-num span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+
+    .pay-card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 6px
+    }
+
+    .pay-card-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 8px
+    }
+
+    .pay-card-meta div {
+      font-size: 10.5px;
+      color: var(--text2)
+    }
+
+    .pay-card-meta b {
+      display: block;
+      font-size: 12.5px;
+      color: var(--text);
+      font-variant-numeric: tabular-nums
+    }
+
+    .pay-seg {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 4px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      margin-bottom: 8px
+    }
+
+    .pay-seg button,
+    .pay-filter button {
+      border: 0;
+      background: none;
+      color: var(--text2);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 4px;
+      border-radius: 9px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent
+    }
+
+    .pay-seg button.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35)
+    }
+
+    .pay-mode-note {
+      font-size: 11.5px;
+      color: var(--text2);
+      line-height: 1.45;
+      margin-bottom: 10px
+    }
+
+    .pay-keys {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.03);
+      margin-bottom: 8px
+    }
+
+    .pay-keys.dim { opacity: .55 }
+
+    .pay-keys-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12.5px;
+      font-weight: 800;
+      margin-bottom: 8px
+    }
+
+    .pay-keys-head .wl-pill:empty { display: none }
+    .pay-keys-head i { margin-right: 5px }
+
+    .pay-copy-row {
+      display: flex;
+      gap: 6px;
+      align-items: center
+    }
+
+    .pay-copy-row code {
+      flex: 1;
+      min-width: 0;
+      font-size: 11px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--card-border);
+      color: var(--accent3);
+      overflow-wrap: anywhere
+    }
+
+    .pay-steps {
+      margin: 10px 0 2px 18px;
+      font-size: 11.5px;
+      color: var(--text2);
+      line-height: 1.5
+    }
+
+    .pay-steps b { color: var(--text) }
+
+    .pay-filter {
+      display: flex;
+      gap: 4px;
       margin-bottom: 6px
     }
 
-    .feat-gears .gear {
-      position: absolute;
-      line-height: 1
+    .pay-filter button {
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.05)
     }
 
-    .feat-gears .gear-a {
-      font-size: 70px;
-      top: 0;
-      left: 4px;
-      color: var(--accent3);
-      animation: gearCW 4.2s linear infinite
+    .pay-filter button.active {
+      background: rgba(99, 102, 241, 0.2);
+      color: var(--accent3)
     }
 
-    .feat-gears .gear-b {
-      font-size: 48px;
-      top: 44px;
-      left: 70px;
-      color: var(--pink);
-      animation: gearCCW 2.8s linear infinite
-    }
-
-    @keyframes gearCW {
-      to { transform: rotate(360deg) }
-    }
-
-    @keyframes gearCCW {
-      to { transform: rotate(-360deg) }
-    }
-
-    .feat-text {
-      font-size: 17px;
-      font-weight: 700;
-      color: #fff;
-      max-width: 280px;
-      line-height: 1.4
-    }
-
-    .feat-sub {
-      font-size: 13px;
-      color: var(--text2)
+    .pay-ev-data {
+      font-size: 10.5px;
+      color: var(--text2);
+      margin-top: 3px;
+      opacity: .85;
+      overflow-wrap: anywhere
     }
 
     /* Feat bo'limidagi pastki app-bar — xuddi asosiy nav ko'rinishida */
@@ -2912,14 +3227,6 @@
             </div>
             <i class="bi bi-chevron-right shop-cat-arrow"></i>
           </div>
-          <div class="shop-cat wallet" onclick="openWalletAdmin()">
-            <div class="shop-cat-icon"><i class="bi bi-wallet2"></i></div>
-            <div class="shop-cat-body">
-              <div class="shop-cat-title">Balans va to'lovlar</div>
-              <div class="shop-cat-meta" id="shopWlMeta">To'ldirishlar, qaytarish, karta</div>
-            </div>
-            <i class="bi bi-chevron-right shop-cat-arrow"></i>
-          </div>
           <div class="shop-cat limits" onclick="openLimitPrices()">
             <div class="shop-cat-icon"><i class="bi bi-currency-dollar"></i></div>
             <div class="shop-cat-body">
@@ -2967,63 +3274,6 @@
           <div class="empty" id="fmLoader" style="display:none;padding:12px">
             <div class="spinner"></div>
           </div>
-          <div style="height:70px"></div>
-        </div>
-
-        <!-- Balans va to'lovlar -->
-        <div id="shopWallet" style="display:none">
-          <div class="shop-title-row">
-            <button class="shop-back" onclick="closeWalletAdmin()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
-            <h2><i class="bi bi-wallet2"></i> Balans</h2>
-            <button class="refresh-btn" style="margin:0" onclick="loadWalletAdmin()"><i class="bi bi-arrow-clockwise"></i></button>
-          </div>
-
-          <details class="wl-card" data-wl-key="pending" open>
-            <summary><h3><i class="bi bi-hourglass-split"></i> Kutilayotgan to'ldirishlar</h3><span class="wl-count" id="wlPendingCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
-            <div class="wl-body">
-            <div class="wl-status" id="wlStatus"></div>
-            <div id="wlPending"></div>
-            </div>
-          </details>
-
-          <details class="wl-card" data-wl-key="user">
-            <summary><h3><i class="bi bi-person-badge"></i> Foydalanuvchi balansi</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
-            <div class="wl-body">
-            <div style="display:flex;gap:8px">
-              <div class="modal-field" style="flex:1;margin-bottom:0"><input type="text" id="wlUserId" inputmode="numeric" placeholder="Telegram user ID"></div>
-              <button class="wl-btn green" onclick="loadWalletUser()"><i class="bi bi-search"></i> Ko'rish</button>
-            </div>
-            <div id="wlUser"></div>
-            </div>
-          </details>
-
-          <details class="wl-card" data-wl-key="orders">
-            <summary><h3><i class="bi bi-receipt"></i> Balansdan xaridlar</h3><span class="wl-count" id="wlOrdersCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
-            <div class="wl-body">
-            <div id="wlOrders"></div>
-            </div>
-          </details>
-
-          <details class="wl-card" data-wl-key="config">
-            <summary><h3><i class="bi bi-credit-card-2-front"></i> Karta va sozlamalar</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
-            <div class="wl-body">
-            <div class="modal-field"><label>Karta raqami</label><input type="text" id="wlCard" inputmode="numeric" placeholder="8600 0000 0000 0000"></div>
-            <div class="wl-grid">
-              <div class="modal-field"><label>Karta egasi</label><input type="text" id="wlHolder" maxlength="60" placeholder="ISM FAMILIYA"></div>
-              <div class="modal-field"><label>Bank / tur</label><input type="text" id="wlBank" maxlength="40" placeholder="Uzcard, Humo..."></div>
-              <div class="modal-field"><label>Eng kam (so'm)</label><input type="text" id="wlMin" inputmode="numeric" placeholder="5000"></div>
-              <div class="modal-field"><label>Eng ko'p (so'm)</label><input type="text" id="wlMax" inputmode="numeric" placeholder="5000000"></div>
-            </div>
-            <div class="modal-field" style="margin-top:8px"><label>Tez summalar (vergul bilan)</label><input type="text" id="wlPresets" placeholder="10000, 20000, 50000, 100000"></div>
-            <div class="modal-field lp-hit-row">
-              <span><i class="bi bi-toggle-on" style="color:var(--green)"></i> To'ldirish yoqilgan</span>
-              <label class="switch"><input type="checkbox" id="wlEnabled"><span class="slider"></span></label>
-            </div>
-            <div class="modal-actions" style="margin-top:6px">
-              <button class="btn-save" id="wlSaveBtn" onclick="saveWalletConfig()"><i class="bi bi-floppy"></i> Saqlash</button>
-            </div>
-            </div>
-          </details>
           <div style="height:70px"></div>
         </div>
 
@@ -3177,20 +3427,150 @@
     </div>
   </div>
 
-  <!-- Feat Section (texnik ishlar) -->
+  <!-- Feat — to'lovlar markazi: provayder (Hamyon/ElderPay/qo'lda), holat,
+       jurnal, statistika, kartalar, kutilayotgan to'lovlar, balanslar -->
   <div class="feat-screen" id="featScreen" aria-hidden="true">
-    <div class="feat-body">
-      <div class="feat-gears">
-        <i class="bi bi-gear-fill gear gear-a"></i>
-        <i class="bi bi-gear-fill gear gear-b"></i>
+    <div class="feat-scroll" id="featScroll">
+      <div class="shop-title-row">
+        <h2><i class="bi bi-credit-card-2-back"></i> To'lovlar</h2>
+        <button class="refresh-btn" style="margin:0" onclick="loadWalletAdmin()" aria-label="Yangilash"><i class="bi bi-arrow-clockwise"></i></button>
       </div>
-      <div class="feat-text">Bu yerda texnik ishlar olib borilmoqda</div>
-      <div class="feat-sub">Tez orada ishga tushadi ⚙️</div>
+
+      <div class="pay-hero" id="payHero">
+        <div class="pay-hero-top">
+          <span class="pay-dot" id="payDot"></span>
+          <div class="pay-hero-body">
+            <div class="pay-hero-title" id="payHeroTitle">Yuklanmoqda…</div>
+            <div class="pay-hero-sub" id="payHeroSub"></div>
+          </div>
+          <button class="wl-btn green" id="payTestBtn" onclick="testPayProvider()"><i class="bi bi-activity"></i> Tekshirish</button>
+        </div>
+        <div class="pay-test-result" id="payTestResult" hidden></div>
+      </div>
+
+      <div class="pay-stats" id="payStats"></div>
+      <div class="pay-chart" id="payChart" aria-hidden="true"></div>
+
+      <details class="wl-card" data-wl-key="health" open>
+        <summary><h3><i class="bi bi-heart-pulse"></i> Tizim holati</h3><span class="wl-count" id="payHealthCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body"><div id="payHealth"></div></div>
+      </details>
+
+      <details class="wl-card" data-wl-key="pending" open>
+        <summary><h3><i class="bi bi-hourglass-split"></i> Kutilayotgan to'lovlar</h3><span class="wl-count" id="wlPendingCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+        <div class="wl-status" id="wlStatus"></div>
+        <div id="wlPending"></div>
+        </div>
+      </details>
+
+      <details class="wl-card" data-wl-key="cards">
+        <summary><h3><i class="bi bi-credit-card"></i> Kuzatilayotgan kartalar</h3><span class="wl-count pay-count-plain" id="payCardsCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+          <div class="hint pay-hint">Hamyon to'lovni siz @HumoCardBot / @CardXabarBot orqali ulagan kartalarga yo'naltiradi va shu kartalarga kelgan bildirishnomalarni kuzatadi. Bu yerda — so'nggi 7 kunda qaysi kartaga nima tushgani.</div>
+          <div id="payCards"></div>
+        </div>
+      </details>
+
+      <details class="wl-card" data-wl-key="provider">
+        <summary><h3><i class="bi bi-plug"></i> Provayder va kalitlar</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+          <div class="pay-seg" id="payModeSeg" role="radiogroup" aria-label="Provayder">
+            <button type="button" data-mode="hamyon" role="radio">Hamyon</button>
+            <button type="button" data-mode="elderpay" role="radio">ElderPay</button>
+            <button type="button" data-mode="manual" role="radio">Qo'lda</button>
+          </div>
+          <div class="pay-mode-note" id="payModeNote"></div>
+
+          <div class="pay-keys" data-for="hamyon">
+            <div class="pay-keys-head"><span><i class="bi bi-wallet2"></i> Hamyon API</span><span class="wl-pill" id="payHamyonSrc"></span></div>
+            <div class="wl-grid">
+              <div class="modal-field"><label>shop_id</label><input type="text" id="payHamyonId" autocomplete="off" spellcheck="false" placeholder="masalan 73"></div>
+              <div class="modal-field"><label>shop_key</label><input type="password" id="payHamyonKey" autocomplete="new-password" spellcheck="false" placeholder="o'zgartirmaslik uchun bo'sh"></div>
+            </div>
+            <div class="modal-field" style="margin-top:8px">
+              <label>Callback URL (prepare_url va complete_url)</label>
+              <div class="pay-copy-row"><code id="payCallbackUrl">—</code><button type="button" class="wl-btn" onclick="copyPayCallback()"><i class="bi bi-clipboard"></i></button></div>
+            </div>
+            <ol class="pay-steps">
+              <li>@HamyonAPIBot → do'kon sozlamalari: shu URL'ni <b>complete_url</b> va <b>prepare_url</b>'ga qo'ying.</li>
+              <li>Kartalarni @HumoCardBot (Humo) yoki @CardXabarBot (Uzcard) orqali Hamyon'ga ulang.</li>
+              <li>shop_id / shop_key'ni shu yerga kiriting, saqlang va «Tekshirish»ni bosing — test to'lov ochilib darhol bekor qilinadi, callback kelsa «Tizim holati»da ko'rinadi.</li>
+            </ol>
+          </div>
+
+          <div class="pay-keys" data-for="elderpay">
+            <div class="pay-keys-head"><span><i class="bi bi-bank"></i> ElderPay</span><span class="wl-pill" id="payElderSrc"></span></div>
+            <div class="wl-grid">
+              <div class="modal-field"><label>shop_id</label><input type="text" id="payElderId" autocomplete="off" spellcheck="false"></div>
+              <div class="modal-field"><label>shop_key</label><input type="password" id="payElderKey" autocomplete="new-password" spellcheck="false" placeholder="o'zgartirmaslik uchun bo'sh"></div>
+            </div>
+            <div class="hint pay-hint">ElderPay webhook yubormaydi — to'lov kabinet tekshiruvi orqali tasdiqlanadi.</div>
+          </div>
+
+          <div class="modal-actions" style="margin-top:8px">
+            <button class="btn-save" id="payProviderSave" onclick="savePayProvider()"><i class="bi bi-floppy"></i> Saqlash</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="wl-card" data-wl-key="journal">
+        <summary><h3><i class="bi bi-journal-text"></i> Jurnal</h3><span class="wl-count" id="payJournalCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+          <div class="pay-filter" id="payJournalFilter">
+            <button type="button" data-level="" class="active">Hammasi</button>
+            <button type="button" data-level="problems">Muammolar</button>
+            <button type="button" data-level="error">Xatolar</button>
+          </div>
+          <div id="payJournal"></div>
+        </div>
+      </details>
+
+      <details class="wl-card" data-wl-key="user">
+        <summary><h3><i class="bi bi-person-badge"></i> Foydalanuvchi balansi</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+        <div style="display:flex;gap:8px">
+          <div class="modal-field" style="flex:1;margin-bottom:0"><input type="text" id="wlUserId" inputmode="numeric" placeholder="Telegram user ID"></div>
+          <button class="wl-btn green" onclick="loadWalletUser()"><i class="bi bi-search"></i> Ko'rish</button>
+        </div>
+        <div id="wlUser"></div>
+        </div>
+      </details>
+
+      <details class="wl-card" data-wl-key="orders">
+        <summary><h3><i class="bi bi-receipt"></i> Balansdan xaridlar</h3><span class="wl-count" id="wlOrdersCount"></span><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+        <div id="wlOrders"></div>
+        </div>
+      </details>
+
+      <details class="wl-card" data-wl-key="config">
+        <summary><h3><i class="bi bi-credit-card-2-front"></i> Admin kartasi va limitlar</h3><i class="bi bi-chevron-down wl-chev"></i></summary>
+        <div class="wl-body">
+        <div class="hint pay-hint">Provayder karta bermasa (ElderPay api rejimi, qo'lda rejim) mijozga shu karta ko'rsatiladi. Hamyon rejimida karta Hamyon'ning o'zidan keladi.</div>
+        <div class="modal-field"><label>Karta raqami</label><input type="text" id="wlCard" inputmode="numeric" placeholder="8600 0000 0000 0000"></div>
+        <div class="wl-grid">
+          <div class="modal-field"><label>Karta egasi</label><input type="text" id="wlHolder" maxlength="60" placeholder="ISM FAMILIYA"></div>
+          <div class="modal-field"><label>Bank / tur</label><input type="text" id="wlBank" maxlength="40" placeholder="Uzcard, Humo..."></div>
+          <div class="modal-field"><label>Eng kam (so'm)</label><input type="text" id="wlMin" inputmode="numeric" placeholder="5000"></div>
+          <div class="modal-field"><label>Eng ko'p (so'm)</label><input type="text" id="wlMax" inputmode="numeric" placeholder="5000000"></div>
+        </div>
+        <div class="modal-field" style="margin-top:8px"><label>Tez summalar (vergul bilan)</label><input type="text" id="wlPresets" placeholder="10000, 20000, 50000, 100000"></div>
+        <div class="modal-field lp-hit-row">
+          <span><i class="bi bi-toggle-on" style="color:var(--green)"></i> To'ldirish yoqilgan</span>
+          <label class="switch"><input type="checkbox" id="wlEnabled"><span class="slider"></span></label>
+        </div>
+        <div class="modal-actions" style="margin-top:6px">
+          <button class="btn-save" id="wlSaveBtn" onclick="saveWalletConfig()"><i class="bi bi-floppy"></i> Saqlash</button>
+        </div>
+        </div>
+      </details>
+      <div style="height:90px"></div>
     </div>
     <div class="bottom-dock">
       <div class="nav feat-nav">
         <div class="nav-feat nav-back" onclick="closeFeat()" role="button" aria-label="Ortga" title="Ortga"><i class="bi bi-arrow-left"></i></div>
-        <div class="feat-nav-label">Feat</div>
+        <div class="feat-nav-label">To'lovlar</div>
       </div>
     </div>
   </div>
@@ -3685,7 +4065,6 @@
           if (fmView === "list") reloadFirstmailsKeepingPosition();
           else if (dnView !== "none") loadDonat();
           else if (lpView) loadLimitPrices();
-          else if (wlView) loadWalletAdmin();
           else loadShopSummary();
         }
         updateShopFab();
@@ -3771,6 +4150,9 @@
         runDoorTransition(function () {
           feat.classList.add("open");
           feat.setAttribute("aria-hidden", "false");
+          wlView = true;
+          loadWalletAdmin(false);
+          startPayAutoRefresh();
         });
       }
       window.openFeat = openFeat;
@@ -3784,6 +4166,8 @@
         runDoorTransition(function () {
           feat.classList.remove("open");
           feat.setAttribute("aria-hidden", "true");
+          wlView = false;
+          stopPayAutoRefresh();
         });
       }
       window.closeFeat = closeFeat;
@@ -5437,18 +5821,8 @@
         return o.title || o.kind;
       }
 
-      function showWalletView(open) {
-        wlView = open;
-        document.getElementById("shopHome").style.display = open ? "none" : "block";
-        document.getElementById("shopWallet").style.display = open ? "block" : "none";
-        updateShopFab();
-      }
-
-      function openWalletAdmin() {
-        hapticLight();
-        showWalletView(true);
-        loadWalletAdmin();
-      }
+      // To'lovlar Feat bo'limida (to'lovlar markazi).
+      function openWalletAdmin() { openFeat(); }
       window.openWalletAdmin = openWalletAdmin;
 
       // Balans kartalari ochiladi/yopiladi; holati shu brauzerda eslab qolinadi.
@@ -5468,27 +5842,43 @@
         });
       })();
 
-      function closeWalletAdmin() {
-        hapticLight();
-        showWalletView(false);
-      }
+      function closeWalletAdmin() { closeFeat(); }
       window.closeWalletAdmin = closeWalletAdmin;
 
-      function loadWalletAdmin() {
-        document.getElementById("wlPending").innerHTML = buildFmSkeleton();
+      var wlLoading = false;
+      function loadWalletAdmin(silent) {
+        if (wlLoading) return;
+        wlLoading = true;
+        if (!silent || !wlData) document.getElementById("wlPending").innerHTML = buildFmSkeleton();
         api("wallet_overview", {}).then(function (result) {
+          wlLoading = false;
           if (!result.ok || !result.data) {
-            document.getElementById("wlPending").innerHTML = '<div class="empty"><div class="empty-text">' + esc(result.message || "Yuklab bo'lmadi") + "</div></div>";
+            if (!silent) document.getElementById("wlPending").innerHTML = '<div class="empty"><div class="empty-text">' + esc(result.message || "Yuklab bo'lmadi") + "</div></div>";
+            if (!wlData) renderPayHeroState("err", "Yuklab bo'lmadi", result.message || "Server javob bermadi");
             return;
           }
           wlData = result.data;
           renderWalletAdmin();
           if (wlUserData) loadWalletUser(true);
         }).catch(function () {
-          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+          wlLoading = false;
+          if (!silent) showToast("❌ Server bilan bog'lanishda xatolik", "error");
         });
       }
-      window.loadWalletAdmin = loadWalletAdmin;
+      window.loadWalletAdmin = function () { loadWalletAdmin(false); };
+
+      // Feat ochiq va sahifa ko'rinib turganda — har 30 s jimgina yangilanadi.
+      var payRefreshTimer = null;
+      function startPayAutoRefresh() {
+        stopPayAutoRefresh();
+        payRefreshTimer = setInterval(function () {
+          if (document.visibilityState === "visible" && wlView) loadWalletAdmin(true);
+        }, 30000);
+      }
+      function stopPayAutoRefresh() {
+        if (payRefreshTimer) clearInterval(payRefreshTimer);
+        payRefreshTimer = null;
+      }
 
       function renderWalletAdmin() {
         var d = wlData;
@@ -5516,9 +5906,333 @@
         document.getElementById("wlMax").value = c.max || "";
         document.getElementById("wlPresets").value = (c.presets || []).join(", ");
         document.getElementById("wlEnabled").checked = c.enabled !== false;
-        document.getElementById("shopWlMeta").textContent = d.pending.length ? d.pending.length + " ta to'lov kutilmoqda" : "To'ldirishlar, qaytarish, karta";
-        bindWalletButtons(document.getElementById("shopWallet"));
+        bindWalletButtons(document.getElementById("featScreen"));
+        renderPayCenter(d);
       }
+
+      /* ---- To'lovlar markazi (Feat): holat, statistika, kartalar, provayder, jurnal */
+      var PAY_NAMES = { hamyon: "Hamyon", elderpay: "ElderPay", manual: "Qo'lda" };
+      var PAY_KIND = { callback: "Callback", create: "To'lov ochish", check: "Tekshiruv", cancel: "Bekor qilish", credit: "Balansga yozish", health: "Ulanish testi", config: "Sozlama", sync: "Sinxron" };
+      var PAY_SRC = { panel: "panel", env: "env" };
+      var payMode = null;        // formadagi tanlov (saqlanmagan bo'lishi mumkin)
+      var payJournalLevel = "";
+      var payTestState = null;   // oxirgi "Tekshirish" natijasi
+
+      function payHaptic(kind) {
+        try {
+          var tg = window.Telegram && window.Telegram.WebApp;
+          if (tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) tg.HapticFeedback.notificationOccurred(kind);
+          else hapticLight();
+        } catch (e) { /* ixtiyoriy */ }
+      }
+
+      function payAgo(iso) {
+        var t = new Date(iso || 0).getTime();
+        if (!iso || !isFinite(t)) return "";
+        var sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+        if (sec < 60) return "hozirgina";
+        if (sec < 3600) return Math.floor(sec / 60) + " daqiqa oldin";
+        if (sec < 86400) return Math.floor(sec / 3600) + " soat oldin";
+        return Math.floor(sec / 86400) + " kun oldin";
+      }
+
+      function payCard(num) {
+        return String(num || "").replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
+      }
+
+      function payShortSom(value) {
+        var n = Number(value) || 0;
+        if (n >= 1e6) return (Math.round(n / 1e5) / 10).toString().replace(".", ",") + " mln";
+        if (n >= 1e4) return Math.round(n / 1e3) + " ming";
+        return String(n);
+      }
+
+      // Umumiy holat: ok | warn | err | off
+      function payStatus(d) {
+        var p = d.provider || {};
+        var h = d.health || {};
+        if (p.active === "manual") return { level: "off", title: "Qo'lda rejim", sub: "To'lovlarni admin karta orqali tasdiqlaydi" };
+        var name = PAY_NAMES[p.active] || p.active;
+        if (!p.enabled) return { level: "err", title: name + " ulanmagan", sub: "shop_id va shop_key kiritilmagan — «Provayder va kalitlar»" };
+        if (!d.config.enabled) return { level: "warn", title: name + " · to'ldirish o'chiq", sub: "«Admin kartasi va limitlar»da yoqing" };
+        var errAt = h.lastError ? new Date(h.lastError.at).getTime() : 0;
+        var okAt = h.lastOk ? new Date(h.lastOk.at).getTime() : 0;
+        if (errAt && errAt > okAt && Date.now() - errAt < 30 * 60000) {
+          return { level: "err", title: name + " · xato", sub: payAgo(h.lastError.at) + ": " + h.lastError.message };
+        }
+        if (p.active === "hamyon" && !h.lastCallback && d.eventsAvailable) {
+          return { level: "warn", title: name + " ishlayapti", sub: "Callback hali kelmagan — URL @HamyonAPIBot'ga qo'yilganini tekshiring" };
+        }
+        var sub = h.lastCallback ? "Oxirgi callback " + payAgo(h.lastCallback.at) : h.lastOk ? "Oxirgi muvaffaqiyat " + payAgo(h.lastOk.at) : "Avtomatik tasdiqlash yoqilgan";
+        return { level: "ok", title: name + " ishlayapti", sub: sub };
+      }
+
+      function renderPayHeroState(level, title, sub) {
+        var dot = document.getElementById("payDot");
+        dot.className = "pay-dot" + (level === "ok" ? " ok" : level === "warn" ? " warn" : level === "err" ? " err" : "");
+        document.getElementById("payHeroTitle").textContent = title;
+        document.getElementById("payHeroSub").textContent = sub || "";
+      }
+
+      function renderPayCenter(d) {
+        if (!d || !d.provider) return;
+        var st = payStatus(d);
+        renderPayHeroState(st.level, st.title, st.sub);
+        document.getElementById("payTestBtn").style.display = d.provider.active === "manual" ? "none" : "";
+        renderPayStats(d.stats);
+        renderPayChart(d.stats);
+        renderPayHealth(d);
+        renderPayCards(d);
+        renderPayProvider(d.provider, false);
+        renderPayJournal(d.events, d.eventsAvailable);
+      }
+
+      function renderPayStats(st) {
+        var box = document.getElementById("payStats");
+        if (!st) { box.innerHTML = ""; return; }
+        function tile(icon, color, label, value, sub) {
+          return '<div class="pay-stat"><div class="pay-stat-label"><i class="bi bi-' + icon + '" style="color:' + color + '"></i>' + esc(label) + "</div>" +
+            '<div class="pay-stat-value">' + esc(value) + '</div><div class="pay-stat-sub">' + esc(sub) + "</div></div>";
+        }
+        var w = st.week;
+        box.innerHTML =
+          tile("arrow-down-circle", "var(--green)", "Bugun tushdi", formatSom(st.today.paidSum), st.today.paid + " ta to'lov") +
+          tile("hourglass-split", "var(--yellow)", "Kutilmoqda", String((wlData && wlData.pending ? wlData.pending.length : st.today.pending) || 0), "bugun ochilgan: " + st.today.created) +
+          tile("calendar-week", "var(--accent3)", "7 kun", formatSom(w.paidSum), w.paid + " ta to'lov") +
+          tile("bullseye", "var(--blue)", "Muvaffaqiyat", w.successRate === null ? "—" : w.successRate + "%", w.expired + " muddati o'tdi · " + w.cancelled + " bekor");
+      }
+
+      function renderPayChart(st) {
+        var box = document.getElementById("payChart");
+        if (!st || !st.daily) { box.innerHTML = ""; return; }
+        var max = st.daily.reduce(function (m, x) { return Math.max(m, x.paidSum); }, 0);
+        var days = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
+        box.innerHTML = st.daily.map(function (x, i) {
+          var h = max ? Math.max(4, Math.round((x.paidSum / max) * 46)) : 3;
+          var dow = days[new Date(x.day + "T12:00:00").getDay()];
+          var cls = "pay-bar" + (x.paidSum ? "" : " zero") + (i === st.daily.length - 1 ? " today" : "");
+          return '<div class="' + cls + '" title="' + esc(x.day + ": " + formatSom(x.paidSum) + " · " + x.paid + " ta") + '"><i style="height:' + h + 'px"></i><span>' + (i === st.daily.length - 1 ? "Bugun" : dow) + "</span></div>";
+        }).join("");
+      }
+
+      function payRow(icon, cls, title, sub) {
+        return '<div class="pay-row"><i class="bi bi-' + icon + " " + cls + '"></i><div class="pay-row-body"><div class="pay-row-title">' + esc(title) + "</div>" +
+          (sub ? '<div class="pay-row-sub">' + esc(sub) + "</div>" : "") + "</div></div>";
+      }
+
+      function renderPayHealth(d) {
+        var p = d.provider, h = d.health || {}, rows = [], problems = 0;
+        var keys = p.active === "elderpay" ? p.elderpay : p.hamyon;
+        if (p.active === "manual") {
+          rows.push(payRow("person-check", "pay-mute", "Qo'lda rejim", "Avtomatik tekshiruv o'chiq — kutilayotgan to'lovlarni shu yerda tasdiqlang"));
+        } else {
+          if (keys && keys.keySet) rows.push(payRow("key", "pay-ok", "Kalitlar: shop_id " + keys.shopId, "Manba: " + (keys.source === "panel" ? "admin panel" : "server env") + " · shop_key " + keys.keyHint));
+          else { problems++; rows.push(payRow("key", "pay-err", "Kalitlar kiritilmagan", "«Provayder va kalitlar» bo'limida shop_id va shop_key kiriting")); }
+
+          if (payTestState && payTestState.mode === p.active) {
+            rows.push(payRow(payTestState.ok ? "activity" : "x-octagon", payTestState.ok ? "pay-ok" : "pay-err", "Ulanish testi: " + (payTestState.ok ? "muvaffaqiyatli" : "xato"), payTestState.text + " · " + payAgo(payTestState.at)));
+            if (!payTestState.ok) problems++;
+          }
+
+          if (p.active === "hamyon") {
+            if (h.lastCallback) rows.push(payRow("broadcast", "pay-ok", "Callback keldi " + payAgo(h.lastCallback.at), h.lastCallback.message));
+            else if (d.eventsAvailable) { problems++; rows.push(payRow("broadcast", "pay-warn", "Callback hali kelmagan", "Hamyon to'lov natijasini shu manzilga yuboradi: " + (p.callbackUrl || "—"))); }
+          } else {
+            rows.push(payRow("arrow-repeat", "pay-mute", "Tasdiq: tekshiruv orqali", "ElderPay webhook yubormaydi — kabinet har 5 s va panel ochilganda tekshiradi"));
+          }
+
+          if (h.lastError) {
+            var recent = Date.now() - new Date(h.lastError.at).getTime() < 30 * 60000;
+            if (recent) problems++;
+            rows.push(payRow("exclamation-octagon", recent ? "pay-err" : "pay-mute", "Oxirgi xato · " + payAgo(h.lastError.at), (PAY_KIND[h.lastError.kind] || h.lastError.kind) + ": " + h.lastError.message));
+          } else if (d.eventsAvailable) {
+            rows.push(payRow("shield-check", "pay-ok", "Xato qayd etilmagan", ""));
+          }
+          if (h.errors24h) rows.push(payRow("graph-down", h.errors24h > 5 ? "pay-err" : "pay-warn", "24 soatda " + h.errors24h + " ta xato", "Batafsil — «Jurnal» → Xatolar"));
+        }
+        if (!d.eventsAvailable) {
+          problems++;
+          rows.push(payRow("database-exclamation", "pay-warn", "Jurnal yoqilmagan", "Supabase SQL Editor'da supabase/024_wallet_events.sql ni ishga tushiring — shundan keyin callback va xatolar shu yerda ko'rinadi"));
+        }
+        document.getElementById("payHealth").innerHTML = rows.join("");
+        document.getElementById("payHealthCount").textContent = problems ? String(problems) : "";
+      }
+
+      function renderPayCards(d) {
+        var cards = (d.stats && d.stats.cards) || [];
+        var box = document.getElementById("payCards");
+        document.getElementById("payCardsCount").textContent = cards.length ? String(cards.length) : "";
+        if (!cards.length) {
+          box.innerHTML = '<div class="hint pay-hint" style="margin:0">Hali karta yo\'q. Hamyon birinchi to\'lovda kartani beradi; admin kartasini «Admin kartasi va limitlar»da kiriting.</div>';
+          return;
+        }
+        var hamyonCards = cards.filter(function (c) { return c.providers.indexOf("hamyon") >= 0; }).length;
+        box.innerHTML = cards.map(function (c) {
+          var tags = [];
+          if (c.isAdminCard) tags.push('<span class="wl-pill">Admin kartasi</span>');
+          c.providers.forEach(function (pr) { tags.push('<span class="wl-pill on">' + esc(PAY_NAMES[pr] || pr) + "</span>"); });
+          if (c.isAdminCard && d.provider.active === "hamyon" && hamyonCards && c.providers.indexOf("hamyon") < 0) {
+            tags.push('<span class="wl-pill">Hamyon kuzatmaydi</span>');
+          }
+          return '<div class="pay-card"><div class="pay-card-num"><i class="bi bi-credit-card-2-front" style="color:var(--accent3)"></i><span>' + esc(payCard(c.card)) + "</span>" +
+            '<button type="button" class="wl-btn" data-pay-copy="' + esc(c.card) + '" aria-label="Nusxalash"><i class="bi bi-clipboard"></i></button></div>' +
+            (tags.length ? '<div class="pay-card-tags">' + tags.join("") + "</div>" : "") +
+            '<div class="pay-card-meta"><div>Bugun<b>' + esc(payShortSom(c.todaySum)) + "</b></div><div>7 kun<b>" + esc(payShortSom(c.paidSum)) + " · " + c.paid + " ta</b></div>" +
+            "<div>Oxirgi tushum<b>" + esc(c.lastPaidAt ? payAgo(c.lastPaidAt) : "—") + "</b></div></div></div>";
+        }).join("");
+        Array.prototype.forEach.call(box.querySelectorAll("[data-pay-copy]"), function (el) {
+          el.addEventListener("click", function () { copyText(el.getAttribute("data-pay-copy")); });
+        });
+      }
+
+      var PAY_MODE_NOTES = {
+        hamyon: "Tavsiya etiladi: Hamyon to'lov natijasini darhol callback orqali yuboradi — mijoz ilovani yopib qo'ysa ham pul balansga tushadi.",
+        elderpay: "ElderPay karta bermaydi: kassa «page» rejimida to'lov sahifasi, «api» rejimida admin kartasi ko'rsatiladi. Tasdiq — tekshiruv orqali.",
+        manual: "Avtomatik tekshiruv o'chadi: mijozga admin kartasi ko'rsatiladi, to'lovni siz «Kutilayotgan to'lovlar»da tasdiqlaysiz."
+      };
+
+      // force=false — foydalanuvchi kiritayotgan qiymatlarni avto-yangilanish o'chirib yubormasin.
+      function renderPayProvider(p, force) {
+        var editing = !force && payMode !== null && document.getElementById("featScreen").contains(document.activeElement) &&
+          /^pay(Hamyon|Elder)(Id|Key)$/.test(document.activeElement.id || "");
+        if (force || payMode === null) payMode = p.mode;
+        Array.prototype.forEach.call(document.querySelectorAll("#payModeSeg button"), function (b) {
+          var on = b.dataset.mode === payMode;
+          b.classList.toggle("active", on);
+          b.setAttribute("aria-checked", on ? "true" : "false");
+        });
+        document.getElementById("payModeNote").textContent = PAY_MODE_NOTES[payMode] + (payMode !== p.mode ? " (saqlanmagan)" : "");
+        Array.prototype.forEach.call(document.querySelectorAll(".pay-keys"), function (box) {
+          box.classList.toggle("dim", box.dataset.for !== payMode);
+        });
+        document.getElementById("payCallbackUrl").textContent = p.callbackUrl || "—";
+        function src(el, keys) {
+          el.textContent = keys.source ? (keys.source === "panel" ? "panel" : "env") + (keys.keySet ? " · " + keys.keyHint : "") : "";
+          el.className = "wl-pill" + (keys.keySet ? " on" : "");
+        }
+        src(document.getElementById("payHamyonSrc"), p.hamyon);
+        src(document.getElementById("payElderSrc"), p.elderpay);
+        if (editing) return;
+        document.getElementById("payHamyonId").value = p.hamyon.shopId || "";
+        document.getElementById("payElderId").value = p.elderpay.shopId || "";
+        document.getElementById("payHamyonKey").value = "";
+        document.getElementById("payElderKey").value = "";
+        document.getElementById("payHamyonKey").placeholder = p.hamyon.keySet ? p.hamyon.keyHint + " (saqlangan)" : "kiritilmagan";
+        document.getElementById("payElderKey").placeholder = p.elderpay.keySet ? p.elderpay.keyHint + " (saqlangan)" : "kiritilmagan";
+      }
+
+      Array.prototype.forEach.call(document.querySelectorAll("#payModeSeg button"), function (b) {
+        b.addEventListener("click", function () {
+          hapticLight();
+          payMode = b.dataset.mode;
+          if (wlData && wlData.provider) renderPayProvider(wlData.provider, false);
+        });
+      });
+
+      function savePayProvider() {
+        var btn = document.getElementById("payProviderSave");
+        btn.disabled = true;
+        api("wallet_provider_save", {
+          mode: payMode || "hamyon",
+          hamyon: { shopId: document.getElementById("payHamyonId").value.trim(), shopKey: document.getElementById("payHamyonKey").value.trim() },
+          elderpay: { shopId: document.getElementById("payElderId").value.trim(), shopKey: document.getElementById("payElderKey").value.trim() }
+        }).then(function (result) {
+          btn.disabled = false;
+          if (!result.ok) { showToast("❌ " + (result.message || "Xatolik"), "error"); return; }
+          showToast("✅ Provayder saqlandi", "success");
+          payMode = null;
+          payTestState = null;
+          loadWalletAdmin(true);
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.savePayProvider = savePayProvider;
+
+      // Hamyon: test to'lov ochiladi va darhol bekor qilinadi; uning cancel
+      // callback'i bir necha soniyada kelsa — complete_url ham ishlayapti.
+      function testPayProvider() {
+        var btn = document.getElementById("payTestBtn");
+        var out = document.getElementById("payTestResult");
+        var mode = wlData && wlData.provider ? wlData.provider.active : "hamyon";
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Tekshirilmoqda';
+        api("wallet_provider_test", { mode: mode }).then(function (result) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-activity"></i> Tekshirish';
+          var r = result.data || {};
+          if (!result.ok) { showToast("❌ " + (result.message || "Xatolik"), "error"); return; }
+          payHaptic(r.ok ? "success" : "error");
+          var lines = [];
+          if (r.latencyMs) lines.push("Javob vaqti: " + r.latencyMs + " ms");
+          if (r.card) lines.push("Hamyon kartasi: " + payCard(r.card));
+          if (r.shop) lines.push("Kassa: " + (r.shop.name || r.shop.shopId) + " · " + (r.shop.payType || "?") + " rejim");
+          if (r.detail) lines.push(r.detail);
+          if (r.ok && mode === "hamyon") lines.push("Callback kutilmoqda — bir necha soniyada «Tizim holati»da ko'rinadi.");
+          out.hidden = false;
+          out.className = "pay-test-result " + (r.ok ? "ok" : "err");
+          out.innerHTML = "<b>" + esc((r.ok ? "✅ " : "❌ ") + r.text) + "</b>" + lines.map(esc).join("<br>");
+          payTestState = { mode: mode, ok: r.ok, text: r.text, at: new Date().toISOString() };
+          loadWalletAdmin(true);
+          if (r.ok && mode === "hamyon") setTimeout(function () { if (wlView) loadWalletAdmin(true); }, 7000);
+        }).catch(function () {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-activity"></i> Tekshirish';
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.testPayProvider = testPayProvider;
+
+      function copyPayCallback() {
+        var url = wlData && wlData.provider && wlData.provider.callbackUrl;
+        if (url) copyText(url);
+      }
+      window.copyPayCallback = copyPayCallback;
+
+      function renderPayJournal(events, available) {
+        var box = document.getElementById("payJournal");
+        var list = events || [];
+        if (payJournalLevel === "problems") list = list.filter(function (e) { return e.level !== "info"; });
+        else if (payJournalLevel === "error") list = list.filter(function (e) { return e.level === "error"; });
+        var problems = (events || []).filter(function (e) { return e.level === "error" && Date.now() - new Date(e.at).getTime() < 86400000; }).length;
+        document.getElementById("payJournalCount").textContent = problems ? String(problems) : "";
+        if (!available) {
+          box.innerHTML = '<div class="hint pay-hint" style="margin:0">Jurnal jadvali yo\'q — supabase/024_wallet_events.sql migratsiyasini qo\'llang.</div>';
+          return;
+        }
+        if (!list.length) {
+          box.innerHTML = '<div class="hint pay-hint" style="margin:0">' + (payJournalLevel ? "Muammo qayd etilmagan 🎉" : "Hali hodisa yo'q.") + "</div>";
+          return;
+        }
+        box.innerHTML = list.map(function (e) {
+          var icon = e.level === "error" ? "x-octagon pay-err" : e.level === "warn" ? "exclamation-triangle pay-warn" : e.kind === "credit" ? "check-circle pay-ok" : "info-circle pay-mute";
+          var meta = [PAY_KIND[e.kind] || e.kind, e.provider ? PAY_NAMES[e.provider] || e.provider : "", payAgo(e.at)];
+          if (e.topup_id) meta.push("#" + e.topup_id);
+          if (e.user_id) meta.push("ID " + e.user_id);
+          var data = Object.keys(e.data || {}).filter(function (k) { return e.data[k] !== null && e.data[k] !== ""; }).map(function (k) { return k + ": " + e.data[k]; }).join(" · ");
+          return '<div class="pay-row"><i class="bi bi-' + icon + '"></i><div class="pay-row-body"><div class="pay-row-title" style="font-weight:600">' + esc(e.message) + "</div>" +
+            '<div class="pay-row-sub">' + esc(meta.filter(Boolean).join(" · ")) + "</div>" +
+            (data ? '<div class="pay-ev-data">' + esc(data) + "</div>" : "") + "</div></div>";
+        }).join("");
+      }
+
+      Array.prototype.forEach.call(document.querySelectorAll("#payJournalFilter button"), function (b) {
+        b.addEventListener("click", function () {
+          hapticLight();
+          payJournalLevel = b.dataset.level;
+          Array.prototype.forEach.call(document.querySelectorAll("#payJournalFilter button"), function (x) { x.classList.toggle("active", x === b); });
+          if (!wlData) return;
+          // Muammolar kam bo'lsa ham — serverdan to'liqroq ro'yxat.
+          if (payJournalLevel) {
+            api("wallet_events", { level: payJournalLevel }).then(function (result) {
+              if (result.ok && result.data) renderPayJournal(result.data.events, result.data.available);
+            });
+          } else {
+            renderPayJournal(wlData.events, wlData.eventsAvailable);
+          }
+        });
+      });
 
       function wlTopupHtml(t) {
         var canConfirm = t.status !== "paid";

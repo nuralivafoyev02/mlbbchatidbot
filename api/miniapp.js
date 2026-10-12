@@ -165,6 +165,12 @@ module.exports = async function handler(req, res) {
           return handleWalletRefund(req, res, body);
         case "wallet_topup_confirm":
           return handleWalletTopupConfirm(req, res, body);
+        case "wallet_provider_save":
+          return handleWalletProviderSave(req, res, body);
+        case "wallet_provider_test":
+          return handleWalletProviderTest(req, res, body);
+        case "wallet_events":
+          return handleWalletEvents(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -1119,10 +1125,12 @@ async function handleShopFmDelete(req, res, body) {
 // ---------------------------------------------------------------------------
 // 💰 Balans va to'lovlar (supabase/020_wallet.sql, api/_wallet.js)
 //
-// Admin: karta rekvizitlari, kutilayotgan to'ldirishlarni qo'lda tasdiqlash
-// (Hamyon ishlamay qolsa — zaxira), buyurtma pulini qaytarish va
-// foydalanuvchi balansini tuzatish. Har bir pul harakati foydalanuvchiga bot
-// orqali xabar qilinadi.
+// Admin panel → Feat (to'lovlar markazi): provayder (Hamyon/ElderPay/qo'lda)
+// va uning shop_id/shop_key sozlamasi, ulanishni tekshirish, holat va
+// xatolar jurnali, statistika va kartalar bo'yicha tushumlar; karta
+// rekvizitlari, kutilayotgan to'ldirishlarni qo'lda tasdiqlash (provayder
+// ishlamay qolsa — zaxira), buyurtma pulini qaytarish va foydalanuvchi
+// balansini tuzatish. Har bir pul harakati foydalanuvchiga bot orqali xabar qilinadi.
 // ---------------------------------------------------------------------------
 function getWallet() {
   return walletLib.createWallet((reqPath, options) => supabaseRequest(reqPath, options));
@@ -1138,7 +1146,46 @@ const WALLET_ERROR_TEXTS = {
   not_paid: "Bu buyurtma balansdan to'lanmagan — qaytaradigan pul yo'q",
   not_matched: "To'ldirish so'rovi topilmadi",
   invalid_user: "Foydalanuvchi ID noto'g'ri",
+  provider_invalid: "Provayderni tanlang",
+  shop_id_invalid: "shop_id noto'g'ri (faqat harf, raqam, - va _)",
+  shop_key_invalid: "shop_key noto'g'ri (4–128 belgi, bo'shliqsiz)",
 };
+
+const PROVIDER_TEST_TEXTS = {
+  auth: "Kalitlar noto'g'ri — shop_id yoki shop_key'ni tekshiring",
+  not_configured: "shop_id va shop_key kiritilmagan",
+  manual_mode: "Qo'lda rejimda tekshiradigan provayder yo'q",
+  timeout: "Provayder javob bermadi (timeout)",
+  unavailable: "Provayder bilan bog'lanib bo'lmadi",
+  invalid: "Provayder so'rovni qabul qilmadi",
+};
+
+// Hamyon @HamyonAPIBot → do'kon sozlamalariga qo'yiladigan manzil.
+function hamyonCallbackUrl(req) {
+  const host = String(req.headers?.["x-forwarded-host"] || req.headers?.host || "").split(",")[0].trim();
+  if (!/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return null;
+  const proto = /^(localhost|127\.)/.test(host) ? "http" : "https";
+  return `${proto}://${host}/api/account?hook=hamyon`;
+}
+
+async function walletMonitor(req, wallet) {
+  const client = await wallet.getPayClient();
+  const [settings, health, stats, journal] = await Promise.all([
+    wallet.getProviderSettings(),
+    wallet.events.health(client.provider === "manual" ? null : client.provider),
+    wallet.getStats(),
+    wallet.events.list({ limit: 40 }),
+  ]);
+  // Eski yozuvlar vaqti-vaqti bilan tozalanadi (30 kun).
+  if (Math.random() < 0.05) wallet.events.prune();
+  return {
+    provider: { ...settings, active: client.provider, enabled: client.enabled, callbackUrl: hamyonCallbackUrl(req) },
+    health,
+    stats,
+    events: journal.events,
+    eventsAvailable: journal.available,
+  };
+}
 
 function walletError(res, error, status = 400) {
   return json(res, status, { ok: false, error, message: WALLET_ERROR_TEXTS[error] || error });
@@ -1199,16 +1246,18 @@ async function handleWalletOverview(req, res) {
       wallet.listTopups({ limit: 30 }),
       shopOrders.listShopOrders((reqPath, options) => supabaseRequest(reqPath, options), { limit: 40 }),
     ]);
+    const monitor = await walletMonitor(req, wallet);
     return json(res, 200, {
       ok: true,
       data: {
         config,
-        auto: wallet.payClient.enabled,
-        provider: wallet.payClient.provider,
+        auto: config.auto,
+        provider: config.provider,
         synced: synced.length,
         pending,
         topups: recent,
         orders: orders.filter((o) => o.paid_amount > 0),
+        ...monitor,
       },
     });
   } catch (e) {
@@ -1291,6 +1340,43 @@ async function handleWalletRefund(req, res, body) {
     return json(res, 200, { ok: true, data: { status: result.status, balance: result.balance ?? null } });
   } catch (e) {
     return walletFailure(res, "REFUND", e);
+  }
+}
+
+async function handleWalletProviderSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    const result = await getWallet().saveProviderSettings(body);
+    if (!result.ok) return walletError(res, result.error);
+    return json(res, 200, { ok: true, data: { settings: result.settings } });
+  } catch (e) {
+    return walletFailure(res, "PROVIDER_SAVE", e);
+  }
+}
+
+async function handleWalletProviderTest(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    const result = await getWallet().testProvider(String(body.mode || ""));
+    const message = result.ok
+      ? "Ulanish ishlayapti"
+      : result.shop
+        ? `Kassa holati: ${result.shop.status || "noma'lum"}`
+        : PROVIDER_TEST_TEXTS[result.error] || result.message || "Tekshirib bo'lmadi";
+    return json(res, 200, { ok: true, data: { ...result, text: message, detail: result.ok ? null : result.message || null } });
+  } catch (e) {
+    return walletFailure(res, "PROVIDER_TEST", e);
+  }
+}
+
+async function handleWalletEvents(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    const level = ["info", "warn", "error", "problems"].includes(body.level) ? body.level : undefined;
+    const journal = await getWallet().events.list({ level, kind: body.kind, limit: 100 });
+    return json(res, 200, { ok: true, data: journal });
+  } catch (e) {
+    return walletFailure(res, "EVENTS", e);
   }
 }
 

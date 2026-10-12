@@ -9,6 +9,8 @@
 //   { method: "check", order }
 //        → { status: "success", order, data: { amount, status: pending|paid|cancel, date, over } }
 //   { method: "cancel", order, shop_id, shop_key }
+//   { shop_id, shop_key } (method'siz) — kassa ma'lumoti:
+//        → { data: { shop_id, shop_name, status: confirm|…, month_status, balance, pay_type, phone } }
 //   Xatolik: { status: "error", message } — 400 / 403 (kassa faol emas,
 //            oylik to'lov qilinmagan) / 409 (shu summada faol to'lov bor
 //            yoki holat mos emas) / 500.
@@ -88,7 +90,7 @@ function createElderPayClient({ config = resolveElderPayConfig(), fetchFn = fetc
     } catch (cause) {
       const timeout = cause?.name === "AbortError";
       throw new ElderPayError(
-        `elderpay_${body.method}_failed: ${timeout ? "timeout" : cause?.message || cause}`,
+        `elderpay_${body.method || "info"}_failed: ${timeout ? "timeout" : cause?.message || cause}`,
         timeout ? "timeout" : "unavailable"
       );
     } finally {
@@ -104,11 +106,13 @@ function createElderPayClient({ config = resolveElderPayConfig(), fetchFn = fetc
     }
 
     // shop_key xabarlarga/loglarga tushmaydi — faqat ElderPay'ning o'z matni.
-    if (!response.ok || !payload || payload.status !== "success") {
+    // Kassa ma'lumoti javobida `status` bo'lmasligi mumkin — `data` yetarli.
+    const success = payload && (payload.status === "success" || (!body.method && payload.data && payload.status !== "error"));
+    if (!response.ok || !success) {
       const message = String(payload?.message || text || "").slice(0, 200);
       const status = response.ok ? 0 : response.status;
       throw new ElderPayError(
-        `elderpay_${body.method}_${status || "error"}: ${message}`,
+        `elderpay_${body.method || "info"}_${status || "error"}: ${message}`,
         response.ok ? "unavailable" : reasonForStatus(status),
         status
       );
@@ -158,12 +162,25 @@ function createElderPayClient({ config = resolveElderPayConfig(), fetchFn = fetc
     return true;
   }
 
+  // Kassa holati (admin paneldagi "Tekshirish"). balance/phone qaytarilmaydi.
+  async function shopInfo() {
+    const payload = await call({ shop_id: config.shopId, shop_key: config.shopKey });
+    const data = payload.data || {};
+    return {
+      shopId: String(data.shop_id ?? config.shopId),
+      name: String(data.shop_name || "").slice(0, 80),
+      status: String(data.status || ""),
+      monthStatus: data.month_status ?? null,
+      payType: String(data.pay_type || ""),
+    };
+  }
+
   // ElderPay callback yubormaydi — holat faqat checkOrder bilan olinadi.
   function parseCallback() {
     return { ok: false, error: "not_supported" };
   }
 
-  return { provider: PROVIDER, enabled, createOrder, checkOrder, cancelOrder, parseCallback };
+  return { provider: PROVIDER, enabled, createOrder, checkOrder, cancelOrder, shopInfo, parseCallback };
 }
 
 module.exports = {
