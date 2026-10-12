@@ -160,16 +160,18 @@
     /* Tasdiqlash oynasi (Telegram/brauzer alert'i o'rniga) */
     .dlg-backdrop {
       position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
-      padding: 20px 18px; background: rgba(0, 0, 0, .6); animation: dlgFade .18s both;
+      padding: 20px 18px; background: rgba(0, 0, 0, .6); animation: dlgFade .2s both;
     }
     .dlg {
       width: 100%; max-width: 360px; background: var(--bg2); border: 1px solid var(--border); border-radius: 22px;
-      padding: 20px 16px 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); animation: dlgIn .24s cubic-bezier(.22, .8, .3, 1) both;
+      padding: 20px 16px 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); animation: dlgIn .2s cubic-bezier(.22, .8, .3, 1) both;
     }
     .dlg-ico { width: 48px; height: 48px; border-radius: 16px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 21px; background: rgba(240, 80, 110, .14); color: var(--red); }
     .dlg h3 { text-align: center; font-size: 17px; font-weight: 800; margin-bottom: 6px; }
     .dlg p { text-align: center; font-size: 13px; line-height: 1.45; color: var(--text2); margin-bottom: 14px; }
-    .dlg-backdrop.closing { animation: dlgFadeOut .16s both; }
+    .dlg-backdrop.closing { animation: dlgFadeOut .2s both; }
+    .dlg-backdrop.closing .dlg { animation: dlgOut .2s ease both; }
+    @keyframes dlgOut { to { opacity: 0; transform: scale(.97) } }
     @keyframes dlgFade { from { opacity: 0 } }
     @keyframes dlgFadeOut { to { opacity: 0 } }
     @keyframes dlgIn { from { opacity: 0; transform: translateY(10px) scale(.96) } }
@@ -237,12 +239,18 @@
 
 
     /* Sheet */
-    .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 30; }
+    .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 30; animation: dlgFade .2s both; }
     .sheet {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: min(88vh, calc(100vh - var(--top-space, 0px) - 12px)); overflow-y: auto;
       background: var(--bg2); border-radius: 22px 22px 0 0; border-top: 1px solid var(--border);
       padding: 10px 16px calc(20px + var(--safe-bottom, 0px));
+      animation: sheetUp .2s cubic-bezier(.22, .8, .3, 1) both;
     }
+    .sheet.closing { animation: sheetDown .2s cubic-bezier(.4, 0, .9, .6) both; }
+    .sheet-backdrop.closing { animation: dlgFadeOut .2s both; }
+    @keyframes sheetUp { from { transform: translateY(100%) } }
+    @keyframes sheetDown { to { transform: translateY(100%) } }
+    @media (prefers-reduced-motion: reduce) { .sheet, .sheet-backdrop { animation: none; } }
     .sheet-handle { width: 40px; height: 5px; border-radius: 99px; background: var(--border); margin: 0 auto 12px; }
     .team-title { font-weight: 800; margin: 14px 0 8px; display: flex; justify-content: space-between; }
     .items { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
@@ -999,6 +1007,7 @@
       // ---------------------------------------------------------------- sheets
       function openSheet(html) {
         var root = document.getElementById("sheetRoot");
+        sheetSeq += 1;
         root.innerHTML = '<div class="sheet-backdrop"></div><div class="sheet"><div class="sheet-handle"></div>' + html + "</div>";
         root.querySelector(".sheet-backdrop").addEventListener("click", closeSheet);
         if (tg && tg.BackButton) { tg.BackButton.show(); }
@@ -1012,18 +1021,28 @@
 
       function syncBackButton() {
         if (!tg || !tg.BackButton) return;
-        if (fromCabinet || dlgClose || document.querySelector("#sheetRoot .sheet")) tg.BackButton.show();
+        if (fromCabinet || dlgClose || document.querySelector("#sheetRoot .sheet:not(.closing)")) tg.BackButton.show();
         else tg.BackButton.hide();
       }
 
+      // Yopilish — 0.2 s pastga tushib so'nadi; shu orada yangi oyna ochilsa, u saqlanadi.
+      var sheetSeq = 0;
       function closeSheet() {
-        document.getElementById("sheetRoot").innerHTML = "";
-        syncBackButton();
+        var root = document.getElementById("sheetRoot");
+        var sheet = root.querySelector(".sheet");
+        if (!sheet || sheet.classList.contains("closing")) { syncBackButton(); return; }
+        var seq = ++sheetSeq;
+        sheet.classList.add("closing");
+        var backdrop = root.querySelector(".sheet-backdrop");
+        if (backdrop) backdrop.classList.add("closing");
+        setTimeout(function () {
+          if (seq === sheetSeq) { root.innerHTML = ""; syncBackButton(); }
+        }, 200);
       }
 
       function onBack() {
         if (dlgClose) { dlgClose(); return; }
-        if (document.querySelector("#sheetRoot .sheet")) { closeSheet(); return; }
+        if (document.querySelector("#sheetRoot .sheet:not(.closing)")) { closeSheet(); return; }
         if (fromCabinet) {
           try { sessionStorage.removeItem("from_cabinet"); } catch (e) { /* noop */ }
           location.href = location.pathname + "?view=cabinet";
@@ -1172,7 +1191,7 @@
             dlgClose = null;
             document.removeEventListener("keydown", onKey);
             backdrop.classList.add("closing");
-            setTimeout(function () { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); syncBackButton(); }, 160);
+            setTimeout(function () { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); syncBackButton(); }, 200);
             resolve(value);
           }
           dlgClose = function () { done(false); };
