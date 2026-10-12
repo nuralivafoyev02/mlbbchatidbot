@@ -157,6 +157,24 @@
     .btn.danger { background: rgba(240, 80, 110, .14); border-color: rgba(240, 80, 110, .35); color: var(--red); }
     .btn + .btn { margin-top: 8px; }
 
+    /* Tasdiqlash oynasi (Telegram/brauzer alert'i o'rniga) */
+    .dlg-backdrop {
+      position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+      padding: 20px 18px; background: rgba(0, 0, 0, .6); animation: dlgFade .18s both;
+    }
+    .dlg {
+      width: 100%; max-width: 360px; background: var(--bg2); border: 1px solid var(--border); border-radius: 22px;
+      padding: 20px 16px 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); animation: dlgIn .24s cubic-bezier(.22, .8, .3, 1) both;
+    }
+    .dlg-ico { width: 48px; height: 48px; border-radius: 16px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 21px; background: rgba(240, 80, 110, .14); color: var(--red); }
+    .dlg h3 { text-align: center; font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+    .dlg p { text-align: center; font-size: 13px; line-height: 1.45; color: var(--text2); margin-bottom: 14px; }
+    .dlg-backdrop.closing { animation: dlgFadeOut .16s both; }
+    @keyframes dlgFade { from { opacity: 0 } }
+    @keyframes dlgFadeOut { to { opacity: 0 } }
+    @keyframes dlgIn { from { opacity: 0; transform: translateY(10px) scale(.96) } }
+    @media (prefers-reduced-motion: reduce) { .dlg, .dlg-backdrop { animation: none; } }
+
     .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .switch { position: relative; width: 50px; height: 30px; flex: none; }
     .switch input { opacity: 0; width: 0; height: 0; }
@@ -330,6 +348,7 @@
   <div id="app"></div>
   <nav class="nav hidden" id="nav"></nav>
   <div id="sheetRoot"></div>
+  <div id="dlgRoot"></div>
   <div id="toast" class="toast hidden"></div>
 
   <!-- arena-web -->
@@ -358,7 +377,7 @@
           team_a: "1-jamoa", team_b: "2-jamoa", damage: "Zarar", teamfight: "Jang ulushi", hero_level: "Qahramon darajasi",
           power: "Kuch", hidden_friend: "Yashirin profil", together: "Birga", lvl: "Daraja",
           privacy_title: "Profil ko'rinishi", privacy_text: "Do'stlaringiz profilingizni ko'ra oladi", account: "Akkaunt",
-          linked_at: "Ulangan sana", logout: "Akkauntdan chiqish", logout_confirm: "Mobile Legends akkauntidan chiqasizmi? Keyin bot orqali qayta ulash mumkin.",
+          linked_at: "Ulangan sana", logout: "Akkauntdan chiqish", dlg_cancel: "Bekor qilish", logout_confirm: "Mobile Legends akkauntidan chiqasizmi? Keyin bot orqali qayta ulash mumkin.",
           logged_out: "Akkauntdan chiqildi", saved: "Saqlandi", lanes: ["", "EXP", "Mid", "Roam", "Jungle", "Gold"],
           close: "Yopish", hero_matches: "O'yinlari",
           unavailable_title: "Vaqtincha mavjud emas", unavailable_text: "Moonton bu ma'lumotni (statistika, o'yinlar, qahramonlar, do'stlar) hozircha o'chirib qo'ygan. Qayta yoqilishi bilan shu yerda avtomatik ko'rinadi."
@@ -380,7 +399,7 @@
           team_a: "Команда 1", team_b: "Команда 2", damage: "Урон", teamfight: "Участие", hero_level: "Уровень героя",
           power: "Сила", hidden_friend: "Скрытый профиль", together: "Вместе", lvl: "Ур.",
           privacy_title: "Видимость профиля", privacy_text: "Друзья могут видеть ваш профиль", account: "Аккаунт",
-          linked_at: "Дата привязки", logout: "Выйти из аккаунта", logout_confirm: "Выйти из аккаунта Mobile Legends? Позже можно привязать снова через бота.",
+          linked_at: "Дата привязки", logout: "Выйти из аккаунта", dlg_cancel: "Отмена", logout_confirm: "Выйти из аккаунта Mobile Legends? Позже можно привязать снова через бота.",
           logged_out: "Вы вышли из аккаунта", saved: "Сохранено", lanes: ["", "EXP", "Mid", "Roam", "Jungle", "Gold"],
           close: "Закрыть", hero_matches: "Матчи",
           unavailable_title: "Временно недоступно", unavailable_text: "Moonton временно отключил эти данные (статистика, матчи, герои, друзья). Как только их включат, они автоматически появятся здесь."
@@ -402,7 +421,7 @@
           team_a: "Team 1", team_b: "Team 2", damage: "Damage", teamfight: "Teamfight", hero_level: "Hero level",
           power: "Power", hidden_friend: "Hidden profile", together: "Together", lvl: "Lv.",
           privacy_title: "Profile visibility", privacy_text: "Friends can see your profile", account: "Account",
-          linked_at: "Linked on", logout: "Log out", logout_confirm: "Log out of your Mobile Legends account? You can link it again via the bot.",
+          linked_at: "Linked on", logout: "Log out", dlg_cancel: "Cancel", logout_confirm: "Log out of your Mobile Legends account? You can link it again via the bot.",
           logged_out: "Logged out", saved: "Saved", lanes: ["", "EXP", "Mid", "Roam", "Jungle", "Gold"],
           close: "Close", hero_matches: "Matches",
           unavailable_title: "Temporarily unavailable", unavailable_text: "Moonton has temporarily disabled this data (stats, matches, heroes, friends). It will appear here automatically once it is back."
@@ -993,7 +1012,7 @@
 
       function syncBackButton() {
         if (!tg || !tg.BackButton) return;
-        if (fromCabinet || document.querySelector("#sheetRoot .sheet")) tg.BackButton.show();
+        if (fromCabinet || dlgClose || document.querySelector("#sheetRoot .sheet")) tg.BackButton.show();
         else tg.BackButton.hide();
       }
 
@@ -1003,6 +1022,7 @@
       }
 
       function onBack() {
+        if (dlgClose) { dlgClose(); return; }
         if (document.querySelector("#sheetRoot .sheet")) { closeSheet(); return; }
         if (fromCabinet) {
           try { sessionStorage.removeItem("from_cabinet"); } catch (e) { /* noop */ }
@@ -1131,18 +1151,42 @@
         logoutBtn.addEventListener("click", function () { doLogout(logoutBtn); });
       }
 
-      function confirmAction(text) {
+      // Tasdiqlash oynasi — Telegram/brauzer alert'i o'rniga ilova ichidagi modal.
+      // opts: { title, text, ok, icon } → Promise<boolean>. Fon / Bekor / Back / Esc — false.
+      var dlgClose = null;
+      function confirmAction(opts) {
+        if (dlgClose) dlgClose();
         return new Promise(function (resolve) {
-          if (tg && tg.showConfirm) {
-            try { tg.showConfirm(text, function (ok) { resolve(Boolean(ok)); }); return; } catch (e) { /* fallback */ }
+          var root = document.getElementById("dlgRoot");
+          root.innerHTML = '<div class="dlg-backdrop"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlgTitle">' +
+            '<div class="dlg-ico">' + icon(opts.icon || "box-arrow-right") + "</div>" +
+            '<h3 id="dlgTitle">' + esc(opts.title) + "</h3>" + (opts.text ? "<p>" + esc(opts.text) + "</p>" : "") +
+            '<button class="btn danger" data-dlg="ok">' + esc(opts.ok) + "</button>" +
+            '<button class="btn" data-dlg="cancel">' + esc(L("dlg_cancel")) + "</button></div></div>";
+          var backdrop = root.firstChild;
+          var closed = false;
+          function onKey(e) { if (e.key === "Escape") done(false); }
+          function done(value) {
+            if (closed) return;
+            closed = true;
+            dlgClose = null;
+            document.removeEventListener("keydown", onKey);
+            backdrop.classList.add("closing");
+            setTimeout(function () { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); syncBackButton(); }, 160);
+            resolve(value);
           }
-          resolve(window.confirm(text));
+          dlgClose = function () { done(false); };
+          backdrop.addEventListener("click", function (e) { if (e.target === backdrop) done(false); });
+          backdrop.querySelector('[data-dlg="ok"]').addEventListener("click", function () { done(true); });
+          backdrop.querySelector('[data-dlg="cancel"]').addEventListener("click", function () { done(false); });
+          document.addEventListener("keydown", onKey);
+          if (tg && tg.BackButton) tg.BackButton.show();
         });
       }
 
       function doLogout(btn) {
         haptic("warning");
-        confirmAction(L("logout_confirm")).then(function (ok) {
+        confirmAction({ title: L("logout"), text: L("logout_confirm"), ok: L("logout") }).then(function (ok) {
           if (!ok) return;
           setBusy(btn, true);
           api("logout").then(function (result) {

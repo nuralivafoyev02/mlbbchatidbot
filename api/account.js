@@ -304,6 +304,9 @@ function publicFirstmail(item) {
     price: shop.parseShopPriceNumber(item.price) || null,
     price_text: shop.formatShopPrice(item.price) || "",
     note: item.note || "",
+    // Kabinetdagi "batafsil" oynasi uchun — parolning o'zi emas, faqat bor-yo'qligi.
+    has_password: Boolean(item.password),
+    created_at: item.created_at || null,
   };
 }
 

@@ -245,6 +245,46 @@
     .item.tappable { cursor: pointer; }
     .item.tappable:active { transform: scale(.985); }
 
+    /* Do'kon: pochta qatori — ixcham, ikki qator */
+    .fm-item { padding: 9px 10px; gap: 10px; border-radius: 12px; margin-bottom: 6px; }
+    .fm-item .item-ico { width: 32px; height: 32px; border-radius: 10px; font-size: 15px; }
+    .fm-item .item-title { font-size: 13.5px; font-weight: 700; }
+    .fm-item .item-sub { font-size: 11px; margin-top: 2px; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; }
+    .fm-item .item-sub .bi { font-size: 10.5px; }
+    .fm-dom { color: var(--text2); font-weight: 500; }
+    .fm-new { padding: 1px 5px; font-size: 9.5px; }
+    .fm-price { flex: none; font-weight: 800; font-size: 12.5px; color: var(--green); padding: 5px 8px; border-radius: 9px; background: rgba(16, 185, 129, .1); white-space: nowrap; }
+    .fm-price.agreed { color: var(--text2); background: var(--surface2); font-weight: 700; }
+    .fm-hint { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45; color: var(--text2); margin: 0 2px 14px; }
+    .fm-hint .bi { color: var(--green); margin-top: 1px; }
+    .detail-head .pill { font-size: 12px; padding: 4px 9px; }
+
+    /* Tasdiqlash oynasi (brauzer/Telegram alert o'rniga) */
+    .dlg-backdrop {
+      position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+      padding: 20px 18px calc(20px + var(--safe-bottom, 0px)); background: rgba(0, 0, 0, .6); animation: fade .18s both;
+    }
+    .dlg {
+      width: 100%; max-width: 360px; max-height: 100%; overflow-y: auto; background: var(--sheet); border: 1px solid var(--border);
+      border-radius: 22px; padding: 20px 16px 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); animation: dlgIn .24s cubic-bezier(.22, .8, .3, 1) both;
+    }
+    .dlg-ico { width: 48px; height: 48px; border-radius: 16px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 21px; background: rgba(16, 185, 129, .14); color: var(--green); }
+    .dlg-ico.danger { background: rgba(244, 63, 94, .14); color: var(--red); }
+    .dlg h3 { text-align: center; font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+    .dlg p { text-align: center; font-size: 13px; line-height: 1.45; color: var(--text2); margin-bottom: 14px; overflow-wrap: anywhere; }
+    .dlg .paybox { margin-bottom: 14px; }
+    /* Ixcham kalit–qiymat qatorlari: nom chapda, qiymat o'ngda */
+    .paybox.kv { padding: 4px 12px; }
+    .paybox.kv .payrow { padding: 9px 0; }
+    .paybox.kv .payrow .grow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+    .paybox.kv .k { flex: none; margin: 0; font-size: 12px; }
+    .paybox.kv .v { font-size: 13px; font-weight: 700; letter-spacing: 0; text-align: right; min-width: 0; word-break: normal; overflow-wrap: anywhere; }
+    .dlg .btn { padding: 12px; }
+    .dlg-backdrop.closing { animation: fadeOut .16s both; }
+    .dlg-backdrop.closing .dlg { animation: dlgOut .16s ease both; }
+    @keyframes dlgIn { from { opacity: 0; transform: translateY(10px) scale(.96) } to { opacity: 1; transform: none } }
+    @keyframes dlgOut { to { opacity: 0; transform: scale(.97) } }
+
     .field { margin-bottom: 12px; }
     .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
     .field input {
@@ -475,7 +515,7 @@
       }
     }
     @media (prefers-reduced-motion: reduce) {
-      #app.slide-from-right, #app.slide-from-left, #app.pop-in, .sheet, .sheet-backdrop, .bg-blob, .soon .big,
+      #app.slide-from-right, #app.slide-from-left, #app.pop-in, .sheet, .sheet-backdrop, .bg-blob, .soon .big, .dlg, .dlg-backdrop,
       .dock-side.to-shop .bi, .dock-side.to-shop::before { animation: none; }
       .nav-indicator.ready { transition: none; }
     }
@@ -502,6 +542,7 @@
   <div class="dock hidden" id="dock"><nav class="nav" id="nav"></nav><button class="dock-side" id="dockSide"></button></div>
   <div class="warp hidden" id="warp"></div>
   <div id="sheetRoot"></div>
+  <div id="dlgRoot"></div>
   <div id="toast" class="toast hidden"></div>
 
   <!-- arena-web -->
@@ -545,7 +586,6 @@
           no_fm: "Hozircha sotuvda pochta yo'q.", buy: "Sotib olish", price_agreed: "kelishiladi",
           prices_title: "Limit narxlari", prices_lead: "Paketni tanlang — narx balansingizdan yechiladi va limit darhol qo'shiladi.",
           no_prices: "Narxlar hali qo'shilmagan. Admin bilan bog'laning.", per_unit: "1 tasi {p}", hit: "Mashhur",
-          buy_confirm: "{what} — {price}. So'rov yuborilsinmi?",
           sent_title: "So'rov yuborildi!", sent_text: "Admin tez orada siz bilan bog'lanadi. Kutmasdan yozish uchun pastdagi tugmani bosing.",
           contact: "Admin bilan bog'lanish", close: "Yopish", notify_failed: "So'rov yuborilmadi. Admin bilan to'g'ridan-to'g'ri bog'laning.",
           not_available: "Bu mahsulot endi mavjud emas", som: "so'm", pcs: "ta",
@@ -572,11 +612,19 @@
           tp_done_title: "Balans to'ldirildi!", tp_done_text: "+{sum} hisobingizga qo'shildi. Joriy balans: {bal}",
           cel_title: "To'lov qabul qilindi", cel_text: "Balansingizga {sum} UZS qabul qilindi", cel_balance: "Joriy balans:", cel_ok: "Ajoyib!",
           copied: "Nusxa olindi",
-          pay_confirm: "{what} — {price}. Balansingizdan yechiladi. Tasdiqlaysizmi?",
           no_money_title: "Mablag' yetarli emas", no_money_text: "Narx: {price}. Balansingiz: {bal}. Yana {need} kerak.", no_money_btn: "Balansni to'ldirish",
           lim_done_title: "Limit qo'shildi!", lim_done_text: "{what} hisobingizga qo'shildi. Balansdan {price} yechildi.",
           fm_done_title: "Pochta sizniki!", fm_done_text: "Ma'lumotlarni saqlab qo'ying — ular «Do'kon → Tarix» bo'limida ham turadi.",
           fm_email: "Pochta", fm_password: "Parol", fm_open: "Ma'lumotni ko'rish",
+          fm_price: "Narx", fm_added: "Qo'shilgan", fm_seller: "Sotuvchi", fm_seller_val: "Do'kon admini",
+          fm_note: "Izoh", fm_includes: "Tarkibi", fm_inc_pass: "Pochta + parol", fm_inc_mail: "Faqat pochta", fm_new: "Yangi",
+          fm_get_paid: "To'lovdan so'ng pochta va parol darhol shu oynada ochiladi va «Tarix»da saqlanadi.",
+          fm_get_agreed: "Narx admin bilan kelishiladi — so'rov adminga yuboriladi, u siz bilan bog'lanadi.",
+          fm_balance: "Balansingiz", fm_after: "Xariddan keyin", fm_lack: "Balans yetmaydi — yana {need} kerak",
+          buy_for: "Sotib olish · {price}", req_send: "So'rov yuborish",
+          cf_buy_title: "Xaridni tasdiqlang", cf_req_title: "So'rovni tasdiqlang", cf_item: "Mahsulot", cf_charge: "Balansdan yechiladi",
+          cf_left: "Qoladi", cf_pay: "Tasdiqlash va to'lash", cf_buy_lead: "Summa balansingizdan yechiladi va mahsulot darhol beriladi.",
+          cf_req_lead: "So'rov adminga yuboriladi — narxni u bilan kelishasiz.", cf_remove_title: "Akkauntni uzish", cf_logout_title: "Chiqish", confirm_title: "Tasdiqlang", confirm_ok: "Tasdiqlash",
           refund_note: "Pul balansingizga qaytarildi",
           tx_topup: "Balans to'ldirildi", tx_purchase: "Xarid", tx_refund: "Qaytarildi", tx_admin: "Admin tuzatishi",
           no_tx: "Balansda hali harakat yo'q.",
@@ -616,7 +664,6 @@
           no_fm: "Сейчас почт в продаже нет.", buy: "Купить", price_agreed: "договорная",
           prices_title: "Цены на лимиты", prices_lead: "Выберите пакет — сумма спишется с баланса, лимит зачислится сразу.",
           no_prices: "Цены ещё не добавлены. Свяжитесь с админом.", per_unit: "1 шт — {p}", hit: "Хит",
-          buy_confirm: "{what} — {price}. Отправить запрос?",
           sent_title: "Запрос отправлен!", sent_text: "Админ скоро свяжется с вами. Чтобы написать сразу, нажмите кнопку ниже.",
           contact: "Написать админу", close: "Закрыть", notify_failed: "Запрос не отправлен. Свяжитесь с админом напрямую.",
           not_available: "Товар больше недоступен", som: "сум", pcs: "шт",
@@ -643,11 +690,19 @@
           tp_done_title: "Баланс пополнен!", tp_done_text: "+{sum} зачислено. Текущий баланс: {bal}",
           cel_title: "Платёж получен", cel_text: "На ваш баланс зачислено {sum} UZS", cel_balance: "Текущий баланс:", cel_ok: "Отлично!",
           copied: "Скопировано",
-          pay_confirm: "{what} — {price}. Списать с баланса?",
           no_money_title: "Недостаточно средств", no_money_text: "Цена: {price}. Ваш баланс: {bal}. Не хватает {need}.", no_money_btn: "Пополнить баланс",
           lim_done_title: "Лимит добавлен!", lim_done_text: "{what} зачислено. С баланса списано {price}.",
           fm_done_title: "Почта ваша!", fm_done_text: "Сохраните данные — они также доступны в «Магазин → История».",
           fm_email: "Почта", fm_password: "Пароль", fm_open: "Показать данные",
+          fm_price: "Цена", fm_added: "Добавлена", fm_seller: "Продавец", fm_seller_val: "Админ магазина",
+          fm_note: "Примечание", fm_includes: "Состав", fm_inc_pass: "Почта + пароль", fm_inc_mail: "Только почта", fm_new: "Новая",
+          fm_get_paid: "После оплаты почта и пароль сразу откроются в этом окне и сохранятся в «Истории».",
+          fm_get_agreed: "Цена договорная — запрос уйдёт админу, он свяжется с вами.",
+          fm_balance: "Ваш баланс", fm_after: "После покупки", fm_lack: "Не хватает баланса — нужно ещё {need}",
+          buy_for: "Купить · {price}", req_send: "Отправить запрос",
+          cf_buy_title: "Подтвердите покупку", cf_req_title: "Подтвердите запрос", cf_item: "Товар", cf_charge: "Спишется с баланса",
+          cf_left: "Останется", cf_pay: "Подтвердить и оплатить", cf_buy_lead: "Сумма спишется с баланса, товар выдаётся сразу.",
+          cf_req_lead: "Запрос уйдёт админу — цену согласуете с ним.", cf_remove_title: "Отвязать аккаунт", cf_logout_title: "Выход", confirm_title: "Подтвердите", confirm_ok: "Подтвердить",
           refund_note: "Деньги возвращены на баланс",
           tx_topup: "Пополнение", tx_purchase: "Покупка", tx_refund: "Возврат", tx_admin: "Корректировка админом",
           no_tx: "Операций по балансу пока нет.",
@@ -687,7 +742,6 @@
           no_fm: "No mailboxes for sale right now.", buy: "Buy", price_agreed: "negotiable",
           prices_title: "Limit prices", prices_lead: "Pick a pack — it's paid from your balance and the limit is added instantly.",
           no_prices: "No prices yet. Contact the admin.", per_unit: "{p} each", hit: "Popular",
-          buy_confirm: "{what} — {price}. Send the request?",
           sent_title: "Request sent!", sent_text: "The admin will contact you soon. Tap below to message them right away.",
           contact: "Contact admin", close: "Close", notify_failed: "Request failed. Please contact the admin directly.",
           not_available: "This item is no longer available", som: "UZS", pcs: "pcs",
@@ -714,11 +768,19 @@
           tp_done_title: "Balance topped up!", tp_done_text: "+{sum} added. Current balance: {bal}",
           cel_title: "Payment received", cel_text: "{sum} UZS has been added to your balance", cel_balance: "Current balance:", cel_ok: "Great!",
           copied: "Copied",
-          pay_confirm: "{what} — {price}. Pay from your balance?",
           no_money_title: "Not enough funds", no_money_text: "Price: {price}. Your balance: {bal}. You need {need} more.", no_money_btn: "Top up balance",
           lim_done_title: "Limit added!", lim_done_text: "{what} added. {price} charged from your balance.",
           fm_done_title: "The mailbox is yours!", fm_done_text: "Save these details — they're also in “Shop → History”.",
           fm_email: "Email", fm_password: "Password", fm_open: "Show details",
+          fm_price: "Price", fm_added: "Added", fm_seller: "Seller", fm_seller_val: "Shop admin",
+          fm_note: "Note", fm_includes: "Includes", fm_inc_pass: "Email + password", fm_inc_mail: "Email only", fm_new: "New",
+          fm_get_paid: "Right after payment the email and password open in this window and stay in “History”.",
+          fm_get_agreed: "The price is agreed with the admin — your request goes to them and they will contact you.",
+          fm_balance: "Your balance", fm_after: "After purchase", fm_lack: "Not enough balance — {need} more needed",
+          buy_for: "Buy · {price}", req_send: "Send request",
+          cf_buy_title: "Confirm purchase", cf_req_title: "Confirm request", cf_item: "Item", cf_charge: "Charged from balance",
+          cf_left: "Remaining", cf_pay: "Confirm and pay", cf_buy_lead: "The amount is charged from your balance and the item is delivered instantly.",
+          cf_req_lead: "The request goes to the admin — you agree on the price with them.", cf_remove_title: "Remove account", cf_logout_title: "Log out", confirm_title: "Please confirm", confirm_ok: "Confirm",
           refund_note: "Money returned to your balance",
           tx_topup: "Top-up", tx_purchase: "Purchase", tx_refund: "Refund", tx_admin: "Admin adjustment",
           no_tx: "No balance activity yet.",
@@ -830,12 +892,44 @@
         }).catch(function () { return { ok: false, error: "network" }; });
       }
 
-      function confirmAction(text) {
+      // Tasdiqlash oynasi — Telegram/brauzer alert'i o'rniga ilova ichidagi modal.
+      // opts: matn yoki { title, text, rows: [[label, value]], ok, icon, danger }
+      // → Promise<boolean>. Fon, "Bekor qilish", Back tugmasi va Esc — false.
+      var dlgClose = null;
+      function confirmAction(opts) {
+        if (typeof opts === "string") opts = { text: opts };
+        if (dlgClose) dlgClose();
         return new Promise(function (resolve) {
-          if (tg && tg.showConfirm) {
-            try { tg.showConfirm(text, function (ok) { resolve(Boolean(ok)); }); return; } catch (e) { /* fallback */ }
+          var root = document.getElementById("dlgRoot");
+          var rows = (opts.rows || []).map(function (r) { return payRow(r[0], r[1]); }).join("");
+          root.innerHTML = '<div class="dlg-backdrop"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlgTitle">' +
+            '<div class="dlg-ico' + (opts.danger ? " danger" : "") + '">' + icon(opts.icon || (opts.danger ? "exclamation-lg" : "question-lg")) + "</div>" +
+            '<h3 id="dlgTitle">' + esc(opts.title || L("confirm_title")) + "</h3>" +
+            (opts.text ? "<p>" + esc(opts.text) + "</p>" : "") +
+            (rows ? '<div class="paybox kv">' + rows + "</div>" : "") +
+            '<button class="btn ' + (opts.danger ? "danger" : "green") + '" data-dlg="ok">' + esc(opts.ok || L("confirm_ok")) + "</button>" +
+            '<button class="btn" data-dlg="cancel">' + esc(opts.cancel || L("cancel")) + "</button></div></div>";
+          var backdrop = root.firstChild;
+          var closed = false;
+          function onKey(e) { if (e.key === "Escape") done(false); }
+          function done(value) {
+            if (closed) return;
+            closed = true;
+            dlgClose = null;
+            document.removeEventListener("keydown", onKey);
+            haptic(value ? "medium" : "light");
+            backdrop.classList.add("closing");
+            setTimeout(function () { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); syncBackButton(); }, 160);
+            resolve(value);
           }
-          resolve(window.confirm(text));
+          dlgClose = function () { done(false); };
+          backdrop.addEventListener("click", function (e) { if (e.target === backdrop) done(false); });
+          backdrop.querySelector('[data-dlg="ok"]').addEventListener("click", function () { done(true); });
+          backdrop.querySelector('[data-dlg="cancel"]').addEventListener("click", function () { done(false); });
+          document.addEventListener("keydown", onKey);
+          haptic(opts.danger ? "warning" : "light");
+          syncBackButton();
+          try { backdrop.querySelector('[data-dlg="ok"]').focus({ preventScroll: true }); } catch (e) { /* eski brauzer */ }
         });
       }
 
@@ -1001,11 +1095,12 @@
       // Telegram "Orqaga": avval oyna (sheet), keyin do'kondan asosiyga.
       function syncBackButton() {
         if (!tg || !tg.BackButton) return;
-        var open = Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop";
+        var open = Boolean(dlgClose) || Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop";
         if (open) tg.BackButton.show(); else tg.BackButton.hide();
       }
 
       function onBack() {
+        if (dlgClose) { dlgClose(); return; }
         var cel = document.querySelector(".cel:not(.closing) [data-cel-close]");
         if (cel) { cel.click(); return; }
         if (document.querySelector("#sheetRoot .sheet:not(.closing)")) { closeSheet(); return; }
@@ -1156,18 +1251,58 @@
       // Do'kon: pochtalar 30 tadan — ro'yxat oxiri ko'ringanda keyingisi yuklanadi.
       var fmObserver = null;
 
+      function fmPriceText(fm) { return fm.price ? som(fm.price) : (fm.price_text || L("price_agreed")); }
+      function fmIsNew(fm) { var t = new Date(fm.created_at || 0).getTime(); return isFinite(t) && t > 0 && Date.now() - t < 86400000; }
+      function fmIncludes(fm) { return L(fm.has_password === false ? "fm_inc_mail" : "fm_inc_pass"); }
+
+      // Ixcham qator: pochta (domen xira) + tarkibi va qachon qo'shilgani; narx o'ngda.
       function fmItemHtml(fm) {
-        return '<button class="item" data-fm="' + esc(fm.id) + '"><div class="item-ico pink">' + icon("envelope-at") + "</div>" +
-          '<div class="grow"><div class="item-title ellipsis">' + esc(fm.email) + "</div>" +
-          (fm.note ? '<div class="item-sub ellipsis">' + esc(fm.note) + "</div>" : "") + "</div>" +
-          '<div class="item-right"><div class="price-sum">' + esc(fm.price ? som(fm.price) : (fm.price_text || L("price_agreed"))) + "</div></div></button>";
+        var at = fm.email.indexOf("@");
+        var local = at >= 0 ? fm.email.slice(0, at) : fm.email;
+        var sub = [icon(fm.has_password === false ? "envelope" : "key") + "<span>" + esc(fmIncludes(fm)) + "</span>"];
+        if (fm.created_at) sub.push("<span>" + esc(timeAgo(fm.created_at)) + "</span>");
+        if (fmIsNew(fm)) sub.unshift('<span class="pill accent fm-new">' + esc(L("fm_new")) + "</span>");
+        return '<button class="item fm-item tappable" data-fm="' + esc(fm.id) + '"><div class="item-ico pink">' + icon("envelope-at") + "</div>" +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(local) + '<span class="fm-dom">' + esc(at >= 0 ? fm.email.slice(at) : "") + "</span></div>" +
+          '<div class="item-sub">' + sub.join("<span>·</span>") + "</div></div>" +
+          '<span class="fm-price' + (fm.price ? "" : " agreed") + '">' + esc(fmPriceText(fm)) + "</span></button>";
       }
 
       function bindFmItems(root) {
         Array.prototype.forEach.call(root.querySelectorAll("[data-fm]:not([data-bound])"), function (el) {
           el.setAttribute("data-bound", "1");
-          el.addEventListener("click", function () { buyFirstmail(el.dataset.fm); });
+          el.addEventListener("click", function () { openFmDetail(el.dataset.fm); });
         });
+      }
+
+      // Batafsil: qachon qo'shilgan, kim sotadi, tarkibi, izoh, balans — keyin xarid.
+      function openFmDetail(id) {
+        var fm = state.data.firstmails.filter(function (f) { return f.id === id; })[0];
+        if (!fm) return;
+        var w = wallet();
+        var paid = Boolean(fm.price) && Boolean(w);
+        var support = state.data.supportUsername;
+        var rows = payRow(L("fm_includes"), fmIncludes(fm)) +
+          payRow(L("fm_added"), fm.created_at ? fmtDate(fm.created_at) + " · " + timeAgo(fm.created_at) : "—") +
+          payRow(L("fm_seller"), L("fm_seller_val") + (support ? " · @" + support : "")) +
+          (fm.note ? payRow(L("fm_note"), fm.note) : "");
+        var after = paid ? w.balance - Number(fm.price) : 0;
+        var money = paid
+          ? '<div class="paybox kv">' + payRow(L("fm_balance"), som(w.balance)) + (after >= 0 ? payRow(L("fm_after"), som(after)) : "") + "</div>" +
+            (after < 0 ? '<div class="warnbox">' + icon("exclamation-triangle") + " " + esc(L("fm_lack", { need: som(-after) })) + "</div>" : "")
+          : "";
+        var cta = paid && after < 0
+          ? '<button class="btn green" id="fmTopup">' + icon("plus-lg") + esc(L("no_money_btn")) + "</button>"
+          : '<button class="btn green" id="fmBuy">' + icon(paid ? "bag-check" : "send") + esc(paid ? L("buy_for", { price: fmPriceText(fm) }) : L("req_send")) + "</button>";
+        var sheet = openSheet(detailHead("envelope-at", "pink", fm.email, '<span class="pill ' + (fm.price ? "green" : "gold") + '">' + esc(fmPriceText(fm)) + "</span>") +
+          '<div class="paybox kv">' + rows + "</div>" + money +
+          '<div class="fm-hint">' + icon(paid ? "lightning-charge-fill" : "chat-dots") + "<span>" + esc(L(paid ? "fm_get_paid" : "fm_get_agreed")) + "</span></div>" +
+          cta + '<button class="btn" id="fmClose">' + esc(L("close")) + "</button>");
+        var buy = sheet.querySelector("#fmBuy");
+        if (buy) buy.addEventListener("click", function () { buyFirstmail(sheet, id); });
+        var top = sheet.querySelector("#fmTopup");
+        if (top) top.addEventListener("click", function () { openTopup(-after); });
+        sheet.querySelector("#fmClose").addEventListener("click", closeSheet);
       }
 
       function renderShop() {
@@ -1437,7 +1572,11 @@
         haptic("medium");
         var what = L("lim_" + item.kind).replace(/ ·.*$/, "") + " × " + kindAmountText(item);
         if (lacksMoney(item.price)) { showNoMoney(sheet || openSheet(""), item.price, wallet().balance); return; }
-        confirmAction(L("pay_confirm", { what: what, price: som(item.price) })).then(function (ok) {
+        var bal = wallet() ? wallet().balance : 0;
+        confirmAction({
+          icon: "bag-check", title: L("cf_buy_title"), text: L("cf_buy_lead"), ok: L("cf_pay"),
+          rows: [[L("cf_item"), what], [L("cf_charge"), som(item.price)], [L("cf_left"), som(bal - Number(item.price))]]
+        }).then(function (ok) {
           if (!ok || (sheet && !sheet.isConnected)) return;
           if (!sheet) sheet = openSheet("");
           sheetLoading(sheet);
@@ -1461,18 +1600,26 @@
         });
       }
 
-      function buyFirstmail(id) {
+      function buyFirstmail(sheet, id) {
         var fm = state.data.firstmails.filter(function (f) { return f.id === id; })[0];
         if (!fm) return;
         haptic("medium");
         // Narxi kelishiladigan pochta — eski yo'l: so'rov adminga.
-        var paid = Boolean(fm.price) && Boolean(wallet());
-        var price = fm.price ? som(fm.price) : (fm.price_text || L("price_agreed"));
-        if (paid && lacksMoney(fm.price)) { showNoMoney(openSheet(""), fm.price, wallet().balance); return; }
-        var question = paid ? L("pay_confirm", { what: "Firstmail " + fm.email, price: price }) : L("buy_confirm", { what: "Firstmail " + fm.email, price: price });
-        confirmAction(question).then(function (ok) {
+        var w = wallet();
+        var paid = Boolean(fm.price) && Boolean(w);
+        var price = fmPriceText(fm);
+        if (paid && lacksMoney(fm.price)) { showNoMoney(sheet, fm.price, w.balance); return; }
+        var what = "Firstmail " + fm.email;
+        confirmAction(paid ? {
+          icon: "bag-check", title: L("cf_buy_title"), text: L("cf_buy_lead"), ok: L("cf_pay"),
+          rows: [[L("cf_item"), what], [L("cf_charge"), price], [L("cf_left"), som(w.balance - Number(fm.price))]]
+        } : {
+          icon: "send", title: L("cf_req_title"), text: L("cf_req_lead"), ok: L("req_send"),
+          rows: [[L("cf_item"), what], [L("fm_price"), price]]
+        }).then(function (ok) {
           if (!ok) return;
-          var sheet = openSheet('<div class="skeleton" style="height:120px"></div>');
+          if (!sheet || !sheet.isConnected) sheet = openSheet("");
+          sheetLoading(sheet);
           api("buy_firstmail", { id: id }).then(function (result) {
             rememberOrder(result);
             if (typeof result.balance === "number") setBalance(result.balance);
@@ -1964,7 +2111,7 @@
         var a = findAccount(rowId);
         if (!a) return;
         haptic("warning");
-        confirmAction(L("remove_confirm", { acc: acc(a) })).then(function (ok) {
+        confirmAction({ danger: true, icon: "trash3", title: L("cf_remove_title"), text: L("remove_confirm", { acc: acc(a) }), ok: L("remove") }).then(function (ok) {
           if (!ok) return;
           setBusy(btn, true);
           api("account_remove", { rowId: rowId }).then(function (result) {

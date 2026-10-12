@@ -452,6 +452,9 @@ test("cabinet: returns limits, accounts, viewers, history, prices and only avail
     assert.equal(d.supportUsername, "Ksava_org");
     assert.equal(d.firstmails.length, 1);
     assert.equal(d.firstmails[0].email, "fre•••@firstmail.ltd");
+    // Batafsil oyna uchun: qachon qo'shilgani va tarkibi (parolning o'zi emas).
+    assert.equal(d.firstmails[0].has_password, true);
+    assert.ok(!Number.isNaN(Date.parse(d.firstmails[0].created_at)));
     assert.ok(!JSON.stringify(d).includes("secret-pass"), "parol kabinetga chiqmasligi kerak");
   } finally {
     backend.restore();
