@@ -17,7 +17,7 @@
     "🖥": "5926754173524643275",
     "🌐": "5463386283856373524",
     "🌟": "5440679633576023362",
-    "📋": "5895764412525973661",
+    "📋": "5404630946563515782",
     "🙏": "5316977222467206948",
     "🆔": "6122725692925808124",
     "📊": "5458858129900968809",
@@ -40,7 +40,8 @@
     "💬": "5314513650701062279",
     "🏠": "5195140682590722632",
     "💳": "5312336458764276440",
-    "💼": "5317051834639071081"
+    "💼": "5317051834639071081",
+    "🙂": "5228963597291363997"
   },
   "_buttonIcons_comment": "Faqat tugmalar uchun (icon_custom_emoji_id, Bot API 9.4): tugma matni shu emoji bilan boshlansa — premium ikonka qo'yiladi va emoji matndan olinadi (api/_tg-buttons.js). Bu yerda yo'q emojilar 'premium' xaritasidan olinadi. ID'lar fearpin-node botidan.",
   "buttonIcons": {
