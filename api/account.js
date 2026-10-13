@@ -333,7 +333,7 @@ async function handleCabinet(res, { config, user }) {
   const wallet = createWalletFor(config);
   // Oyna yopilib qolgan to'lovlar — balansni ko'rsatishdan oldin yoziladi.
   await settle(syncUserTopups(config, wallet, user), "TOPUP_SYNC");
-  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup, paidTopups, groups] = await Promise.all([
+  const [lang, accounts, fullInfo, resetPw, viewers, history, prices, firstmails, orders, balance, walletConfig, topup, paidTopups, transactions, groups] = await Promise.all([
     loadPreferredLanguage(config, user),
     settle(listUserAccounts(config, userId), "ACCOUNTS"),
     settle(supabaseRpc(config, "get_full_info_quota", { p_user_id: userId }), "FULL_INFO"),
@@ -350,6 +350,7 @@ async function handleCabinet(res, { config, user }) {
     settle(wallet.getConfig(), "WALLET_CONFIG"),
     settle(wallet.getActiveTopup(userId), "TOPUP"),
     settle(wallet.listPaidTopups(userId, CABINET_HISTORY_LIMIT), "TOPUPS"),
+    settle(wallet.listTransactions(userId, CABINET_HISTORY_LIMIT), "TRANSACTIONS"),
     settle(cabinetGroups.createCabinetGroupsStore(storeRequest(config)).list(), "GROUPS"),
   ]);
 
@@ -386,6 +387,8 @@ async function handleCabinet(res, { config, user }) {
       : null,
     // Tarix: balansga tushgan to'ldirishlar (xaridlar bilan bitta lentada).
     topups: Array.isArray(paidTopups) ? paidTopups : [],
+    // Tarix → "To'lovlar": balansdagi har bir harakat (ledger). null — jadval yo'q.
+    transactions: Array.isArray(transactions) ? transactions : null,
     // Sozlamalar → "Guruhlarimiz" (admin panelda boshqariladi).
     groups: (groups || []).map(cabinetGroups.toPublicGroup),
   });

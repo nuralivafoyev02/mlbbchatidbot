@@ -607,6 +607,12 @@ test("cabinet: limit is bought from the balance — insufficient funds first, th
     const wallet = (await call(app, USER, "wallet")).body;
     assert.deepEqual(wallet.transactions.map((t) => [t.kind, t.delta]), [["purchase", -10000], ["topup", 20000]]);
 
+    // Kabinet "Tarix → To'lovlar": ledger xarid buyurtmasiga va to'ldirishga bog'langan.
+    const tx = (await call(app, USER, "cabinet")).body.transactions;
+    assert.deepEqual(tx.map((t) => [t.kind, t.delta]), [["purchase", -10000], ["topup", 20000]]);
+    assert.equal(tx[0].order_id, String(bought.order.id));
+    assert.equal(tx[1].topup_id, String(topup.id));
+
     assert.equal((await call(app, USER, "buy_limit", { id: "zzzzzzzz" })).body.error, "not_available");
     assert.equal((await call(app, USER, "buy_firstmail", { id: "zzzzzzzz" })).body.error, "not_available");
   } finally {

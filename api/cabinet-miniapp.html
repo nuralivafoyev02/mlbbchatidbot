@@ -751,6 +751,10 @@
           refund_note: "Pul balansingizga qaytarildi",
           tx_topup: "Balans to'ldirildi", tx_purchase: "Xarid", tx_refund: "Qaytarildi", tx_admin: "Admin tuzatishi",
           no_tx: "Balansda hali harakat yo'q.",
+          hist_purchases: "Xaridlar", hist_payments: "To'lovlar", no_purchases: "Hali xarid qilinmagan.\nSotib olgan narsalaringiz shu yerda ko'rinadi.",
+          no_payments: "Hali to'lov yo'q.\nBalansga tushgan va balansdan chiqqan pullar shu yerda ko'rinadi.",
+          d_for: "Nima uchun", d_amount: "Summa", d_balance_after: "Qoldiq", d_tx: "Tranzaksiya", d_status: "Holat", d_note: "Izoh", open_order: "Xaridni ochish",
+          tx_in: "Kirim", tx_out: "Chiqim",
           err_insufficient_funds: "Balansda mablag' yetarli emas", err_invalid_amount: "Summa noto'g'ri", err_topup_disabled: "To'ldirish vaqtincha o'chirilgan",
           err_wallet_unavailable: "Balans xizmati vaqtincha ishlamayapti", err_provider_unavailable: "To'lov tizimi javob bermadi. Birozdan keyin tekshiring",
           err_purchase_failed: "Xarid amalga oshmadi — pul yechilmadi"
@@ -834,6 +838,10 @@
           refund_note: "Деньги возвращены на баланс",
           tx_topup: "Пополнение", tx_purchase: "Покупка", tx_refund: "Возврат", tx_admin: "Корректировка админом",
           no_tx: "Операций по балансу пока нет.",
+          hist_purchases: "Покупки", hist_payments: "Платежи", no_purchases: "Покупок пока нет.\nЗдесь появится всё, что вы купили.",
+          no_payments: "Платежей пока нет.\nЗдесь появятся поступления на баланс и списания с него.",
+          d_for: "За что", d_amount: "Сумма", d_balance_after: "Остаток", d_tx: "Транзакция", d_status: "Статус", d_note: "Комментарий", open_order: "Открыть покупку",
+          tx_in: "Приход", tx_out: "Расход",
           err_insufficient_funds: "Недостаточно средств на балансе", err_invalid_amount: "Неверная сумма", err_topup_disabled: "Пополнение временно отключено",
           err_wallet_unavailable: "Сервис баланса временно недоступен", err_provider_unavailable: "Платёжная система не ответила. Проверьте чуть позже",
           err_purchase_failed: "Покупка не прошла — деньги не списаны"
@@ -917,6 +925,10 @@
           refund_note: "Money returned to your balance",
           tx_topup: "Top-up", tx_purchase: "Purchase", tx_refund: "Refund", tx_admin: "Admin adjustment",
           no_tx: "No balance activity yet.",
+          hist_purchases: "Purchases", hist_payments: "Payments", no_purchases: "No purchases yet.\nEverything you buy will appear here.",
+          no_payments: "No payments yet.\nMoney added to and spent from your balance will appear here.",
+          d_for: "Paid for", d_amount: "Amount", d_balance_after: "Balance after", d_tx: "Transaction", d_status: "Status", d_note: "Note", open_order: "Open purchase",
+          tx_in: "Income", tx_out: "Spent",
           err_insufficient_funds: "Not enough funds", err_invalid_amount: "Invalid amount", err_topup_disabled: "Top-ups are temporarily disabled",
           err_wallet_unavailable: "Balance service is temporarily unavailable", err_provider_unavailable: "The payment system didn't respond. Check again shortly",
           err_purchase_failed: "Purchase failed — nothing was charged"
@@ -957,7 +969,7 @@
         });
       }
 
-      var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "limits", data: null, view: null };
+      var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "limits", ordTab: "purchases", data: null, view: null };
 
       // Shu qurilmadagi sozlamalar (Sozlamalar → Tizim sozlamalari).
       var PREFS_KEY = "mlbb_cabinet_prefs";
@@ -1552,31 +1564,60 @@
           '<div style="margin-top:5px"><span class="pill green">' + esc(L("ord_done")) + "</span></div></div></button>";
       }
 
-      // Xaridlar + balansga kiritilgan pullar — vaqt bo'yicha bitta lenta.
-      function timeline() {
-        var d = state.data;
-        var rows = (d.orders || []).map(function (o) { return { at: o.created_at, html: orderItemHtml(o) }; })
-          .concat((d.topups || []).map(function (t) { return { at: t.paid_at || t.created_at, html: topupItemHtml(t) }; }));
-        rows.sort(function (a, b) { return new Date(b.at).getTime() - new Date(a.at).getTime(); });
-        return rows;
-      }
-
+      // Tarix ikki tabdan iborat: "Xaridlar" — nima sotib olingani, "To'lovlar" —
+      // balansdagi har bir harakat (kirim, xarid uchun chiqim, qaytarish, admin).
       function renderOrders() {
         var d = state.data;
-        var rows = timeline();
-        var html = '<div class="section-title" style="margin-top:4px">' + esc(L("orders_title")) + (rows.length ? " · " + rows.length : "") + "</div>";
-        html += rows.length
-          ? rows.map(function (r) { return r.html; }).join("")
-          : '<div class="empty">' + icon("receipt") + esc(L(d.ordersAvailable === false ? "no_orders_setup" : "no_orders")).replace(/\n/g, "<br>") + "</div>";
+        var orders = d.orders || [];
+        var payments = paymentRows();
+        var tab = state.ordTab === "payments" ? "payments" : "purchases";
+        var html = '<div class="seg" style="margin-top:4px">' +
+          '<button data-ord-tab="purchases" class="' + (tab === "purchases" ? "active" : "") + '">' + esc(L("hist_purchases")) + (orders.length ? " · " + orders.length : "") + "</button>" +
+          '<button data-ord-tab="payments" class="' + (tab === "payments" ? "active" : "") + '">' + esc(L("hist_payments")) + (payments.length ? " · " + payments.length : "") + "</button></div>";
+        if (tab === "purchases") {
+          html += orders.length
+            ? orders.map(orderItemHtml).join("")
+            : '<div class="empty">' + icon("bag") + esc(L(d.ordersAvailable === false ? "no_orders_setup" : "no_purchases")).replace(/\n/g, "<br>") + "</div>";
+        } else {
+          html += payments.length
+            ? payments.join("")
+            : '<div class="empty">' + icon("wallet2") + esc(L("no_payments")).replace(/\n/g, "<br>") + "</div>";
+        }
         app.innerHTML = html;
+        bindAll("[data-ord-tab]", function (el) {
+          if (state.ordTab === el.dataset.ordTab) return;
+          haptic("select");
+          state.ordTab = el.dataset.ordTab;
+          renderOrders();
+        });
         bindAll("[data-order]", function (el) {
-          var o = (state.data.orders || []).filter(function (x) { return String(x.id) === el.dataset.order; })[0];
+          var o = findOrder(el.dataset.order);
           if (o) openOrderDetail(o);
         });
         bindAll("[data-topup]", function (el) {
-          var t = (state.data.topups || []).filter(function (x) { return String(x.id) === el.dataset.topup; })[0];
+          var t = findTopup(el.dataset.topup);
           if (t) openTopupDetail(t);
         });
+        bindAll("[data-tx]", function (el) {
+          var t = (state.data.transactions || []).filter(function (x) { return String(x.id) === el.dataset.tx; })[0];
+          if (t) openTxDetail(t);
+        });
+      }
+
+      // Ledger bo'lmasa (eski baza) — hech bo'lmasa balansga tushgan to'lovlar.
+      function paymentRows() {
+        var d = state.data;
+        if (Array.isArray(d.transactions)) return d.transactions.map(function (t) { return txItemHtml(t, true); });
+        return (d.topups || []).slice().sort(function (a, b) {
+          return new Date(b.paid_at || b.created_at).getTime() - new Date(a.paid_at || a.created_at).getTime();
+        }).map(topupItemHtml);
+      }
+
+      function findOrder(id) {
+        return id ? (state.data.orders || []).filter(function (x) { return String(x.id) === String(id); })[0] || null : null;
+      }
+      function findTopup(id) {
+        return id ? (state.data.topups || []).filter(function (x) { return String(x.id) === String(id); })[0] || null : null;
       }
 
       function detailHead(ico, tone, title, sub) {
@@ -1632,6 +1673,7 @@
         if (!result || !result.ok || !result.order) return;
         state.data.orders = [result.order].concat(state.data.orders || []);
         if (state.mode === "shop" && currentTab() === "orders") renderOrders();
+        refreshTransactions();
       }
 
       function loadMoreFirstmails() {
@@ -2147,6 +2189,7 @@
         if (w) w.topup = null;
         state.data.topups = [topup].concat((state.data.topups || []).filter(function (x) { return x.id !== topup.id; }));
         if (state.mode === "shop" && currentTab() === "orders") renderOrders();
+        refreshTransactions();
         setBalance(balance);
         if (celSeen().indexOf(String(topup.id)) >= 0) return;
         markCelSeen([topup.id]);
@@ -2232,15 +2275,94 @@
         admin: { icon: "person-gear", tone: "" }
       };
 
-      function txItemHtml(t) {
+      // Xarid tranzaksiyasi nima uchun to'langan: buyurtmadan, u ro'yxatda
+      // bo'lmasa — ledger izohidan ("full_info:10", "firstmail ab***@…").
+      function txPurpose(t) {
+        var o = findOrder(t.order_id);
+        if (o) return orderTitle(o);
+        var m = /^(full_info|reset_pw):(\d+)$/.exec(t.note || "");
+        if (m) return L("lim_" + m[1]) + " × " + m[2] + " " + L("pcs");
+        m = /^firstmail\s+(.+)$/.exec(t.note || "");
+        if (m) return L("ord_firstmail") + " · " + m[1];
+        return t.order_id ? L("d_order") + " #" + t.order_id : "";
+      }
+
+      function txOrderKind(t) {
+        if (t.kind !== "purchase" && t.kind !== "refund") return "";
+        var o = findOrder(t.order_id);
+        if (o) return o.kind;
+        if (/^(full_info|reset_pw):\d+$/.test(t.note || "")) return "limit";
+        return /^firstmail\s/.test(t.note || "") ? "firstmail" : "";
+      }
+
+      function txTitle(t) {
+        if (t.kind === "purchase" || t.kind === "refund") return txPurpose(t) || L("tx_" + t.kind);
+        return L("tx_" + t.kind);
+      }
+
+      function txItemHtml(t, tappable) {
         var k = TX[t.kind] || TX.admin;
         var plus = t.delta > 0;
-        var note = t.kind === "refund" || t.kind === "admin" ? t.note : "";
-        return '<div class="item"><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
-          '<div class="grow"><div class="item-title ellipsis">' + esc(L("tx_" + t.kind)) + "</div>" +
-          '<div class="item-sub">' + esc(timeAgo(t.created_at)) + (note ? " · " + esc(note) : "") + "</div></div>" +
-          '<div class="item-right"><div class="delta ' + (plus ? "plus" : "minus") + '">' + (plus ? "+" : "−") + esc(num(Math.abs(t.delta))) + "</div>" +
-          '<div class="price-unit">' + esc(som(t.balance_after)) + "</div></div></div>";
+        var topup = t.kind === "topup" ? findTopup(t.topup_id) : null;
+        var sub = esc(t.kind === "topup" || t.kind === "admin" ? L(plus ? "tx_in" : "tx_out") : L("tx_" + t.kind));
+        var okind = txOrderKind(t);
+        if (okind) sub += " · " + esc(L("ord_" + okind));
+        if (topup && topup.provider) sub += " · " + methodHtml(topup.provider);
+        sub += " · " + esc(fmtDate(t.created_at));
+        if ((t.kind === "refund" && t.note && t.note !== "refund") || (t.kind === "admin" && t.note)) {
+          sub += '<br><span style="color:#a5b4fc">' + esc(t.note) + "</span>";
+        }
+        var tag = tappable ? 'button class="item tappable" data-tx="' + esc(t.id) + '"' : 'div class="item"';
+        return "<" + tag + '><div class="item-ico ' + k.tone + '">' + icon(k.icon) + "</div>" +
+          '<div class="grow"><div class="item-title ellipsis">' + esc(txTitle(t)) + "</div>" +
+          '<div class="item-sub">' + sub + "</div></div>" +
+          '<div class="item-right"><div class="delta ' + (plus ? "plus" : "minus") + '" style="font-size:14px">' + (plus ? "+" : "−") + esc(som(Math.abs(t.delta))) + "</div>" +
+          '<div class="price-unit">' + esc(som(t.balance_after)) + "</div></div></" + (tappable ? "button" : "div") + ">";
+      }
+
+      function openTxDetail(t) {
+        var k = TX[t.kind] || TX.admin;
+        var plus = t.delta > 0;
+        var order = findOrder(t.order_id);
+        var topup = t.kind === "topup" ? findTopup(t.topup_id) : null;
+        var rows = payRow(L("d_type"), L("tx_" + t.kind));
+        if (t.kind === "purchase" || t.kind === "refund") {
+          rows += payRow(L("d_for"), txPurpose(t) || "—");
+          if (order) {
+            if (order.kind === "firstmail" && order.delivery && order.delivery.email) rows += payRow(L("fm_email"), order.delivery.email, order.delivery.email);
+            rows += payRowHtml(L("d_status"), '<span class="pill ' + (ORDER_STATUS[order.status] || "gold") + '">' + esc(L("ord_" + order.status)) + "</span>");
+          }
+          if (t.order_id) rows += payRow(L("d_order"), "#" + t.order_id, String(t.order_id));
+          if (t.kind === "refund" && t.note && t.note !== "refund") rows += payRow(L("d_reason"), t.note);
+        } else if (topup) {
+          rows += payRowHtml(L("d_method"), methodHtml(topup.provider)) +
+            (topup.reference ? payRow(L("d_ref"), topup.reference, topup.reference) : "");
+        } else if (t.kind === "admin" && t.note) {
+          rows += payRow(L("d_note"), t.note);
+        }
+        rows += payRow(L("d_amount"), (plus ? "+" : "−") + som(Math.abs(t.delta))) +
+          payRow(L("d_balance_after"), som(t.balance_after)) +
+          payRow(L("d_date"), fmtDate(t.created_at)) +
+          payRow(L("d_tx"), "#" + t.id, String(t.id));
+        var sheet = openSheet(detailHead(k.icon, k.tone, (plus ? "+" : "−") + som(Math.abs(t.delta)),
+          '<span class="pill ' + (plus ? "green" : "red") + '">' + esc(txTitle(t)) + "</span>") +
+          '<div class="paybox">' + rows + "</div>" +
+          (order ? '<button class="btn primary" id="txOrder">' + icon("receipt") + esc(L("open_order")) + "</button>" : "") +
+          '<button class="btn" id="resClose">' + esc(L("close")) + "</button>");
+        bindCopy(sheet);
+        var ob = sheet.querySelector("#txOrder");
+        if (ob) ob.addEventListener("click", function () { openOrderDetail(order); });
+        sheet.querySelector("#resClose").addEventListener("click", closeSheet);
+      }
+
+      // Xarid/to'ldirishdan keyin "To'lovlar" tabi yangilansin.
+      function refreshTransactions() {
+        if (!Array.isArray(state.data.transactions)) return;
+        api("wallet").then(function (result) {
+          if (!result.ok || !Array.isArray(result.transactions)) return;
+          state.data.transactions = result.transactions;
+          if (state.mode === "shop" && currentTab() === "orders" && !state.view) renderOrders();
+        });
       }
 
       function openWalletHistory() {
@@ -2252,6 +2374,7 @@
           if (w) { w.topup = result.topup; w.config = result.config; }
           setBalance(result.balance);
           var list = result.transactions || [];
+          if (Array.isArray(state.data.transactions)) state.data.transactions = list;
           setSheet(sheet, "<h2>" + esc(L("w_history")) + "</h2>" +
             '<div style="margin:-4px 0 14px"><span class="pill green">' + icon("wallet2") + " " + esc(L("w_balance")) + ": " + esc(som(result.balance)) + "</span></div>" +
             (list.length ? list.map(txItemHtml).join("") : '<div class="empty">' + icon("wallet2") + esc(L("no_tx")) + "</div>"));

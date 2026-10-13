@@ -256,6 +256,7 @@ function toPublicTransaction(row) {
     balance_after: Number(row.balance_after) || 0,
     kind: row.kind,
     order_id: row.order_id ? String(row.order_id) : null,
+    topup_id: row.topup_id ? String(row.topup_id) : null,
     note: row.note || "",
     created_at: row.created_at || null,
   };
@@ -437,7 +438,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
   async function listTransactions(userId, limit = WALLET_HISTORY_LIMIT) {
     const params = new URLSearchParams({
       user_id: `eq.${String(userId)}`,
-      select: "id,delta,balance_after,kind,order_id,note,created_at",
+      select: "id,delta,balance_after,kind,order_id,topup_id,note,created_at",
       order: "id.desc",
       limit: String(limit),
     });
