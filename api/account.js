@@ -108,6 +108,9 @@ module.exports = async function handler(req, res) {
       // Shaxsiy kabinet (?view=cabinet)
       case "cabinet":
         return await handleCabinet(res, ctx);
+      // Telegram profil rasmi — kalit bilan kirilganda initData'da photo_url yo'q.
+      case "avatar":
+        return await handleAvatar(res, ctx);
       // Kabinet → Sozlamalar: til (bot bilan umumiy — bot_users.preferred_language).
       case "set_lang":
         return await handleSetLang(res, ctx);
@@ -217,6 +220,64 @@ function publicLink(link) {
 function parseRowId(value) {
   const text = String(value ?? "").trim();
   return /^\d{1,19}$/.test(text) ? text : null;
+}
+
+// Telegram profil rasmi (kabinet sarlavhasi va Sozlamalar). Klaviatura
+// tugmasidan ochilganda initData yo'q, demak photo_url ham yo'q — rasm Bot API
+// orqali olinadi. Fayl havolasida bot tokeni bor, shuning uchun brauzerga
+// havola emas, rasmning o'zi (data URL) beriladi; faqat egasining o'ziga.
+const AVATAR_MAX_BYTES = 200 * 1024;
+
+async function handleAvatar(res, { config, user }) {
+  try {
+    return json(res, 200, { ok: true, photo: await loadTelegramAvatar(config, user.id) });
+  } catch (error) {
+    console.error("[ACCOUNT_APP_AVATAR]", error?.message);
+    return json(res, 200, { ok: true, photo: null });
+  }
+}
+
+async function telegramFetch(url, init) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function telegramBotApi(config, method, params) {
+  const response = await telegramFetch(`https://api.telegram.org/bot${config.botToken}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await response.json().catch(() => null);
+  return data && data.ok ? data.result : null;
+}
+
+async function loadTelegramAvatar(config, userId) {
+  if (!config.botToken) return null;
+
+  const photos = await telegramBotApi(config, "getUserProfilePhotos", { user_id: Number(userId), limit: 1 });
+  const sizes = Array.isArray(photos?.photos?.[0]) ? photos.photos[0] : [];
+  if (!sizes.length) return null;
+
+  // Eng kichigi 160 px dan katta bo'lsa yetadi (sarlavhada 36 px).
+  const sorted = sizes.slice().sort((a, b) => (a.width || 0) - (b.width || 0));
+  const size = sorted.find((item) => (item.width || 0) >= 160) || sorted[sorted.length - 1];
+  const file = await telegramBotApi(config, "getFile", { file_id: size.file_id });
+  if (!file?.file_path || Number(file.file_size) > AVATAR_MAX_BYTES) return null;
+
+  const response = await telegramFetch(`https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`);
+  if (!response.ok) return null;
+
+  const image = Buffer.from(await response.arrayBuffer());
+  if (!image.length || image.length > AVATAR_MAX_BYTES) return null;
+
+  const type = image[0] === 0x89 ? "image/png" : image.subarray(0, 4).toString() === "RIFF" ? "image/webp" : "image/jpeg";
+  return `data:${type};base64,${image.toString("base64")}`;
 }
 
 // Kalit bilan kirilganda initData'dagi ism/username yo'q — bot_users dan.

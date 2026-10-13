@@ -971,3 +971,51 @@ test("cabinet: reply-keyboard launch token works without initData; expired and f
     backend.restore();
   }
 });
+
+test("cabinet: avatar comes from the Bot API as a data URL (photo_url is missing without initData)", async () => {
+  const launch = require("../api/_cabinet-launch.js");
+  const backend = installCabinetBackend();
+  const backendFetch = global.fetch;
+  const avatarCalls = [];
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+  let hasPhoto = true;
+
+  global.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.endsWith("/getUserProfilePhotos")) {
+      avatarCalls.push(JSON.parse(options.body));
+      return jsonResponse({ ok: true, result: { total_count: hasPhoto ? 1 : 0, photos: hasPhoto ? [[
+        { file_id: "big", width: 640, height: 640 },
+        { file_id: "small", width: 160, height: 160 },
+      ]] : [] } });
+    }
+    if (href.endsWith("/getFile")) {
+      assert.equal(JSON.parse(options.body).file_id, "small", "smallest size that is >= 160 px");
+      return jsonResponse({ ok: true, result: { file_id: "small", file_path: "profile_photos/file_1.jpg", file_size: jpeg.length } });
+    }
+    if (href.startsWith("https://api.telegram.org/file/bot")) {
+      return new Response(jpeg, { status: 200 });
+    }
+    return backendFetch(url, options);
+  };
+
+  try {
+    const app = loadAccountApp();
+    const res = createRes();
+    await app({ method: "POST", headers: {}, query: {}, body: { action: "avatar", launch: launch.createCabinetLaunchToken(777, BOT_TOKEN) } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.photo, `data:image/jpeg;base64,${jpeg.toString("base64")}`);
+    assert.equal(avatarCalls[0].user_id, 777, "only the signed-in user's photo");
+    assert.ok(!JSON.stringify(res.body).includes(BOT_TOKEN), "bot token never reaches the browser");
+
+    hasPhoto = false;
+    const none = await call(app, USER, "avatar");
+    assert.deepEqual(none.body, { ok: true, photo: null });
+
+    const anon = createRes();
+    await app({ method: "POST", headers: {}, query: {}, body: { action: "avatar" } }, anon);
+    assert.equal(anon.statusCode, 401);
+  } finally {
+    backend.restore();
+  }
+});

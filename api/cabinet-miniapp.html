@@ -1342,11 +1342,49 @@
         return chars.length > max ? chars.slice(0, max).join("").trim() + "…" : chars.join("");
       }
 
+      // initData'dagi https havola yoki serverdan olingan rasm (data URL, loadAvatar).
+      function avatarSrc(u) {
+        var src = String((u && u.photo_url) || "");
+        return /^https:\/\//.test(src) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(src) ? src : "";
+      }
+
+      // Klaviatura tugmasidan ochilganda initData yo'q, photo_url ham yo'q —
+      // rasm serverdan (Bot API) bir marta olinadi va sessiya davomida saqlanadi.
+      function loadAvatar() {
+        var u = state.data.user;
+        if (avatarSrc(u)) return;
+        var key = "cabinet_ava_" + u.id;
+        var cached = null;
+        try { cached = sessionStorage.getItem(key); } catch (e) { /* noop */ }
+        if (cached !== null) { applyAvatar(cached); return; }
+        api("avatar").then(function (result) {
+          var photo = result && result.ok && result.photo ? String(result.photo) : "";
+          try { sessionStorage.setItem(key, photo); } catch (e) { /* to'lgan bo'lsa ham mayli */ }
+          applyAvatar(photo);
+        });
+      }
+
+      // Faqat rasm elementi almashtiriladi — sarlavha qayta chizilmaydi.
+      function applyAvatar(photo) {
+        if (!photo) return;
+        state.data.user.photo_url = photo;
+        if (!avatarSrc(state.data.user)) return;
+        ["#head .avatar", ".prof .prof-ava"].forEach(function (selector) {
+          var el = document.querySelector(selector);
+          if (!el || el.tagName === "IMG") return;
+          var img = document.createElement("img");
+          img.className = el.className;
+          img.alt = "";
+          img.src = photo;
+          el.replaceWith(img);
+        });
+      }
+
       function headerHtml() {
         var u = state.data.user;
         var name = clipText([u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || u.id, 20);
-        var avatar = /^https:\/\//.test(u.photo_url || "")
-          ? '<img class="avatar" src="' + esc(u.photo_url) + '" alt="">'
+        var avatar = avatarSrc(u)
+          ? '<img class="avatar" src="' + esc(avatarSrc(u)) + '" alt="">'
           : '<div class="avatar">' + esc(String(name).trim().charAt(0).toUpperCase() || "?") + "</div>";
         return '<div class="head"><button class="head-prof" id="headProf" aria-label="' + esc(L("set_open")) + '">' + avatar +
           '<div class="grow"><div class="head-name ellipsis">' + esc(name) + "</div>" +
@@ -2615,8 +2653,8 @@
         var d = state.data;
         var u = d.user;
         var name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || String(u.id);
-        var ava = /^https:\/\//.test(u.photo_url || "")
-          ? '<img class="prof-ava" src="' + esc(u.photo_url) + '" alt="">'
+        var ava = avatarSrc(u)
+          ? '<img class="prof-ava" src="' + esc(avatarSrc(u)) + '" alt="">'
           : '<div class="prof-ava">' + esc(Array.from(String(name).trim())[0] || "?").toUpperCase() + "</div>";
         var groups = d.groups || [];
         var html = '<div class="prof">' + ava + '<div class="prof-name">' + esc(name) + "</div>" +
@@ -2786,6 +2824,7 @@
           renderHeader();
           renderNav();
           render();
+          loadAvatar();
           celebrateFreshTopups();
           if (pendingOpen === "topup") {
             pendingOpen = "";
