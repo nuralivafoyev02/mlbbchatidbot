@@ -35,8 +35,10 @@
       --glass: rgba(255, 255, 255, 0.03);
       /* Fon rasmi ustida turadigan kartalar — to'qroq va kuchliroq xiralashtirilgan,
          shunda orqadagi logo kontent bilan aralashmaydi. */
-      --surface: rgba(13, 18, 33, 0.88);
-      --surface-blur: blur(28px) saturate(150%);
+      --surface: rgba(13, 18, 33, 0.92);
+      /* backdrop-filter o'chirilgan: har bir karta/qator uchun alohida GPU blur
+         telefonni qizdirardi (ayniqsa ro'yxatlar scroll qilinganda). */
+      --surface-blur: none;
       --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       /* suzuvchi nav balandligi + pastki bo'shliq */
       --nav-space: calc(78px + var(--safe-bottom, 0px));
@@ -85,15 +87,13 @@
     .bg-blob {
       position: absolute;
       border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.08;
-      animation: blobFloat 20s ease-in-out infinite alternate
+      opacity: 0.1
     }
 
     .bg-blob:nth-child(1) {
       width: 400px;
       height: 400px;
-      background: var(--accent);
+      background: radial-gradient(closest-side, var(--accent), transparent);
       top: -100px;
       left: -100px;
       animation-delay: 0s
@@ -102,7 +102,7 @@
     .bg-blob:nth-child(2) {
       width: 350px;
       height: 350px;
-      background: var(--pink);
+      background: radial-gradient(closest-side, var(--pink), transparent);
       bottom: -80px;
       right: -80px;
       animation-delay: -7s
@@ -111,29 +111,12 @@
     .bg-blob:nth-child(3) {
       width: 300px;
       height: 300px;
-      background: var(--blue);
+      background: radial-gradient(closest-side, var(--blue), transparent);
       top: 40%;
       left: 50%;
       animation-delay: -14s
     }
 
-    @keyframes blobFloat {
-      0% {
-        transform: translate(0, 0) scale(1)
-      }
-
-      33% {
-        transform: translate(30px, -40px) scale(1.05)
-      }
-
-      66% {
-        transform: translate(-20px, 30px) scale(0.95)
-      }
-
-      100% {
-        transform: translate(10px, -10px) scale(1.02)
-      }
-    }
 
     /* Login */
     .login-screen {
@@ -481,7 +464,7 @@
     }
 
     .nav-feat i {
-      animation: featGlow 2.4s ease-in-out infinite
+      animation: featGlow 2.4s ease-in-out 3
     }
 
     @keyframes featGlow {
@@ -608,7 +591,7 @@
       box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.15)
     }
 
-    .pay-dot.ok { background: var(--green); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18); animation: payPulse 2.4s ease-in-out infinite }
+    .pay-dot.ok { background: var(--green); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18); animation: payPulse 2.4s ease-in-out 3 }
     .pay-dot.warn { background: var(--yellow); box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18) }
     .pay-dot.err { background: var(--red); box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2) }
 
@@ -4017,6 +4000,8 @@
         ready.then(function () {
           var boot = document.getElementById("bootSpinner");
           if (boot) boot.classList.add("hide");
+          // opacity:0 bo'lsa ham cheksiz animatsiyalar GPU'da aylanib turaveradi — DOMdan olib tashlaymiz.
+          setTimeout(function () { if (boot) boot.remove(); }, 400);
         });
       }
 

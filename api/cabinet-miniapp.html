@@ -15,9 +15,9 @@
     :root {
       --bg: #0a0e1a;
       /* Fon rasmi ustida o'qilishi uchun biroz to'qroq */
-      --surface: rgba(16, 21, 38, 0.82);
-      /* Kartalar ortidagi fon rasmi kontentga aralashmasin */
-      --surface-blur: blur(24px) saturate(150%);
+      --surface: rgba(16, 21, 38, 0.9);
+      /* backdrop-filter o'chirilgan: har bir kartadagi GPU blur telefonni qizdirardi */
+      --surface-blur: none;
       --surface2: rgba(255, 255, 255, 0.07);
       --border: rgba(255, 255, 255, 0.08);
       --text: #e8ecf5;
@@ -57,10 +57,9 @@
         url("?asset=bg") center / cover no-repeat,
         var(--bg);
     }
-    .bg-blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .1; animation: blobFloat 20s ease-in-out infinite alternate; }
-    .bg-blob:nth-child(1) { width: 380px; height: 380px; background: var(--accent); top: -110px; left: -110px; }
-    .bg-blob:nth-child(2) { width: 320px; height: 320px; background: var(--pink); bottom: -90px; right: -90px; animation-delay: -7s; }
-    @keyframes blobFloat { 0% { transform: translate(0, 0) scale(1) } 50% { transform: translate(30px, -30px) scale(1.06) } 100% { transform: translate(-20px, 20px) scale(.96) } }
+    .bg-blob { position: absolute; border-radius: 50%; opacity: .12; }
+    .bg-blob:nth-child(1) { width: 380px; height: 380px; background: radial-gradient(closest-side, var(--accent), transparent); top: -110px; left: -110px; }
+    .bg-blob:nth-child(2) { width: 320px; height: 320px; background: radial-gradient(closest-side, var(--pink), transparent); bottom: -90px; right: -90px; }
 
     #head, #app { transition: opacity .25s; max-width: 560px; margin: 0 auto; }
     html.tg-shell-pending #head, html.tg-shell-pending #app { opacity: 0; }
@@ -105,7 +104,7 @@
     }
     .bal-btn::after {
       content: ""; position: absolute; inset: -3px; border-radius: 15px; pointer-events: none;
-      border: 1.5px solid rgba(16, 185, 129, .45); animation: pulseRing 2.4s ease-out infinite;
+      border: 1.5px solid rgba(16, 185, 129, .45); animation: pulseRing 2.4s ease-out 3;
     }
     .bal-btn:active { transform: scale(.94); }
     .bal-btn .bal-ico { width: 26px; height: 26px; flex: none; border-radius: 9px; display: grid; place-items: center; font-size: 14px; background: rgba(255, 255, 255, .18); }
@@ -546,9 +545,9 @@
     }
     .dock-side.to-shop::before {
       content: ""; position: absolute; inset: -3px; border-radius: 29px; pointer-events: none;
-      border: 1.5px solid rgba(16, 185, 129, .5); animation: pulseRing 2.4s ease-out infinite;
+      border: 1.5px solid rgba(16, 185, 129, .5); animation: pulseRing 2.4s ease-out 3;
     }
-    .dock-side.to-shop .bi { animation: bagSwing 3.2s ease-in-out infinite; transform-origin: 50% 10%; }
+    .dock-side.to-shop .bi { animation: bagSwing 3.2s ease-in-out 3; transform-origin: 50% 10%; }
     .dock-side.to-home {
       background: rgba(22, 28, 48, .74); border: 1px solid rgba(255, 255, 255, .10);
       -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
@@ -588,7 +587,7 @@
     .soon .big {
       width: 84px; height: 84px; border-radius: 28px; display: grid; place-items: center; font-size: 38px; color: #fff; margin-bottom: 18px;
       background: linear-gradient(135deg, var(--gold), var(--pink)); box-shadow: 0 14px 36px rgba(236, 72, 153, .35);
-      animation: floatY 3s ease-in-out infinite;
+      animation: floatY 3s ease-in-out 4;
     }
     .soon h2 {
       font-size: 30px; font-weight: 800; letter-spacing: -.01em;
