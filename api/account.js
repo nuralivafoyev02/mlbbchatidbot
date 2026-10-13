@@ -8,6 +8,8 @@
 //      (kalitlar admin panel → Feat yoki env'dan).
 //
 // Autentifikatsiya: Telegram WebApp initData imzosi (TELEGRAM_BOT_TOKEN).
+// Reply klaviaturadagi "💼 Shaxsiy kabinet" tugmasidan ochilganda initData
+// bo'sh — o'rniga bot bergan imzolangan kalit (body.launch, api/_cabinet-launch.js).
 // Arena JWT faqat serverda ochiladi (user_accounts.ml_token) va hech qachon
 // brauzerga yuborilmaydi; har bir so'rov rowId bo'yicha egasiga tekshiriladi
 // (Supabase RPC'lar user_id + row id juftligi bilan ishlaydi).
@@ -30,6 +32,7 @@ const {
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
+const { verifyCabinetLaunchToken } = require("./_cabinet-launch.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60;
@@ -68,11 +71,19 @@ module.exports = async function handler(req, res) {
       return await handleHamyonCallback(req, res, config);
     }
     const body = parseBody(req.body);
-    const auth = arena.verifyTelegramInitData(
+    let auth = arena.verifyTelegramInitData(
       body.initData || req.headers?.["x-telegram-init-data"],
       config.botToken,
       { maxAgeSec: INIT_DATA_MAX_AGE_SEC }
     );
+
+    if (!auth.ok && body.launch) {
+      const launch = verifyCabinetLaunchToken(body.launch, config.botToken);
+      if (!launch.ok) {
+        return json(res, 401, { ok: false, error: launch.error === "expired" ? "launch_expired" : "unauthorized" });
+      }
+      auth = { ok: true, user: await loadLaunchUser(config, launch.userId) };
+    }
 
     if (!auth.ok) {
       return json(res, 401, { ok: false, error: "unauthorized" });
@@ -206,6 +217,30 @@ function publicLink(link) {
 function parseRowId(value) {
   const text = String(value ?? "").trim();
   return /^\d{1,19}$/.test(text) ? text : null;
+}
+
+// Kalit bilan kirilganda initData'dagi ism/username yo'q — bot_users dan.
+async function loadLaunchUser(config, userId) {
+  try {
+    const rows = await supabaseRequest(
+      config,
+      `/bot_users?user_id=eq.${encodeURIComponent(userId)}&select=username,first_name,last_name,language_code&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row) {
+      return {
+        id: userId,
+        username: row.username || undefined,
+        first_name: row.first_name || "",
+        last_name: row.last_name || "",
+        language_code: row.language_code || undefined,
+      };
+    }
+  } catch (error) {
+    console.error("[ACCOUNT_APP_LAUNCH_USER]", error?.message);
+  }
+
+  return { id: userId };
 }
 
 async function loadPreferredLanguage(config, user) {

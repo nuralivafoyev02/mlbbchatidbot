@@ -259,7 +259,9 @@ test("shop: Do'kon mode disables ID checks and lists firstmails with sold ones s
     const welcome = telegramCalls.find((c) => c.method === "sendMessage" && /Do'kon/.test(c.payload.text));
     assert.ok(welcome, "shop welcome should be sent");
     const welcomeButtons = welcome.payload.reply_markup.keyboard.flat().map((b) => b.text);
-    assert.deepEqual(welcomeButtons, ["📦 Limitlar", "📧 Firstmail", "⬅️ Orqaga"]);
+    // Tugma emojisi premium ikonkaga o'tadi (api/_tg-buttons.js).
+    assert.deepEqual(welcomeButtons, ["Limitlar", "Firstmail", "Orqaga"]);
+    assert.ok(welcome.payload.reply_markup.keyboard.flat().every((b) => /^\d+$/.test(b.icon_custom_emoji_id)));
 
     // 2) Shop rejimida ID + server yuborilsa tekshiruv ishlamaydi.
     telegramCalls.length = 0;
@@ -322,7 +324,7 @@ test("shop: Do'kon mode disables ID checks and lists firstmails with sold ones s
     telegramCalls.length = 0;
     await send(bot, message(9106, "⬅️ Orqaga"));
     const back = telegramCalls.find((c) => c.method === "sendMessage");
-    assert.match(JSON.stringify(back.payload.reply_markup), /🔎 Server aniqlash/);
+    assert.match(JSON.stringify(back.payload.reply_markup), /"text":"Server aniqlash"/);
 
     await send(bot, message(9107, "1289050 10050"));
     assert.ok(externalCalls.length > 0, "server check should run again after leaving the shop");
@@ -365,7 +367,7 @@ test("shop: slash commands leave the shop mode", async () => {
     await bot(req(9202, "/start"), createRes());
 
     const start = telegramCalls.find((c) => c.method === "sendMessage");
-    assert.match(JSON.stringify(start.payload.reply_markup), /🔎 Server aniqlash/);
+    assert.match(JSON.stringify(start.payload.reply_markup), /"text":"Server aniqlash"/);
     assert.equal(global.__MLBB_BOT_STATS__.userModes.get("7700200"), undefined);
   } finally {
     global.fetch = originalFetch;

@@ -41,6 +41,20 @@
     "🏠": "5195140682590722632",
     "💳": "6019455416201646359"
   },
+  "_buttonIcons_comment": "Faqat tugmalar uchun (icon_custom_emoji_id, Bot API 9.4): tugma matni shu emoji bilan boshlansa — premium ikonka qo'yiladi va emoji matndan olinadi (api/_tg-buttons.js). Bu yerda yo'q emojilar 'premium' xaritasidan olinadi. ID'lar fearpin-node botidan.",
+  "buttonIcons": {
+    "⬅️": "5830060857530257978",
+    "➡️": "5886334622849044906",
+    "💰": "5987880246865565644",
+    "🛒": "5983399041197675256",
+    "📧": "5967280668885913944",
+    "⚙️": "5258096772776991776",
+    "🎛️": "5258096772776991776",
+    "🔄": "5244758760429213978",
+    "🗑": "5841541824803509441",
+    "👁": "5960714428394507968",
+    "🔑": "6005570495603282482"
+  },
   "bindProviders": {
     "facebook": {
       "emoji": "📘",

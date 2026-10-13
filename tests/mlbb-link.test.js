@@ -347,7 +347,10 @@ test("bot: adding an account asks 'Mobile Legendsga ham ulaysizmi?' with Ha / Yo
     const ask = net.telegram.find((c) => c.method === "sendMessage" && /Mobile Legends'ga ham ulaysizmi/.test(c.payload.text || ""));
     assert.ok(ask, "ask post expected");
     const buttons = buttonsOf(ask);
-    assert.deepEqual(buttons.map((b) => b.text), ["✅ Ha", "❌ Yo'q"]);
+    // Emoji premium ikonkaga o'tadi, rang emojidan: ✅ — yashil, ❌ — qizil.
+    assert.deepEqual(buttons.map((b) => b.text), ["Ha", "Yo'q"]);
+    assert.deepEqual(buttons.map((b) => b.style), ["success", "danger"]);
+    assert.ok(buttons.every((b) => /^\d+$/.test(b.icon_custom_emoji_id)));
     assert.equal(buttons[0].callback_data, `ml_link:${supabase.rows[0].id}`);
     assert.equal(buttons[1].callback_data, "ml_link_no");
     assert.equal(net.arenaCalls.length, 0, "nothing is sent to the game before the user agrees");

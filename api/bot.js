@@ -145,6 +145,8 @@ const shop = require("./_shop.js");
 const arena = require("./_mlbb-arena.js");
 const quotaLog = require("./_quota-log.js");
 const limitPrices = require("./_limit-prices.js");
+const tgButtons = require("./_tg-buttons.js");
+const { withCabinetLaunchTokens } = require("./_cabinet-launch.js");
 const { buildWalletSaleText } = require("./_shop-notify.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
@@ -1736,7 +1738,7 @@ function shopKeyboard(user = {}) {
 
   return {
     keyboard: [
-      [{ text: t("btn_shop_limits", lang) }, { text: t("btn_shop_firstmail", lang) }],
+      [{ text: t("btn_shop_limits", lang), style: "success" }, { text: t("btn_shop_firstmail", lang), style: "success" }],
       [{ text: t("btn_shop_back", lang) }],
     ],
     resize_keyboard: true,
@@ -1908,7 +1910,7 @@ function buildShopFirstmailDetail(item, lang) {
     }),
     replyMarkup: {
       inline_keyboard: [
-        [{ text: t("shop_fm_buy_btn", lang), callback_data: `shop_fm_buy:${item.id}` }],
+        [{ text: t("shop_fm_buy_btn", lang), callback_data: `shop_fm_buy:${item.id}`, style: "success" }],
         [{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }],
       ],
     },
@@ -2203,7 +2205,7 @@ async function requestShopFirstmailManually(chatId, user, item, messageId = null
   const rows = [];
 
   if (contactUrl) {
-    rows.push([{ text: t("shop_fm_contact_btn", lang), url: contactUrl }]);
+    rows.push([{ text: t("shop_fm_contact_btn", lang), url: contactUrl, style: "primary" }]);
   }
 
   rows.push([{ text: t("shop_fm_back_btn", lang), callback_data: "shop_fm_list:0" }]);
@@ -2235,7 +2237,7 @@ function shopLimitBackMarkup(lang) {
 
 function shopContactRow(lang) {
   const contactUrl = getShopContactUrl();
-  return contactUrl ? [[{ text: t("shop_fm_contact_btn", lang), url: contactUrl }]] : [];
+  return contactUrl ? [[{ text: t("shop_fm_contact_btn", lang), url: contactUrl, style: "primary" }]] : [];
 }
 
 async function loadShopLimitPrices() {
@@ -7371,9 +7373,10 @@ function getBroadcastResultText(result = {}, lang) {
 // yuborilmaydi (sendMessage → remove_keyboard), shuning uchun web_app xavfsiz.
 function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
+  // Rang (style): asosiy funksiyalar — ko'k, amallar — yashil, sozlamalar — oddiy.
   const keyboard = [
-    [{ text: t("btn_check", lang) }, { text: t("btn_full_info", lang) }],
-    [{ text: t("btn_reset_pw", lang) }, { text: t("btn_shop", lang) }],
+    [{ text: t("btn_check", lang), style: "primary" }, { text: t("btn_full_info", lang), style: "primary" }],
+    [{ text: t("btn_reset_pw", lang), style: "success" }, { text: t("btn_shop", lang), style: "success" }],
     [{ text: t("btn_my_profile", lang) }, { text: t("btn_language", lang) }],
   ];
 
@@ -7384,7 +7387,7 @@ function mainKeyboard(user = {}) {
     );
   }
 
-  keyboard.push([{ text: t("btn_cabinet", lang), web_app: { url: CABINET_MINIAPP_URL } }]);
+  keyboard.push([{ text: t("btn_cabinet", lang), style: "primary", web_app: { url: CABINET_MINIAPP_URL } }]);
 
   return {
     keyboard,
@@ -7713,7 +7716,43 @@ async function answerCallbackQuery(callbackQueryId) {
   });
 }
 
+// Telegram bezakli tugmalarni (icon_custom_emoji_id / style) rad etsa — shu
+// isolate'da bezak o'chiriladi va xabar oddiy tugmalar bilan qayta yuboriladi.
+let buttonDecorationEnabled = true;
+
 async function telegram(method, payload) {
+  const markup = payload?.reply_markup;
+
+  if (!tgButtons.hasButtons(markup)) {
+    return callTelegram(method, payload);
+  }
+
+  // Reply klaviaturadagi kabinet tugmasi initData olmaydi — chat egasining kaliti.
+  const base = withCabinetLaunchTokens(markup, payload.chat_id, {
+    botToken: TELEGRAM_BOT_TOKEN,
+    cabinetUrl: CABINET_MINIAPP_URL,
+  });
+  const plain = { ...payload, reply_markup: tgButtons.plainReplyMarkup(base) };
+
+  if (!buttonDecorationEnabled) {
+    return callTelegram(method, plain);
+  }
+
+  try {
+    return await callTelegram(method, { ...payload, reply_markup: tgButtons.decorateReplyMarkup(base) });
+  } catch (error) {
+    if (!tgButtons.isButtonDecorationError(error.message)) {
+      throw error;
+    }
+
+    const result = await callTelegram(method, plain);
+    buttonDecorationEnabled = false;
+    recordError("button_decoration_rejected", String(error.message).slice(0, 300), { method });
+    return result;
+  }
+}
+
+async function callTelegram(method, payload) {
   const response = await fetchWithTimeout(`${TG_API}/${method}`, {
     method: "POST",
     headers: {
@@ -7978,12 +8017,16 @@ const LEGACY_BUTTON_LABELS = Object.freeze({
   btn_shop_firstmail: ["📧 Firstmail sotib olish", "📧 Купить Firstmail", "📧 Buy Firstmail"],
 });
 
+// Ikonkali reply tugma bosilganda emojisiz matn keladi ("🔎 Server aniqlash" →
+// "Server aniqlash") — ikkala ko'rinish ham tanilsin (api/_tg-buttons.js).
 function isTranslatedKeyboardButton(text, translationKey) {
   const normalized = String(text || "").trim();
-  for (const lang of SUPPORTED_LANGS) {
-    if (t(translationKey, lang) === normalized) return true;
-  }
-  return (LEGACY_BUTTON_LABELS[translationKey] || []).includes(normalized);
+  if (!normalized) return false;
+  const labels = [
+    ...SUPPORTED_LANGS.map((lang) => t(translationKey, lang)),
+    ...(LEGACY_BUTTON_LABELS[translationKey] || []),
+  ];
+  return labels.some((label) => tgButtons.buttonLabelVariants(label).includes(normalized));
 }
 
 function normalizeBindWaitMessage(value = {}) {

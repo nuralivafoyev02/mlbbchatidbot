@@ -398,6 +398,10 @@
 
       var tg = window.Telegram && window.Telegram.WebApp;
       var API_URL = location.pathname;
+      // Kabinet reply klaviatura tugmasidan ochilgan bo'lsa initData yo'q — kabinet
+      // saqlagan imzolangan kalit bilan kiramiz (api/_cabinet-launch.js).
+      var launchToken = "";
+      try { launchToken = sessionStorage.getItem("cabinet_lt") || ""; } catch (e) { /* noop */ }
 
       var I18N = {
         uz: {
@@ -680,7 +684,7 @@
       }
 
       function serverApi(action, payload) {
-        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", lang: state.lang, rowId: state.rowId }, payload || {});
+        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", launch: launchToken, lang: state.lang, rowId: state.rowId }, payload || {});
         return fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1300,7 +1304,7 @@
         showLoader();
         app.innerHTML = '<div class="skeleton" style="height:150px"></div>' + renderSkeleton(4);
 
-        if (!tg || !tg.initData) {
+        if (!tg || (!tg.initData && !launchToken)) {
           renderState("phone", L("not_telegram_title"), L("not_telegram_text"), []);
           return;
         }

@@ -939,3 +939,35 @@ test("cabinet: background image is served from the account function", async () =
   assert.match(res.headers["Content-Type"], /^image\//);
   assert.ok(Buffer.isBuffer(res.body) && res.body.length > 1000);
 });
+
+test("cabinet: reply-keyboard launch token works without initData; expired and forged ones are refused", async () => {
+  const launch = require("../api/_cabinet-launch.js");
+  const backend = installCabinetBackend();
+  try {
+    const app = loadAccountApp();
+    const send = async (body) => {
+      const res = createRes();
+      await app({ method: "POST", headers: {}, query: {}, body }, res);
+      return res;
+    };
+
+    // Telegram reply tugmasidan ochilganda initData bo'sh — bot bergan kalit bilan kiriladi.
+    const ok = await send({ action: "cabinet", initData: "", launch: launch.createCabinetLaunchToken(777, BOT_TOKEN) });
+    assert.equal(ok.statusCode, 200);
+    assert.equal(ok.body.user.id, "777");
+
+    const expired = await send({
+      action: "cabinet",
+      launch: launch.createCabinetLaunchToken(777, BOT_TOKEN, { now: Date.now() - 40 * 24 * 3600 * 1000 }),
+    });
+    assert.equal(expired.statusCode, 401);
+    assert.equal(expired.body.error, "launch_expired");
+
+    const forged = launch.createCabinetLaunchToken(777, "999:other-bot-token");
+    assert.equal((await send({ action: "cabinet", launch: forged })).body.error, "unauthorized");
+    const swapped = launch.createCabinetLaunchToken(777, BOT_TOKEN).replace(/^777\./, "778.");
+    assert.equal((await send({ action: "cabinet", launch: swapped })).body.error, "unauthorized");
+  } finally {
+    backend.restore();
+  }
+});

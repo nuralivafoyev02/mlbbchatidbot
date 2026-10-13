@@ -675,6 +675,24 @@
       var pendingOpen = (function () {
         try { return new URLSearchParams(location.search).get("open") || ""; } catch (e) { return ""; }
       })();
+      // Reply klaviaturadagi "💼 Shaxsiy kabinet" tugmasidan ochilganda Telegram
+      // initData bermaydi — bot URL'ga shu chat egasi uchun imzolangan kalit
+      // (?lt=) qo'shadi (api/_cabinet-launch.js). Kalit sessionStorage'da turadi
+      // ("Mening akkauntim"ga o'tib qaytganda ham kerak) va manzildan olinadi.
+      var launchToken = (function () {
+        try {
+          var params = new URLSearchParams(location.search);
+          var token = params.get("lt") || "";
+          if (token) {
+            sessionStorage.setItem("cabinet_lt", token);
+            params.delete("lt");
+            var qs = params.toString();
+            history.replaceState(history.state, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+            return token;
+          }
+          return sessionStorage.getItem("cabinet_lt") || "";
+        } catch (e) { return ""; }
+      })();
 
       var I18N = {
         uz: {
@@ -686,6 +704,7 @@
           title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_history: "Tarix", tab_shop: "Do'kon",
           not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «💼 Shaxsiy kabinet» tugmasi orqali ochiladi.",
           error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
+          launch_expired_title: "Tugma eskirgan", launch_expired_text: "Botga /start yuboring va «💼 Shaxsiy kabinet» tugmasini qayta bosing.",
           limits: "Limitlarim", lim_full_info: "To'liq ma'lumot", lim_reset_pw: "Parolni tiklash",
           unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Balansdan — limit darhol qo'shiladi",
           st_accounts: "Akkaunt", st_viewers: "Tekshirishgan", st_used: "Ishlatilgan",
@@ -773,6 +792,7 @@
           title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
           not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте кнопкой «💼 Личный кабинет».",
           error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
+          launch_expired_title: "Кнопка устарела", launch_expired_text: "Отправьте боту /start и снова нажмите «💼 Личный кабинет».",
           limits: "Мои лимиты", lim_full_info: "Полная инфо", lim_reset_pw: "Сброс пароля",
           unlimited: "Безлимит", buy_more: "Купить дополнительные лимиты", buy_more_sub: "С баланса — лимит зачислится сразу",
           st_accounts: "Аккаунты", st_viewers: "Проверяли", st_used: "Использовано",
@@ -860,6 +880,7 @@
           title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
           not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot with the “💼 Personal cabinet” button.",
           error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
+          launch_expired_title: "Button expired", launch_expired_text: "Send /start to the bot and tap “💼 Personal cabinet” again.",
           limits: "My limits", lim_full_info: "Full info", lim_reset_pw: "Password reset",
           unlimited: "Unlimited", buy_more: "Buy extra limits", buy_more_sub: "From your balance — added instantly",
           st_accounts: "Accounts", st_viewers: "Checked by", st_used: "Used",
@@ -1074,7 +1095,7 @@
       }
 
       function api(action, payload) {
-        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", lang: state.lang }, payload || {});
+        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", launch: launchToken, lang: state.lang }, payload || {});
         return fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2740,7 +2761,7 @@
         document.getElementById("head").innerHTML = "";
         app.innerHTML = "";
 
-        if (!tg || !tg.initData) {
+        if (!tg || (!tg.initData && !launchToken)) {
           hideLoader();
           renderState("phone", L("not_telegram_title"), L("not_telegram_text"));
           return;
@@ -2749,6 +2770,10 @@
         showLoader();
         api("cabinet").then(function (result) {
           hideLoader();
+          if (result.error === "launch_expired") {
+            renderState("clock-history", L("launch_expired_title"), L("launch_expired_text"));
+            return;
+          }
           if (!result.ok) {
             renderState("exclamation-triangle", L("error_title"), L("error_text"), { label: L("retry"), onClick: boot });
             return;
