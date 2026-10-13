@@ -621,6 +621,12 @@ test("shop: firstmail is paid from the balance inside the bot — confirm, then 
     assert.match(paid.payload.text, /paid\.box@firstmail\.ltd/);
     assert.match(paid.payload.text, /pw-777/);
     assert.match(paid.payload.text, /Qoldiq: <b>5 000 so'm<\/b>/, "bot ichida ham qolgan balans");
+    const groupSale = telegramCalls.find((c) => c.method === "sendMessage" && String(c.payload.chat_id) === "-1003832186200");
+    assert.ok(groupSale, "pochta xaridi asosiy guruhga boradi");
+    assert.match(groupSale.payload.text, /#sotuv #firstmail/);
+    assert.match(groupSale.payload.text, /Buyer<\/a> <b>paid\.box@firstmail\.ltd<\/b> ni sotib oldi — 15 000 so'm\./);
+    assert.ok(!groupSale.payload.text.includes("pw-777"), "parol guruhga chiqmaydi");
+    assert.equal(groupSale.payload.reply_markup.inline_keyboard[0][0].url, "tg://user?id=7700400");
 
     // Ikkinchi bosish — pochta endi yo'q, pul yechilmaydi.
     telegramCalls.length = 0;
@@ -734,6 +740,10 @@ test("shop: Limitlar posts the packages and sells them from the balance", async 
     assert.match(paid.payload.text, /<b>13<\/b> ta/);
     assert.match(paid.payload.text, /Qoldiq: <b>5 000 so'm<\/b>/);
     assert.deepEqual(rpcCalls, [{ p_user_id: String(userId), p_package_id: fullInfo.id }]);
+    const groupSale = telegramCalls.find((c) => c.method === "sendMessage" && String(c.payload.chat_id) === "-1003832186200");
+    assert.ok(groupSale, "limit xaridi asosiy guruhga boradi");
+    assert.match(groupSale.payload.text, /#sotuv #limit/);
+    assert.match(groupSale.payload.text, /To'liq ma'lumot.*limitidan <b>10 ta<\/b> sotib oldi — 15 000 so'm\./);
 
     // 4) Balans yetmasa — to'lash o'rniga to'ldirish tugmasi.
     telegramCalls.length = 0;
@@ -746,6 +756,51 @@ test("shop: Limitlar posts the packages and sells them from the balance", async 
     telegramCalls.length = 0;
     await tap(bot, "shop_lp:zzzzzz", 9505);
     assert.match(telegramCalls.find((c) => c.method === "editMessageText").payload.text, /sotuvda yo'q/);
+  } finally {
+    global.fetch = originalFetch;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[require.resolve("../api/bot.js")];
+  }
+});
+
+test("shop: sale notice reaches the main group without the profile button when the buyer's privacy blocks it", async () => {
+  const { createShopNotifier, buildMainGroupSaleText } = require("../api/_shop-notify.js");
+  const privacyError = { ok: false, error_code: 400, description: "Bad Request: BUTTON_USER_PRIVACY_RESTRICTED" };
+  const fakeTelegram = (sent) => async (url, options = {}) => {
+    const payload = JSON.parse(options.body || "{}");
+    sent.push(payload);
+    const ok = !payload.reply_markup?.inline_keyboard;
+    return new Response(JSON.stringify(ok ? { ok: true, result: { message_id: 1 } } : privacyError), { status: ok ? 200 : 400 });
+  };
+  const sale = { kind: "firstmail", item: { email: "box@firstmail.ltd" }, price: 12000 };
+  const buyer = { id: 7700600, first_name: "Vali <x>" };
+
+  assert.equal(
+    buildMainGroupSaleText(buyer, sale),
+    `#sotuv #firstmail\n<a href="tg://user?id=7700600">Vali &lt;x&gt;</a> <b>box@firstmail.ltd</b> ni sotib oldi — 12 000 so'm.`
+  );
+
+  // Kabinet (Vercel) yo'li.
+  const cabinetSent = [];
+  const notifier = createShopNotifier({ botToken: "1:t", fetchFn: fakeTelegram(cabinetSent), env: { MAIN_GROUP_ID: "-100777" } });
+  assert.equal(await notifier.notifyMainGroup(buildMainGroupSaleText(buyer, sale), buyer.id), true);
+  assert.deepEqual(cabinetSent.map((p) => [p.chat_id, Boolean(p.reply_markup)]), [["-100777", true], ["-100777", false]]);
+  assert.equal(await createShopNotifier({ botToken: "1:t", fetchFn: fakeTelegram([]), env: { MAIN_GROUP_ID: "" } })
+    .notifyMainGroup("x", 1), false, "bo'sh MAIN_GROUP_ID — o'chiq");
+
+  // Bot (Cloudflare) yo'li.
+  const originalFetch = global.fetch;
+  const botSent = [];
+  global.fetch = fakeTelegram(botSent);
+  try {
+    const bot = loadBotWithSupabase();
+    await bot.__private.notifyMainGroupSale(buyer, { kind: "limit", item: { kind: "reset_pw", amount: 20 }, price: 9000 });
+    const delivered = botSent.filter((p) => String(p.chat_id) === "-1003832186200" && !p.reply_markup?.inline_keyboard);
+    assert.equal(delivered.length, 1, "tugmasiz qayta yuborildi");
+    assert.match(delivered[0].text, /#sotuv #limit/);
+    assert.match(delivered[0].text, /limitidan <b>20 ta<\/b> sotib oldi — 9 000 so'm\./);
   } finally {
     global.fetch = originalFetch;
     delete process.env.SUPABASE_URL;

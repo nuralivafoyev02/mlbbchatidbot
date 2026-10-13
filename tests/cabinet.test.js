@@ -603,6 +603,11 @@ test("cabinet: limit is bought from the balance — insufficient funds first, th
     assert.deepEqual(bought.limit, { kind: "reset_pw", amount: 5, remaining: 7 });
     assert.equal(bought.order.status, "done");
     assert.ok(backend.telegram.some((m) => String(m.chat_id) === "1" && /#sotuv #limit/.test(m.text) && /@ali/.test(m.text)));
+    // Asosiy guruhga ham: kim, qaysi limitdan nechta, qanchaga.
+    const groupLimit = backend.telegram.find((m) => String(m.chat_id) === "-1003832186200" && /#sotuv #limit/.test(m.text));
+    assert.ok(groupLimit, "limit xaridi asosiy guruhga ham boradi");
+    assert.match(groupLimit.text, /@ali .*Parolni tiklash.*limitidan <b>5 ta<\/b> sotib oldi — 10 000 so'm\./);
+    assert.equal(groupLimit.reply_markup.inline_keyboard[0][0].url, "tg://user?id=777");
 
     const wallet = (await call(app, USER, "wallet")).body;
     assert.deepEqual(wallet.transactions.map((t) => [t.kind, t.delta]), [["purchase", -10000], ["topup", 20000]]);
@@ -642,6 +647,11 @@ test("cabinet: firstmail from balance reveals credentials to the buyer only; agr
     assert.match(delivered.text, /pw-123/);
     assert.match(delivered.text, /Balansdan yechildi: <b>15 000 so'm<\/b>/);
     assert.match(delivered.text, /Qoldiq: <b>5 000 so'm<\/b>/, "qolgan balans ham yuboriladi");
+    // Asosiy guruhga: "@ali secretbox@firstmail.ltd ni sotib oldi" — parolsiz.
+    const groupSale = backend.telegram.find((m) => String(m.chat_id) === "-1003832186200" && /#sotuv #firstmail/.test(m.text));
+    assert.ok(groupSale, "pochta xaridi asosiy guruhga ham boradi");
+    assert.match(groupSale.text, /@ali <b>secretbox@firstmail\.ltd<\/b> ni sotib oldi — 15 000 so'm\./);
+    assert.ok(!groupSale.text.includes("pw-123"), "parol guruhga chiqmaydi");
     assert.equal(delivered.parse_mode, "HTML");
 
     // Ikkinchi xaridor ololmaydi.

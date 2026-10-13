@@ -147,7 +147,7 @@ const quotaLog = require("./_quota-log.js");
 const limitPrices = require("./_limit-prices.js");
 const tgButtons = require("./_tg-buttons.js");
 const { withCabinetLaunchTokens } = require("./_cabinet-launch.js");
-const { buildWalletSaleText } = require("./_shop-notify.js");
+const { buildWalletSaleText, buildMainGroupSaleText } = require("./_shop-notify.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
 const PREMIUM_BIND_PROVIDER_EMOJIS = Object.freeze(EMOJIS.bindProviders || {});
@@ -2195,6 +2195,28 @@ async function handleShopFirstmailPay(chatId, user, id, messageId = null) {
   } catch (error) {
     console.error("[SHOP_SALE_NOTIFY_ERROR]", error.message);
   }
+
+  await notifyMainGroupSale(user, { kind: "firstmail", item: { email: result.email }, price: result.price });
+}
+
+// Asosiy guruhga (#sotuv) — kim nimani sotib olgani (kabinetdagi xarid ham
+// xuddi shu matn bilan yuboradi — api/_shop-notify.js). tg://user tugmasini
+// xaridorning maxfiylik sozlamasi rad etsa — tugmasiz.
+async function notifyMainGroupSale(user, sale) {
+  if (!MAIN_GROUP_ID) {
+    return;
+  }
+
+  const text = buildMainGroupSaleText(user, sale);
+  const profileButton = {
+    inline_keyboard: [[{ text: t("btn_open_profile", DEFAULT_LANG), url: `tg://user?id=${user.id}` }]],
+  };
+
+  if (await safeSendMessage(MAIN_GROUP_ID, text, profileButton)) {
+    return;
+  }
+
+  await safeSendMessage(MAIN_GROUP_ID, text, null);
 }
 
 async function requestShopFirstmailManually(chatId, user, item, messageId = null) {
@@ -2420,6 +2442,8 @@ async function handleShopLimitPay(chatId, user, id, messageId = null) {
   } catch (error) {
     console.error("[SHOP_SALE_NOTIFY_ERROR]", error.message);
   }
+
+  await notifyMainGroupSale(user, { kind: "limit", item: { kind: result.kind, amount: result.amount }, price: result.price });
 }
 
 async function handleShopCallback(chatId, user, data, messageId = null) {
@@ -9936,6 +9960,7 @@ module.exports.__private = {
   buildShopFirstmailListView,
   buildShopFirstmailDetail,
   buildShopLimitListView,
+  notifyMainGroupSale,
   shopKeyboard,
   getAccountOwnerNotifyActionLabel,
   ACCOUNT_MAX_COUNT,

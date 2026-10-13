@@ -8,7 +8,10 @@
 // ---------------------------------------------------------------------------
 
 const { ADMIN_CONTACT_USERNAME } = require("./_contact.js");
+const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 const DEFAULT_ADMIN_IDS = "5081175125,8500085987,7396686285";
+// bot.js dagi MAIN_GROUP_ID bilan bir xil: env yo'q bo'lsa — shu guruh, bo'sh bo'lsa — o'chiq.
+const DEFAULT_MAIN_GROUP_ID = "-1003832186200";
 
 function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^['"]|['"]$/g, "");
@@ -31,8 +34,13 @@ function resolveShopNotifyConfig(env = process.env) {
   // Aloqa manzili env'dan emas — api/_contact.js.
   const support = ADMIN_CONTACT_USERNAME;
 
+  const mainGroupId = env.MAIN_GROUP_ID === undefined || env.MAIN_GROUP_ID === null
+    ? DEFAULT_MAIN_GROUP_ID
+    : cleanEnv(env.MAIN_GROUP_ID);
+
   return {
     notifyChatId: /^-?\d{1,20}$/.test(cleanEnv(env.SHOP_NOTIFY_CHAT_ID)) ? cleanEnv(env.SHOP_NOTIFY_CHAT_ID) : null,
+    mainGroupId: /^-?\d{1,20}$/.test(mainGroupId) ? mainGroupId : null,
     supportUsername: /^[A-Za-z0-9_]{3,32}$/.test(support) ? support : null,
     adminIds: cleanEnv(env.ADMIN_IDS || DEFAULT_ADMIN_IDS)
       .split(/[\s,]+/)
@@ -99,6 +107,22 @@ function buildWalletSaleText(user, { kind, item, orderId, price }) {
     `🧾 Buyurtma: <code>#${escapeHtml(orderId)}</code>`,
     "",
     "Xatolik bo'lsa admin paneldagi <b>Balans</b> bo'limidan pulni qaytarish mumkin.",
+  ].join("\n");
+}
+
+// Asosiy guruhga (MAIN_GROUP_ID) — kim nimani sotib olgani (bot ichidagi va
+// kabinetdagi xarid uchun bir xil). Parol hech qachon yozilmaydi.
+function buildMainGroupSaleText(user, { kind, item, price }) {
+  const mention = user.username
+    ? `@${escapeHtml(user.username)}`
+    : `<a href="tg://user?id=${escapeHtml(user.id)}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+  const what = kind === "firstmail"
+    ? `<b>${escapeHtml(item.email)}</b> ni sotib oldi`
+    : `<b>${escapeHtml(LIMIT_KIND_LABELS[item.kind] || item.kind)}</b> limitidan <b>${escapeHtml(item.amount)} ta</b> sotib oldi`;
+
+  return [
+    kind === "firstmail" ? "#sotuv #firstmail" : "#sotuv #limit",
+    `${mention} ${what} — ${escapeHtml(formatSom(price))}.`,
   ].join("\n");
 }
 
@@ -186,9 +210,29 @@ function createShopNotifier({ botToken, requestFn, fetchFn = fetch, env = proces
     return delivered;
   }
 
+  // Asosiy guruhga — "👤 Profilni ochish" tugmasi bilan; tg://user tugmasini
+  // xaridorning maxfiylik sozlamasi rad etsa — tugmasiz.
+  async function notifyMainGroup(text, buyerId) {
+    if (!botToken || !config.mainGroupId) {
+      return false;
+    }
+
+    const button = { inline_keyboard: [[{ text: "👤 Profilni ochish", url: `tg://user?id=${buyerId}` }]] };
+    const body = enrichPremiumEmojis(text);
+
+    try {
+      if (await telegramSend(config.mainGroupId, body, button)) return true;
+      return await telegramSend(config.mainGroupId, body, null);
+    } catch (error) {
+      console.error("[SHOP_MAIN_GROUP_NOTIFY]", error?.message);
+      return false;
+    }
+  }
+
   return {
     supportUsername: config.supportUsername,
     notify,
+    notifyMainGroup,
   };
 }
 
@@ -196,6 +240,7 @@ module.exports = {
   LIMIT_KIND_LABELS,
   buildFirstmailBuyText,
   buildLimitBuyText,
+  buildMainGroupSaleText,
   buildTopupCreditedText,
   buildWalletSaleText,
   createShopNotifier,

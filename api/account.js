@@ -28,6 +28,7 @@ const {
   buildFirstmailBuyText,
   buildWalletSaleText,
   buildTopupCreditedText,
+  buildMainGroupSaleText,
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
@@ -830,13 +831,19 @@ async function sendFirstmailToUser(config, user, result, langRaw) {
   return false;
 }
 
-// Sotuv haqida do'kon egasiga xabar (best effort — xarid allaqachon bajarilgan).
+// Sotuv haqida do'kon egasiga va asosiy guruhga (#sotuv) xabar (best effort —
+// xarid allaqachon bajarilgan). details: { kind, item, orderId, price }.
 async function notifyWalletSale(config, user, details) {
+  const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
   try {
-    const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
     await notifier.notify(buildWalletSaleText(user, details), user.id);
   } catch (error) {
     console.error("[WALLET_NOTIFY_SALE]", error?.message);
+  }
+  try {
+    await notifier.notifyMainGroup(buildMainGroupSaleText(user, details), user.id);
+  } catch (error) {
+    console.error("[WALLET_NOTIFY_MAIN_GROUP]", error?.message);
   }
 }
 
@@ -910,7 +917,7 @@ async function handleBuyFirstmail(res, { config, user, body }) {
     return purchaseFailure(res, result);
   }
 
-  await notifyWalletSale(config, user, { kind: "firstmail", item, orderId: result.order_id, price: result.price });
+  await notifyWalletSale(config, user, { kind: "firstmail", item: { ...item, email: result.email || item.email }, orderId: result.order_id, price: result.price });
   await sendFirstmailToUser(config, user, result, body.lang);
 
   return json(res, 200, {
