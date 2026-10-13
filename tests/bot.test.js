@@ -3875,9 +3875,8 @@ test("full info /full_info flow sends wait message then button-only result", asy
       inline_keyboard: [[{ text: "To'liq malumot", url: pageUrl }]],
     });
     assert.match(resultPayload.payload.text, /Lily/);
-    assert.match(
-      resultPayload.payload.text,
-      /<tg-emoji emoji-id="5895764412525973661">📋<\/tg-emoji>/,
+    assert.ok(
+      resultPayload.payload.text.includes(`<tg-emoji emoji-id="${require("../api/emojis.json").premium["📋"]}">📋</tg-emoji>`),
       "result message must contain premium emoji enrichment"
     );
 
@@ -4524,9 +4523,8 @@ test("/limit_fullinfo grants quota additively for admins, hidden for non-admins"
     assert.match(grantedUserMessage.payload.text, /<b>10 ta<\/b>/, "granted count must be shown");
     assert.match(grantedUserMessage.payload.text, /<b>13<\/b> ta/, "total remaining must be shown");
     assert.match(grantedUserMessage.payload.text, /raxmat/, "thanks reminder must be included");
-    assert.match(
-      grantedUserMessage.payload.text,
-      /<tg-emoji emoji-id="5325894592480942916">😂<\/tg-emoji>/,
+    assert.ok(
+      grantedUserMessage.payload.text.includes(`<tg-emoji emoji-id="${require("../api/emojis.json").premium["😂"]}">😂</tg-emoji>`),
       "congratulation message must have premium emoji enrichment"
     );
 
