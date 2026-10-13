@@ -4179,6 +4179,12 @@ test("full info quota: blocks non-admin with no quota, allows admin without quot
       (call) => call.method === "sendMessage" && /Limitga yetdingiz/.test(call.payload.text)
     );
     assert.ok(limitMessage, "limit reached message should be sent");
+    // Adminga yo'naltirish o'rniga — balansdan darhol sotib olish.
+    assert.doesNotMatch(limitMessage.payload.text, /murojaat qiling/);
+    const limitButtons = limitMessage.payload.reply_markup.inline_keyboard.flat();
+    assert.equal(limitButtons[0].callback_data, "shop_lp_list");
+    assert.equal(limitButtons[0].style, "success");
+    assert.match(limitButtons[1].web_app?.url || "", /open=topup/);
     assert.equal(
       rpcCalls.filter((call) => call.url.includes("/tools/check")).length,
       0,
@@ -5357,6 +5363,7 @@ test("reset-pw quota: blocks non-admin with no quota, allows admin without quota
       (call) => call.method === "sendMessage" && /Limitga yetdingiz/.test(call.payload.text)
     );
     assert.ok(limitMessage, "limit reached message should be sent");
+    assert.equal(limitMessage.payload.reply_markup.inline_keyboard[0][0].callback_data, "shop_lp_list");
     assert.equal(
       rpcCalls.filter((call) => call.url.includes("/tools/reset-pw")).length,
       0,

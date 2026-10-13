@@ -871,7 +871,12 @@ async function handleMessage(message, updateMeta = {}) {
     void prewarmUserAccess(user).catch(() => {});
 
     await sendMessage(chatId, getStartText(user), mainKeyboard(user));
-    
+
+    // Guruhdagi "Limit sotib olish" tugmasi: t.me/<bot>?start=limits.
+    if (Number(chatId) > 0 && /^\/start(?:@\w+)?\s+limits\b/i.test(String(text || "").trim())) {
+      await handleShopLimitList(chatId, user);
+    }
+
     // Yangi foydalanuvchi bildirishnomasi — fonda (webhook kechiktirmasdan)
     if (MAIN_GROUP_ID && String(chatId) !== MAIN_GROUP_ID) {
       void notifyMainGroupIfNewUser(user).catch(() => {});
@@ -2447,8 +2452,12 @@ async function handleShopLimitPay(chatId, user, id, messageId = null) {
 }
 
 async function handleShopCallback(chatId, user, data, messageId = null) {
-  // Inline tugma bosilishi ham do'kon ichida ekanini bildiradi.
-  rememberUserMode(user.id, SHOP_MODE);
+  // Firstmail inline tugmasi do'kon ichida ekanini bildiradi. Limit tugmalari
+  // "limit tugadi" xabaridan ham bosiladi — u yerda do'kon rejimi yoqilsa,
+  // xariddan keyingi ID+server "siz do'kondasiz" deb bloklanardi.
+  if (!data.startsWith("shop_lp")) {
+    rememberUserMode(user.id, SHOP_MODE);
+  }
 
   if (data === "shop_lp_list") {
     await handleShopLimitList(chatId, user, messageId);
@@ -3607,7 +3616,7 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
           getFullInfoLimitReachedText(getUserLang(user.id), {
             supportUsername: SUPPORT_USERNAME,
           }),
-          replyMarkup
+          limitReachedKeyboard(getUserLang(user.id), chatId) || replyMarkup
         );
         return;
       }
@@ -4001,7 +4010,7 @@ async function handleResetPwRequest(chatId, input, user = {}, options = {}) {
           getResetPwLimitReachedText(getUserLang(user.id), {
             supportUsername: SUPPORT_USERNAME,
           }),
-          replyMarkup
+          limitReachedKeyboard(getUserLang(user.id), chatId) || replyMarkup
         );
         return;
       }
@@ -4095,6 +4104,28 @@ async function handleResetPwRequest(chatId, input, user = {}, options = {}) {
     };
     await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
   }
+}
+
+// Limit tugadi — paketni balansdan darhol sotib olish (avval adminga
+// yo'naltirardi). Shaxsiy chatda: Limitlar posti + to'ldirish (kabinet);
+// guruhda — botning shaxsiy chatiga deep-link (/start limits).
+function limitReachedKeyboard(lang, chatId) {
+  if (Number(chatId) > 0) {
+    return {
+      inline_keyboard: [
+        [{ text: t("limit_buy_btn", lang), callback_data: "shop_lp_list", style: "success" }],
+        [shopTopupButton(lang, chatId)],
+      ],
+    };
+  }
+
+  if (TELEGRAM_BOT_USERNAME) {
+    return {
+      inline_keyboard: [[{ text: t("limit_buy_btn", lang), url: `https://t.me/${TELEGRAM_BOT_USERNAME}?start=limits`, style: "success" }]],
+    };
+  }
+
+  return null;
 }
 
 function getFullInfoLimitReachedText(lang, params = {}) {

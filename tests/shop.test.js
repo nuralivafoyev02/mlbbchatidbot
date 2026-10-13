@@ -809,3 +809,67 @@ test("shop: sale notice reaches the main group without the profile button when t
     delete require.cache[require.resolve("../api/bot.js")];
   }
 });
+
+test("shop: limit buttons from the 'limit reached' message don't trap the user in shop mode; /start limits opens the packages", async () => {
+  const limitPrices = require("../api/_limit-prices.js");
+  const originalFetch = global.fetch;
+  const fake = createFakeBotSettings();
+  const telegramCalls = [];
+  const externalCalls = [];
+
+  global.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.startsWith("https://api.telegram.org/")) {
+      telegramCalls.push({ method: href.split("/").pop(), payload: JSON.parse(options.body || "{}") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+    }
+    if (href.startsWith("https://testproject.supabase.co/rest/v1")) {
+      const path = href.slice("https://testproject.supabase.co/rest/v1".length);
+      const data = path === "/rpc/wallet_get" ? { ok: true, balance: 3000 } : path.startsWith("/rpc/") ? null : fake.handle(path, options);
+      return new Response(data === null ? "" : JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    externalCalls.push(href);
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const userId = 7700700;
+  const send = (bot, body) => bot({ method: "POST", headers: { "x-telegram-bot-api-secret-token": "test-secret" }, query: {}, body }, createRes());
+  const text = (updateId, value) => send(global.__bot, {
+    update_id: updateId,
+    message: { message_id: updateId, chat: { id: userId, type: "private" }, from: { id: userId, first_name: "Ali" }, text: value },
+  });
+
+  try {
+    const bot = loadBotWithSupabase();
+    global.__bot = bot;
+    await limitPrices.createLimitPriceStore(async (path, options) => fake.handle(path, options)).save({ kind: "full_info", amount: 5, price: 10000 });
+
+    // "Limit tugadi" xabaridagi tugma — Limitlar ro'yxati, lekin do'kon rejimisiz.
+    await send(bot, {
+      update_id: 9701,
+      callback_query: { id: "cb-9701", data: "shop_lp_list", from: { id: userId, first_name: "Ali" }, message: { message_id: 90, chat: { id: userId, type: "private" } } },
+    });
+    assert.ok(telegramCalls.some((c) => c.method === "editMessageText" && /Limit paketlari/.test(c.payload.text)));
+
+    telegramCalls.length = 0;
+    await text(9702, "1289050 10050");
+    assert.ok(!telegramCalls.some((c) => /bo'limidasiz/.test(c.payload.text || "")), "ID tekshiruvi do'kon rejimida bloklanmaydi");
+    assert.ok(externalCalls.length > 0, "server check runs");
+
+    // Guruhdagi tugma: t.me/<bot>?start=limits → salomlashuv + Limitlar posti.
+    telegramCalls.length = 0;
+    await text(9703, "/start limits");
+    const posts = telegramCalls
+      .filter((c) => c.method === "sendMessage" && String(c.payload.chat_id) === String(userId))
+      .map((c) => c.payload.text);
+    assert.equal(posts.length, 2);
+    assert.match(posts[1], /Limit paketlari/);
+  } finally {
+    global.fetch = originalFetch;
+    delete global.__bot;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[require.resolve("../api/bot.js")];
+  }
+});
