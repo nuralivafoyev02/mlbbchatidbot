@@ -282,11 +282,10 @@ test("premium emoji enrichment wraps configured emojis and preserves code snippe
     '✅ Tayyor 🔎 <code>&lt;tg-emoji emoji-id="sample"&gt;✅&lt;/tg-emoji&gt;</code>'
   );
 
-  assert.match(
-    result,
-    /<tg-emoji emoji-id="5316561083085895267">✅<\/tg-emoji> Tayyor/
-  );
-  assert.match(result, /<tg-emoji emoji-id="5188217332748527444">🔎<\/tg-emoji>/);
+  // ID'lar api/emojis.json dan — emoji almashtirilganda test sinmasin.
+  const ids = require("../api/emojis.json").premium;
+  assert.ok(result.includes(`<tg-emoji emoji-id="${ids["✅"]}">✅</tg-emoji> Tayyor`));
+  assert.ok(result.includes(`<tg-emoji emoji-id="${ids["🔎"]}">🔎</tg-emoji>`));
   assert.match(result, /<code>&lt;tg-emoji emoji-id="sample"&gt;✅&lt;\/tg-emoji&gt;<\/code>/);
 });
 

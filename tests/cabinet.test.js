@@ -811,7 +811,8 @@ test("cabinet: Hamyon complete_url callback credits once, verifies the sign and 
     // Xabardagi ✅ ➕ 💳 — premium (custom) emoji, HTML rejimida.
     const credited = backend.telegram.find((m) => String(m.chat_id) === "777" && /Balans to'ldirildi/.test(m.text));
     assert.equal(credited.parse_mode, "HTML");
-    for (const id of ["5316561083085895267", "5307728925223304731", "6019455416201646359"]) {
+    const premiumIds = require("../api/emojis.json").premium;
+    for (const id of ["✅", "➕", "💳"].map((emoji) => premiumIds[emoji])) {
       assert.ok(credited.text.includes(`<tg-emoji emoji-id="${id}">`), id);
     }
     assert.ok(!/(?<!>)💰/.test(credited.text));
