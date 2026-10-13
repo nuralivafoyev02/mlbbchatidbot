@@ -222,6 +222,13 @@
     @keyframes spin { to { transform: rotate(360deg) } }
     .skeleton { border-radius: 14px; height: 62px; margin-bottom: 8px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
     @keyframes shimmer { to { background-position: -200% 0; } }
+    /* Profil rasmi kelguncha — aynan o'sha joyda skeleton; rasm yuklangach klass olinadi
+       (animatsiya to'xtaydi). "Animatsiyalar o'chiq" rejimida — harakatsiz kulrang. */
+    .ava-loading {
+      color: transparent !important; box-shadow: none !important;
+      background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%) !important;
+      background-size: 200% 100% !important; animation: shimmer 1.2s infinite;
+    }
 
     /* ------------------------------------------------------------ sheet */
     .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 30; animation: fade .2s both; }
@@ -1348,44 +1355,70 @@
         return /^https:\/\//.test(src) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(src) ? src : "";
       }
 
-      // Klaviatura tugmasidan ochilganda initData yo'q, photo_url ham yo'q —
-      // rasm serverdan (Bot API) bir marta olinadi va sessiya davomida saqlanadi.
-      function loadAvatar() {
-        var u = state.data.user;
-        if (avatarSrc(u)) return;
-        var key = "cabinet_ava_" + u.id;
-        var cached = null;
-        try { cached = sessionStorage.getItem(key); } catch (e) { /* noop */ }
-        if (cached !== null) { applyAvatar(cached); return; }
-        api("avatar").then(function (result) {
-          var photo = result && result.ok && result.photo ? String(result.photo) : "";
-          try { sessionStorage.setItem(key, photo); } catch (e) { /* to'lgan bo'lsa ham mayli */ }
-          applyAvatar(photo);
-        });
+      // Avatar: rasm bor — img (yuklanguncha skeleton); serverdan so'ralayotgan
+      // bo'lsa — bo'sh skeleton; rasm yo'q — ismning bosh harfi.
+      // cls — "avatar" (sarlavha) yoki "prof-ava" (Sozlamalar).
+      function avatarHtml(cls, letter) {
+        var src = avatarSrc(state.data.user);
+        var attrs = ' data-ava="' + cls + '" data-letter="' + esc(letter) + '"';
+        if (src) return '<img class="' + cls + ' ava-loading" src="' + esc(src) + '" alt=""' + attrs + ">";
+        if (state.avatarPending) return '<div class="' + cls + ' ava-loading"' + attrs + "></div>";
+        return '<div class="' + cls + '">' + esc(letter) + "</div>";
       }
 
-      // Faqat rasm elementi almashtiriladi — sarlavha qayta chizilmaydi.
-      function applyAvatar(photo) {
-        if (!photo) return;
-        state.data.user.photo_url = photo;
-        if (!avatarSrc(state.data.user)) return;
-        ["#head .avatar", ".prof .prof-ava"].forEach(function (selector) {
-          var el = document.querySelector(selector);
-          if (!el || el.tagName === "IMG") return;
-          var img = document.createElement("img");
-          img.className = el.className;
-          img.alt = "";
-          img.src = photo;
-          el.replaceWith(img);
+      // load/error ko'tarilmaydi — capture bilan ushlanadi: yuklandi → skeleton
+      // olinadi, yuklanmadi → bosh harf.
+      document.addEventListener("load", function (e) {
+        var el = e.target;
+        if (el && el.getAttribute && el.getAttribute("data-ava")) el.classList.remove("ava-loading");
+      }, true);
+      document.addEventListener("error", function (e) {
+        var el = e.target;
+        if (!el || el.tagName !== "IMG" || !el.getAttribute("data-ava")) return;
+        var div = document.createElement("div");
+        div.className = el.getAttribute("data-ava");
+        div.textContent = el.getAttribute("data-letter") || "?";
+        el.replaceWith(div);
+      }, true);
+
+      // Klaviatura tugmasidan ochilganda initData yo'q, photo_url ham yo'q —
+      // rasm serverdan (Bot API) bir marta olinadi va sessiya davomida saqlanadi.
+      // Birinchi chizishdan OLDIN: keshda bo'lsa darhol, bo'lmasa skeleton.
+      function prepareAvatar() {
+        var u = state.data.user;
+        state.avatarPending = false;
+        if (avatarSrc(u)) return;
+        var cached = null;
+        try { cached = sessionStorage.getItem("cabinet_ava_" + u.id); } catch (e) { /* noop */ }
+        if (cached !== null) {
+          if (cached) u.photo_url = cached;
+          return;
+        }
+        state.avatarPending = true;
+      }
+
+      function loadAvatar() {
+        if (!state.avatarPending) return;
+        var u = state.data.user;
+        api("avatar").then(function (result) {
+          var photo = result && result.ok && result.photo ? String(result.photo) : "";
+          // Tarmoq xatosi keshlanmaydi — keyingi ochilishda qayta so'raladi.
+          if (result && result.ok) {
+            try { sessionStorage.setItem("cabinet_ava_" + u.id, photo); } catch (e) { /* to'lgan bo'lsa ham mayli */ }
+          }
+          if (photo) u.photo_url = photo;
+          state.avatarPending = false;
+          // Faqat skeletonlar almashtiriladi — sarlavha qayta chizilmaydi.
+          Array.prototype.forEach.call(document.querySelectorAll("div[data-ava]"), function (el) {
+            el.outerHTML = avatarHtml(el.getAttribute("data-ava"), el.getAttribute("data-letter") || "?");
+          });
         });
       }
 
       function headerHtml() {
         var u = state.data.user;
         var name = clipText([u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || u.id, 20);
-        var avatar = avatarSrc(u)
-          ? '<img class="avatar" src="' + esc(avatarSrc(u)) + '" alt="">'
-          : '<div class="avatar">' + esc(String(name).trim().charAt(0).toUpperCase() || "?") + "</div>";
+        var avatar = avatarHtml("avatar", String(name).trim().charAt(0).toUpperCase() || "?");
         return '<div class="head"><button class="head-prof" id="headProf" aria-label="' + esc(L("set_open")) + '">' + avatar +
           '<div class="grow"><div class="head-name ellipsis">' + esc(name) + "</div>" +
           '<div class="head-sub ellipsis">' + (u.username ? "@" + esc(u.username) + " · " : "") + "ID <code>" + esc(u.id) + "</code></div></div></button>" +
@@ -2653,9 +2686,7 @@
         var d = state.data;
         var u = d.user;
         var name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || String(u.id);
-        var ava = avatarSrc(u)
-          ? '<img class="prof-ava" src="' + esc(avatarSrc(u)) + '" alt="">'
-          : '<div class="prof-ava">' + esc(Array.from(String(name).trim())[0] || "?").toUpperCase() + "</div>";
+        var ava = avatarHtml("prof-ava", (Array.from(String(name).trim())[0] || "?").toUpperCase());
         var groups = d.groups || [];
         var html = '<div class="prof">' + ava + '<div class="prof-name">' + esc(name) + "</div>" +
           (u.username ? '<div class="prof-nick">@' + esc(u.username) + "</div>" : "") +
@@ -2821,6 +2852,7 @@
           document.documentElement.lang = state.lang;
           document.title = L("title");
           state.fmLoading = false;
+          prepareAvatar();
           renderHeader();
           renderNav();
           render();
