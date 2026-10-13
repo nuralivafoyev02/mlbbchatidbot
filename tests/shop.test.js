@@ -620,7 +620,7 @@ test("shop: firstmail is paid from the balance inside the bot — confirm, then 
     const paid = telegramCalls.find((c) => c.method === "editMessageText");
     assert.match(paid.payload.text, /paid\.box@firstmail\.ltd/);
     assert.match(paid.payload.text, /pw-777/);
-    assert.match(paid.payload.text, /5 000 so'm/);
+    assert.match(paid.payload.text, /Qoldiq: <b>5 000 so'm<\/b>/, "bot ichida ham qolgan balans");
 
     // Ikkinchi bosish — pochta endi yo'q, pul yechilmaydi.
     telegramCalls.length = 0;

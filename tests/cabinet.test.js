@@ -640,6 +640,9 @@ test("cabinet: firstmail from balance reveals credentials to the buyer only; agr
     assert.ok(delivered, "pochta va parol bot orqali ham yuboriladi");
     assert.match(delivered.text, /secretbox@firstmail\.ltd/);
     assert.match(delivered.text, /pw-123/);
+    assert.match(delivered.text, /Balansdan yechildi: <b>15 000 so'm<\/b>/);
+    assert.match(delivered.text, /Qoldiq: <b>5 000 so'm<\/b>/, "qolgan balans ham yuboriladi");
+    assert.equal(delivered.parse_mode, "HTML");
 
     // Ikkinchi xaridor ololmaydi.
     backend.wallet.balances.set("888", 50000);
@@ -1017,6 +1020,39 @@ test("cabinet: avatar comes from the Bot API as a data URL (photo_url is missing
     await app({ method: "POST", headers: {}, query: {}, body: { action: "avatar" } }, anon);
     assert.equal(anon.statusCode, 401);
   } finally {
+    backend.restore();
+  }
+});
+
+test("cabinet: firstmail purchase still succeeds when the bot cannot deliver the message, and the reason is logged", async () => {
+  const backend = installCabinetBackend();
+  const backendFetch = global.fetch;
+  const originalError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.map(String).join(" "));
+  global.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : {};
+    if (String(url).endsWith("/sendMessage") && String(body.chat_id) === "777") {
+      return jsonResponse({ ok: false, error_code: 403, description: "Forbidden: bot was blocked by the user" }, 403);
+    }
+    return backendFetch(url, options);
+  };
+
+  try {
+    const fm = (await require("../api/_shop.js").createFirstmailStore(backend.settings.handle)
+      .create({ email: "blocked@firstmail.ltd", password: "pw-9", price: "10000" })).item;
+    backend.wallet.balances.set("777", 10000);
+    const app = loadAccountApp();
+
+    const res = (await call(app, USER, "buy_firstmail", { id: fm.id })).body;
+    assert.equal(res.ok, true);
+    assert.deepEqual(res.delivery, { email: "blocked@firstmail.ltd", password: "pw-9" }, "kabinetda baribir ko'rinadi");
+    assert.equal(res.balance, 0);
+    const line = logged.find((entry) => entry.includes("[WALLET_FM_DELIVERY]"));
+    assert.ok(line && /blocked by the user/.test(line), "sabab log'ga yoziladi");
+    assert.ok(!line.includes("pw-9") && !line.includes(BOT_TOKEN), "parol va token log'ga tushmaydi");
+  } finally {
+    console.error = originalError;
     backend.restore();
   }
 });

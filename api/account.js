@@ -762,6 +762,7 @@ const FIRSTMAIL_DELIVERY_TEXT = {
     `🔑 Parol: <code>${d.password}</code>`,
     "",
     `💳 Balansdan yechildi: <b>${d.price}</b>`,
+    `💰 Qoldiq: <b>${d.balance}</b>`,
     `🧾 Buyurtma: <code>#${d.order}</code>`,
     "",
     "Ma'lumotlar Shaxsiy kabinet → Do'kon → Tarix bo'limida ham saqlanadi.",
@@ -773,6 +774,7 @@ const FIRSTMAIL_DELIVERY_TEXT = {
     `🔑 Пароль: <code>${d.password}</code>`,
     "",
     `💳 Списано с баланса: <b>${d.price}</b>`,
+    `💰 Остаток: <b>${d.balance}</b>`,
     `🧾 Заказ: <code>#${d.order}</code>`,
     "",
     "Данные также сохранены в Личном кабинете → Магазин → История.",
@@ -784,6 +786,7 @@ const FIRSTMAIL_DELIVERY_TEXT = {
     `🔑 Password: <code>${d.password}</code>`,
     "",
     `💳 Charged from balance: <b>${d.price}</b>`,
+    `💰 Balance left: <b>${d.balance}</b>`,
     `🧾 Order: <code>#${d.order}</code>`,
     "",
     "The details are also saved in Personal cabinet → Shop → History.",
@@ -796,26 +799,35 @@ function escapeHtml(value) {
 
 // Sotib olingan pochta login/paroli bot chatiga ham yuboriladi (best effort —
 // ma'lumot kabinet tarixida baribir saqlangan).
+// Kabinetdan sotib olingan pochta: login, parol va qolgan balans bot chatiga
+// ham yuboriladi (bot ichidagi xarid bilan bir xil). Telegram rad etsa —
+// sababi log'ga yoziladi (avval javob tekshirilmasdi, xato ko'rinmasdi).
 async function sendFirstmailToUser(config, user, result, langRaw) {
-  if (!config.botToken) return;
+  if (!config.botToken) return false;
   const lang = SUPPORTED_LANGS.includes(langRaw) ? langRaw : "uz";
   const unit = lang === "uz" ? "so'm" : lang === "ru" ? "сум" : "UZS";
+  const som = (value) => `${String(Math.max(0, Math.round(Number(value) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ${unit}`;
   const text = FIRSTMAIL_DELIVERY_TEXT[lang]({
     email: escapeHtml(result.email),
     password: escapeHtml(result.password || "—"),
-    price: `${String(Math.round(Number(result.price) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ${unit}`,
+    price: som(result.price),
+    balance: som(result.balance),
     order: escapeHtml(result.order_id),
   }).join("\n");
 
   try {
-    await fetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
+    const response = await telegramFetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: String(user.id), text, parse_mode: "HTML" }),
+      body: JSON.stringify({ chat_id: String(user.id), text: enrichPremiumEmojis(text), parse_mode: "HTML" }),
     });
+    const data = await response.json().catch(() => null);
+    if (data && data.ok) return true;
+    console.error("[WALLET_FM_DELIVERY]", response.status, String(data?.description || "").slice(0, 200), { userId: String(user.id), order: result.order_id });
   } catch (error) {
-    console.error("[WALLET_FM_DELIVERY]", error?.message);
+    console.error("[WALLET_FM_DELIVERY]", error?.message, { userId: String(user.id), order: result.order_id });
   }
+  return false;
 }
 
 // Sotuv haqida do'kon egasiga xabar (best effort — xarid allaqachon bajarilgan).
