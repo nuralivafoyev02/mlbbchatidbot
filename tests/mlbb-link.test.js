@@ -397,11 +397,11 @@ test("bot: Ha → in-game code → login stores sealed token and shows account s
     assert.equal(webApp.web_app.url, MINIAPP);
     assert.equal(webApp.text, "🎮 Mening akkauntim");
 
-    // Profil: ulangan akkaunt postda belgilanadi; tugma — faqat shaxsiy kabinet.
+    // Profil: ulangan akkaunt postda belgilanadi; tugma — faqat balansni to'ldirish (kabinet).
     await sendUpdate(bot, callbackUpdate(12, userId, "my_profile"));
     const profile = lastText(net.telegram);
     assert.match(profile.payload.text, /ulangan Lily•°/);
-    assert.deepEqual(buttonsOf(profile).map((b) => b.web_app?.url), [`${MINIAPP}?view=cabinet`]);
+    assert.deepEqual(buttonsOf(profile).map((b) => b.web_app?.url), [`${MINIAPP}?view=cabinet&open=topup`]);
   } finally {
     net.restore();
   }
@@ -474,8 +474,8 @@ test("bot: send-vc failure shows a friendly error with retry; old ml_link_menu c
     const rowId = supabase.rpc("add_user_account", { p_user_id: userId, p_account_id: "66667777", p_zone_id: "5003" }).id;
 
     await sendUpdate(bot, callbackUpdate(60, userId, "my_profile"));
-    // Profil postida faqat kabinet tugmasi; eski "ml_link_menu" callback'i baribir ishlaydi.
-    assert.deepEqual(buttonsOf(lastText(net.telegram)).map((b) => b.web_app?.url), [`${MINIAPP}?view=cabinet`]);
+    // Profil postida faqat "Balansni to'ldirish"; eski "ml_link_menu" callback'i baribir ishlaydi.
+    assert.deepEqual(buttonsOf(lastText(net.telegram)).map((b) => b.web_app?.url), [`${MINIAPP}?view=cabinet&open=topup`]);
 
     await sendUpdate(bot, callbackUpdate(61, userId, "ml_link_menu"));
     assert.ok(buttonsOf(lastText(net.telegram)).some((b) => b.callback_data === `ml_link:${rowId}`));

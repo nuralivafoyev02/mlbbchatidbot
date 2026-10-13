@@ -670,6 +670,11 @@
 
       var tg = window.Telegram && window.Telegram.WebApp;
       var API_URL = location.pathname;
+      // Botdagi "Balansni to'ldirish" tugmasi kabinetni ?open=topup bilan ochadi —
+      // yuklangach bir marta to'ldirish oynasi chiqadi.
+      var pendingOpen = (function () {
+        try { return new URLSearchParams(location.search).get("open") || ""; } catch (e) { return ""; }
+      })();
 
       var I18N = {
         uz: {
@@ -679,7 +684,7 @@
           set_lang_saved: "Til saqlandi", set_lang_title: "Tilni tanlang", soon_badge: "Soon",
           ld_title: "Shaxsiy kabinet ochilmoqda", ld_texts: ["Telegram orqali tasdiqlanmoqda…", "Balans va limitlar yuklanmoqda…", "Akkauntlaringiz tekshirilmoqda…", "Do'kon mahsulotlari tayyorlanmoqda…", "Xaridlar tarixi yig'ilmoqda…", "Deyarli tayyor…"],
           title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_history: "Tarix", tab_shop: "Do'kon",
-          not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «Mening profilim» → «Shaxsiy kabinet» tugmasi orqali ochiladi.",
+          not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «💼 Shaxsiy kabinet» tugmasi orqali ochiladi.",
           error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
           limits: "Limitlarim", lim_full_info: "To'liq ma'lumot", lim_reset_pw: "Parolni tiklash",
           unlimited: "Cheksiz", buy_more: "Qo'shimcha limit sotib olish", buy_more_sub: "Balansdan — limit darhol qo'shiladi",
@@ -766,7 +771,7 @@
           set_lang_saved: "Язык сохранён", set_lang_title: "Выберите язык", soon_badge: "Soon",
           ld_title: "Открываем личный кабинет", ld_texts: ["Проверяем вход через Telegram…", "Загружаем баланс и лимиты…", "Проверяем ваши аккаунты…", "Готовим товары магазина…", "Собираем историю покупок…", "Почти готово…"],
           title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
-          not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте: «Мой профиль» → «Личный кабинет».",
+          not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте кнопкой «💼 Личный кабинет».",
           error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
           limits: "Мои лимиты", lim_full_info: "Полная инфо", lim_reset_pw: "Сброс пароля",
           unlimited: "Безлимит", buy_more: "Купить дополнительные лимиты", buy_more_sub: "С баланса — лимит зачислится сразу",
@@ -853,7 +858,7 @@
           set_lang_saved: "Language saved", set_lang_title: "Choose a language", soon_badge: "Soon",
           ld_title: "Opening your cabinet", ld_texts: ["Verifying via Telegram…", "Loading balance and limits…", "Checking your accounts…", "Preparing shop items…", "Collecting purchase history…", "Almost ready…"],
           title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
-          not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot: “My profile” → “Personal cabinet”.",
+          not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot with the “💼 Personal cabinet” button.",
           error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
           limits: "My limits", lim_full_info: "Full info", lim_reset_pw: "Password reset",
           unlimited: "Unlimited", buy_more: "Buy extra limits", buy_more_sub: "From your balance — added instantly",
@@ -2757,6 +2762,10 @@
           renderNav();
           render();
           celebrateFreshTopups();
+          if (pendingOpen === "topup") {
+            pendingOpen = "";
+            openTopup();
+          }
         });
       }
 

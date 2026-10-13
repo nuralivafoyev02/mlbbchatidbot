@@ -108,6 +108,8 @@ const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(pro
 const ACCOUNT_MINIAPP_URL = cleanEnv(process.env.ACCOUNT_MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/account`;
 // Shaxsiy kabinet — o'sha Vercel funksiyasi, ?view=cabinet bilan.
 const CABINET_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=cabinet`;
+// "Balansni to'ldirish" — kabinet ochilishi bilan to'ldirish oynasi chiqadi.
+const CABINET_TOPUP_URL = `${CABINET_MINIAPP_URL}&open=topup`;
 const BOT_LOGO_URL =
   cleanEnv(process.env.BOT_LOGO_URL) ||
   `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/logo.jpg`;
@@ -142,6 +144,7 @@ const EMOJIS = require("./emojis.json");
 const shop = require("./_shop.js");
 const arena = require("./_mlbb-arena.js");
 const quotaLog = require("./_quota-log.js");
+const limitPrices = require("./_limit-prices.js");
 const { buildWalletSaleText } = require("./_shop-notify.js");
 
 const PREMIUM_EMOJIS = Object.freeze(EMOJIS.premium || {});
@@ -1616,6 +1619,9 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
 
   void safeSendChatAction(chatId, "typing");
 
+  // Balans limitlar bilan parallel o'qiladi (null — balans tizimi javob bermadi).
+  const balancePromise = getWalletBalance(user.id);
+
   // 1. Parolni tiklash (reset pw) qoldig'i
   let resetPwRemaining = "N/A";
   try {
@@ -1654,8 +1660,11 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
     accounts = [];
   }
 
+  const balance = await balancePromise;
   const lines = [
     t("profile_title", lang, { name: escapeHtml(displayName) }),
+    "",
+    t("profile_balance", lang, { balance: balance === null ? "N/A" : escapeHtml(formatShopSom(balance, lang)) }),
     "",
   ];
 
@@ -1682,22 +1691,17 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
     t("profile_full_info", lang, { remaining: fullInfoRemaining })
   );
 
-  await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), buildMyProfileKeyboard(lang, accounts, chatId));
+  await sendOrEditAdminMessage(chatId, messageId, lines.join("\n"), buildMyProfileKeyboard(lang, chatId));
 }
 
-// Profil postida faqat "Shaxsiy kabinet" tugmasi — akkaunt qo'shish/uzish,
-// MLBB'ga ulash, kimlar tekshirgani va h.k. hammasi kabinetning ichida.
-// Eski postlardagi callback tugmalari (profile_add, ml_link_menu, ...) baribir
-// ishlab turadi.
-function buildMyProfileKeyboard(lang, accounts = [], chatId = null) {
-  // web_app inline tugmasi faqat shaxsiy chatda ishlaydi — guruhda botning
-  // shaxsiy chatiga havola beriladi.
-  if (Number(chatId) > 0) {
-    return { inline_keyboard: [[{ text: t("profile_cabinet_btn", lang), web_app: { url: CABINET_MINIAPP_URL } }]] };
-  }
-
-  if (TELEGRAM_BOT_USERNAME) {
-    return { inline_keyboard: [[{ text: t("profile_cabinet_btn", lang), url: `https://t.me/${TELEGRAM_BOT_USERNAME}` }]] };
+// Profil postida faqat "Balansni to'ldirish" tugmasi (kabinet to'ldirish
+// oynasi bilan ochiladi). Kabinetning o'zi — asosiy klaviaturadagi
+// "💼 Shaxsiy kabinet"; akkaunt qo'shish/uzish, MLBB'ga ulash va h.k. o'sha
+// yerda. Eski postlardagi callback tugmalari (profile_add, ml_link_menu, ...)
+// baribir ishlab turadi.
+function buildMyProfileKeyboard(lang, chatId = null) {
+  if (Number(chatId) > 0 || TELEGRAM_BOT_USERNAME) {
+    return { inline_keyboard: [[shopTopupButton(lang, chatId)]] };
   }
 
   return { inline_keyboard: [] };
@@ -1732,7 +1736,7 @@ function shopKeyboard(user = {}) {
 
   return {
     keyboard: [
-      [{ text: t("btn_shop_firstmail", lang) }],
+      [{ text: t("btn_shop_limits", lang) }, { text: t("btn_shop_firstmail", lang) }],
       [{ text: t("btn_shop_back", lang) }],
     ],
     resize_keyboard: true,
@@ -1750,6 +1754,16 @@ function getFirstmailStore() {
   return firstmailStore;
 }
 
+let limitPriceStore = null;
+
+function getLimitPriceStore() {
+  if (!limitPriceStore) {
+    limitPriceStore = limitPrices.createLimitPriceStore((path, options) => supabaseRequest(path, options));
+  }
+
+  return limitPriceStore;
+}
+
 async function handleShopMessage(chatId, user, text) {
   if (isTranslatedKeyboardButton(text, "btn_shop")) {
     await handleShopOpen(chatId, user);
@@ -1759,6 +1773,12 @@ async function handleShopMessage(chatId, user, text) {
   if (isTranslatedKeyboardButton(text, "btn_shop_firstmail")) {
     rememberUserMode(user.id, SHOP_MODE);
     await handleShopFirstmailList(chatId, user, 0);
+    return true;
+  }
+
+  if (isTranslatedKeyboardButton(text, "btn_shop_limits")) {
+    rememberUserMode(user.id, SHOP_MODE);
+    await handleShopLimitList(chatId, user);
     return true;
   }
 
@@ -2058,10 +2078,12 @@ async function getWalletBalance(userId) {
   }
 }
 
-// Balansni faqat Shaxsiy kabinetda to'ldirish mumkin (karta + Hamyon API).
+// Balansni faqat Shaxsiy kabinetda to'ldirish mumkin (karta + Hamyon API) —
+// kabinet darhol to'ldirish oynasi bilan ochiladi. web_app inline tugmasi
+// faqat shaxsiy chatda ishlaydi, guruhda botning shaxsiy chatiga havola.
 function shopTopupButton(lang, chatId) {
   return Number(chatId) > 0
-    ? { text: t("shop_topup_btn", lang), web_app: { url: CABINET_MINIAPP_URL } }
+    ? { text: t("shop_topup_btn", lang), web_app: { url: CABINET_TOPUP_URL } }
     : { text: t("shop_topup_btn", lang), url: `https://t.me/${TELEGRAM_BOT_USERNAME}` };
 }
 
@@ -2197,9 +2219,225 @@ async function requestShopFirstmailManually(chatId, user, item, messageId = null
   );
 }
 
+// ---------------------------------------------------------------------------
+// 🛒 Do'kon → 📦 Limitlar. Paketlar admin panelda (Do'kon → Limit narxlari,
+// api/_limit-prices.js); xarid — wallet_buy_limit (bitta Postgres
+// tranzaksiyasi: pul yechiladi, limit qo'shiladi, buyurtma yoziladi).
+// Postdagi emojilar sendMessage'da premium emojiga aylanadi (api/emojis.json).
+// ---------------------------------------------------------------------------
+function getLimitKindLabel(kind, lang) {
+  return t(kind === "reset_pw" ? "btn_reset_pw" : "btn_full_info", lang);
+}
+
+function shopLimitBackMarkup(lang) {
+  return { inline_keyboard: [[{ text: t("shop_lp_back_btn", lang), callback_data: "shop_lp_list" }]] };
+}
+
+function shopContactRow(lang) {
+  const contactUrl = getShopContactUrl();
+  return contactUrl ? [[{ text: t("shop_fm_contact_btn", lang), url: contactUrl }]] : [];
+}
+
+async function loadShopLimitPrices() {
+  if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
+    return null;
+  }
+
+  try {
+    return await getLimitPriceStore().list();
+  } catch (error) {
+    console.error("[SHOP_LP_LIST_ERROR]", error);
+    recordError("shop_lp_list_failed", error.message);
+    return null;
+  }
+}
+
+async function getShopLimitPrice(id) {
+  if (!shop.isValidShopItemId(id) || !isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    return await getLimitPriceStore().get(id);
+  } catch (error) {
+    console.error("[SHOP_LP_GET_ERROR]", error);
+    recordError("shop_lp_get_failed", error.message, { id });
+    return null;
+  }
+}
+
+// Post: turlar bo'yicha guruhlangan narxlar ro'yxati + balans; har bir paket —
+// alohida inline tugma. Balans null bo'lsa (tizim ishlamayapti) qatori chiqmaydi.
+function buildShopLimitListView(items, balance, lang, chatId) {
+  const list = Array.isArray(items) ? items : [];
+  const lines = [t("shop_lp_title", lang), ""];
+  const rows = [];
+
+  if (list.length === 0) {
+    lines.push(t("shop_lp_empty", lang));
+  } else {
+    limitPrices.SHOP_LP_KINDS.forEach((kind) => {
+      const group = list.filter((item) => item.kind === kind);
+
+      if (group.length === 0) {
+        return;
+      }
+
+      lines.push(`<b>${escapeHtml(getLimitKindLabel(kind, lang))}</b>`);
+      group.forEach((item) => {
+        const amount = t("shop_lp_amount", lang, { amount: item.amount });
+        const price = formatShopSom(item.price, lang);
+        const title = item.title ? ` · ${escapeHtml(item.title)}` : "";
+        lines.push(`• ${escapeHtml(amount)} — <b>${escapeHtml(price)}</b>${title}${item.hit ? " 🌟" : ""}`);
+        rows.push([{
+          text: `${getLimitKindLabel(kind, lang).split(" ")[0]} ${amount} · ${price}`.slice(0, 60),
+          callback_data: `shop_lp:${item.id}`,
+        }]);
+      });
+      lines.push("");
+    });
+
+    if (balance !== null) {
+      lines.push(t("shop_lp_balance", lang, { balance: escapeHtml(formatShopSom(balance, lang)) }), "");
+    }
+
+    lines.push(t("shop_lp_hint", lang));
+  }
+
+  rows.push([shopTopupButton(lang, chatId)]);
+
+  return { text: lines.join("\n").trim(), replyMarkup: { inline_keyboard: rows } };
+}
+
+async function handleShopLimitList(chatId, user, messageId = null) {
+  const lang = getUserLang(user.id);
+  void safeSendChatAction(chatId, "typing");
+
+  const [items, balance] = await Promise.all([loadShopLimitPrices(), getWalletBalance(user.id)]);
+
+  if (!items) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_unavailable", lang), messageId ? null : shopKeyboard(user));
+    return;
+  }
+
+  const view = buildShopLimitListView(items, balance, lang, chatId);
+  await sendOrEditAdminMessage(chatId, messageId, view.text, view.replyMarkup);
+}
+
+// Paket tanlandi: balans yetsa — tasdiqlash, yetmasa — to'ldirish tugmasi.
+async function handleShopLimitDetail(chatId, user, id, messageId = null) {
+  const lang = getUserLang(user.id);
+  const [item, balance] = await Promise.all([getShopLimitPrice(id), getWalletBalance(user.id)]);
+
+  if (!item) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_not_available", lang), shopLimitBackMarkup(lang));
+    return;
+  }
+
+  if (balance === null) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_wallet_off", lang), {
+      inline_keyboard: [...shopContactRow(lang), ...shopLimitBackMarkup(lang).inline_keyboard],
+    });
+    return;
+  }
+
+  const enough = balance >= item.price;
+  const rows = [
+    [enough
+      ? { text: t("shop_fm_pay_btn", lang), callback_data: `shop_lp_pay:${item.id}` }
+      : shopTopupButton(lang, chatId)],
+    ...shopLimitBackMarkup(lang).inline_keyboard,
+  ];
+
+  await sendOrEditAdminMessage(
+    chatId,
+    messageId,
+    t(enough ? "shop_lp_confirm" : "shop_lp_no_money", lang, {
+      kind: escapeHtml(getLimitKindLabel(item.kind, lang)),
+      amount: escapeHtml(t("shop_lp_amount", lang, { amount: item.amount })),
+      price: escapeHtml(formatShopSom(item.price, lang)),
+      balance: escapeHtml(formatShopSom(balance, lang)),
+    }),
+    { inline_keyboard: rows }
+  );
+}
+
+async function handleShopLimitPay(chatId, user, id, messageId = null) {
+  const lang = getUserLang(user.id);
+  const back = shopLimitBackMarkup(lang);
+
+  if (!shop.isValidShopItemId(id) || !isSupabaseConfigured()) {
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_not_available", lang), back);
+    return;
+  }
+
+  let result;
+  try {
+    result = await supabaseRpc("wallet_buy_limit", { p_user_id: String(user.id), p_package_id: id });
+  } catch (error) {
+    console.error("[SHOP_LP_PAY_ERROR]", error);
+    recordError("shop_lp_pay_failed", error.message, { id, userId: user.id });
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_failed", lang), back);
+    return;
+  }
+
+  if (!result || result.ok !== true) {
+    if (result?.error === "insufficient_funds") {
+      const item = await getShopLimitPrice(id);
+      await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_no_money", lang, {
+        kind: escapeHtml(getLimitKindLabel(item?.kind, lang)),
+        amount: escapeHtml(item ? t("shop_lp_amount", lang, { amount: item.amount }) : "—"),
+        price: escapeHtml(formatShopSom(result.price, lang)),
+        balance: escapeHtml(formatShopSom(result.balance, lang)),
+      }), { inline_keyboard: [[shopTopupButton(lang, chatId)], ...back.inline_keyboard] });
+      return;
+    }
+
+    await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_not_available", lang), back);
+    return;
+  }
+
+  await sendOrEditAdminMessage(chatId, messageId, t("shop_lp_paid", lang, {
+    kind: escapeHtml(getLimitKindLabel(result.kind, lang)),
+    amount: escapeHtml(String(result.amount)),
+    remaining: escapeHtml(String(result.remaining ?? "—")),
+    price: escapeHtml(formatShopSom(result.price, lang)),
+    balance: escapeHtml(formatShopSom(result.balance, lang)),
+  }), back);
+
+  // Egasiga ma'lumot uchun (best effort — xarid allaqachon bajarilgan).
+  try {
+    const ownerChatId = await getShopNotifyChatId();
+    const text = buildWalletSaleText(user, {
+      kind: "limit",
+      item: { kind: result.kind, amount: result.amount },
+      orderId: result.order_id,
+      price: result.price,
+    });
+    if (ownerChatId) await sendShopNotify(ownerChatId, text, user.id);
+  } catch (error) {
+    console.error("[SHOP_SALE_NOTIFY_ERROR]", error.message);
+  }
+}
+
 async function handleShopCallback(chatId, user, data, messageId = null) {
   // Inline tugma bosilishi ham do'kon ichida ekanini bildiradi.
   rememberUserMode(user.id, SHOP_MODE);
+
+  if (data === "shop_lp_list") {
+    await handleShopLimitList(chatId, user, messageId);
+    return;
+  }
+
+  if (data.startsWith("shop_lp_pay:")) {
+    await handleShopLimitPay(chatId, user, data.slice("shop_lp_pay:".length), messageId);
+    return;
+  }
+
+  if (data.startsWith("shop_lp:")) {
+    await handleShopLimitDetail(chatId, user, data.slice("shop_lp:".length), messageId);
+    return;
+  }
 
   if (data.startsWith("shop_fm_list:")) {
     await handleShopFirstmailList(chatId, user, parsePageFromCallback(data, "shop_fm_list"), messageId);
@@ -7128,25 +7366,25 @@ function getBroadcastResultText(result = {}, lang) {
   return lines.join("\n");
 }
 
+// 2 ustunli jadval: asosiy funksiyalar, amallar, sozlamalar; eng pastda butun
+// qator — Shaxsiy kabinet (web_app). Guruhlarda reply klaviatura umuman
+// yuborilmaydi (sendMessage → remove_keyboard), shuning uchun web_app xavfsiz.
 function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
   const keyboard = [
-    [{ text: t("btn_check", lang) }],
-    [{ text: t("btn_full_info", lang) }, { text: t("btn_reset_pw", lang) }],
-    [{ text: t("btn_shop", lang) }, { text: t("btn_language", lang) }],
+    [{ text: t("btn_check", lang) }, { text: t("btn_full_info", lang) }],
+    [{ text: t("btn_reset_pw", lang) }, { text: t("btn_shop", lang) }],
+    [{ text: t("btn_my_profile", lang) }, { text: t("btn_language", lang) }],
   ];
 
   if (isAdmin(user.id)) {
-    keyboard.splice(
-      2,
-      0,
+    keyboard.push(
       [{ text: t("btn_stats", lang) }, { text: t("btn_users", lang) }],
       [{ text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
     );
   }
 
-  // "Mening profilim" — har bir user uchun, eng pastda, 2 ta tugma joyini egallaydi
-  keyboard.push([{ text: t("btn_my_profile", lang) }]);
+  keyboard.push([{ text: t("btn_cabinet", lang), web_app: { url: CABINET_MINIAPP_URL } }]);
 
   return {
     keyboard,
@@ -7732,12 +7970,20 @@ function isKeyboardButton(text, ...buttons) {
   return buttons.includes(String(text || "").trim());
 }
 
+// Tugma yorlig'i o'zgarganda foydalanuvchida eski klaviatura qolgan bo'lishi
+// mumkin — eski matnlar ham o'sha tugma sifatida tanilsin.
+const LEGACY_BUTTON_LABELS = Object.freeze({
+  btn_my_profile: ["👤 Mening profilim", "👤 Мой профиль", "👤 My profile"],
+  btn_language: ["🌐 Til almashtirish", "🌐 Сменить язык", "🌐 Change language"],
+  btn_shop_firstmail: ["📧 Firstmail sotib olish", "📧 Купить Firstmail", "📧 Buy Firstmail"],
+});
+
 function isTranslatedKeyboardButton(text, translationKey) {
   const normalized = String(text || "").trim();
   for (const lang of SUPPORTED_LANGS) {
     if (t(translationKey, lang) === normalized) return true;
   }
-  return false;
+  return (LEGACY_BUTTON_LABELS[translationKey] || []).includes(normalized);
 }
 
 function normalizeBindWaitMessage(value = {}) {
@@ -9643,6 +9889,7 @@ module.exports.__private = {
   handleShopCallback,
   buildShopFirstmailListView,
   buildShopFirstmailDetail,
+  buildShopLimitListView,
   shopKeyboard,
   getAccountOwnerNotifyActionLabel,
   ACCOUNT_MAX_COUNT,

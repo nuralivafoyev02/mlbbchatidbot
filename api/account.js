@@ -226,7 +226,8 @@ async function loadPreferredLanguage(config, user) {
 // ---------------------------------------------------------------------------
 // 👤 Shaxsiy kabinet (?view=cabinet)
 //
-// Botdagi "Mening profilim" postidagi web_app tugmasi ochadi: limitlar,
+// Botdagi "💼 Shaxsiy kabinet" klaviatura tugmasi ochadi (?open=topup —
+// "Balansni to'ldirish" tugmalaridan, to'ldirish oynasi bilan): limitlar,
 // akkauntlar, kimlar tekshirgani, limitlar tarixi, MLBB'ga ulash, limit
 // narxlari va Firstmail xaridi. Xaridlar balansdan (api/_wallet.js,
 // supabase/020_wallet.sql); balans karta orqali to'ldiriladi va to'lov

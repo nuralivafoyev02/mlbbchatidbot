@@ -433,6 +433,15 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
   assert.equal(userKeyboard.keyboard[0][0].text, "🔎 Server aniqlash");
+  // 2 ustunli jadval, eng pastda butun qator — Shaxsiy kabinet (web_app).
+  assert.deepEqual(userKeyboard.keyboard.map((row) => row.map((button) => button.text)), [
+    ["🔎 Server aniqlash", "📋 To'liq ma'lumot"],
+    ["🔐 Parolni tiklash", "🛒 Do'kon"],
+    ["👤 Profilim", "🌐 Til"],
+    ["💼 Shaxsiy kabinet"],
+  ]);
+  assert.match(userKeyboard.keyboard[3][0].web_app?.url || "", /view=cabinet/);
+  assert.equal(adminKeyboard.keyboard.at(-1)[0].text, "💼 Shaxsiy kabinet");
   assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu|💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
   assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
@@ -5756,10 +5765,13 @@ test("profile: my_profile shows accounts section with inline actions", async () 
     assert.match(sent.payload.text, /Mening profilim|My profile/, "profile title expected");
     assert.match(sent.payload.text, /Akkauntlarim|My accounts/, "accounts section expected");
 
-    // Postda faqat "Shaxsiy kabinet" web_app tugmasi qoladi.
+    assert.match(sent.payload.text, /Balans|Balance/, "balance line expected");
+
+    // Postda faqat "Balansni to'ldirish" — kabinet to'ldirish oynasi bilan ochiladi.
     const buttons = sent.payload.reply_markup?.inline_keyboard?.flat() || [];
-    assert.equal(buttons.length, 1, "only the cabinet button expected");
-    assert.match(buttons[0].web_app?.url || "", /view=cabinet/);
+    assert.equal(buttons.length, 1, "only the top-up button expected");
+    assert.match(buttons[0].text, /Balansni to'ldirish|Top up/);
+    assert.match(buttons[0].web_app?.url || "", /view=cabinet&open=topup/);
   } finally {
     global.fetch = originalFetch;
   }

@@ -259,7 +259,7 @@ test("shop: Do'kon mode disables ID checks and lists firstmails with sold ones s
     const welcome = telegramCalls.find((c) => c.method === "sendMessage" && /Do'kon/.test(c.payload.text));
     assert.ok(welcome, "shop welcome should be sent");
     const welcomeButtons = welcome.payload.reply_markup.keyboard.flat().map((b) => b.text);
-    assert.deepEqual(welcomeButtons, ["📧 Firstmail sotib olish", "⬅️ Orqaga"]);
+    assert.deepEqual(welcomeButtons, ["📦 Limitlar", "📧 Firstmail", "⬅️ Orqaga"]);
 
     // 2) Shop rejimida ID + server yuborilsa tekshiruv ishlamaydi.
     telegramCalls.length = 0;
@@ -269,6 +269,7 @@ test("shop: Do'kon mode disables ID checks and lists firstmails with sold ones s
     assert.match(blocked.payload.text, /Do'kon<\/b> bo'limidasiz/);
 
     // 3) Firstmail ro'yxati: sotilgani ustidan chizilgan, parol ko'rinmaydi.
+    // Eski klaviaturadagi yorliq ("📧 Firstmail sotib olish") ham tanilsin.
     telegramCalls.length = 0;
     await send(bot, message(9103, "📧 Firstmail sotib olish"));
     const list = telegramCalls.find((c) => c.method === "sendMessage" && /Firstmail/.test(c.payload.text));
@@ -632,6 +633,117 @@ test("shop: firstmail is paid from the balance inside the bot — confirm, then 
     const poor = telegramCalls.find((c) => c.method === "editMessageText");
     assert.match(poor.payload.text, /yetarli emas/);
     assert.ok(poor.payload.reply_markup.inline_keyboard[0][0].web_app, "to'ldirish kabinetda ochiladi");
+  } finally {
+    global.fetch = originalFetch;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete global.__MLBB_BOT_STATS__;
+    delete require.cache[require.resolve("../api/bot.js")];
+  }
+});
+
+test("shop: Limitlar posts the packages and sells them from the balance", async () => {
+  const limitPrices = require("../api/_limit-prices.js");
+  const originalFetch = global.fetch;
+  const fake = createFakeBotSettings();
+  const telegramCalls = [];
+  const rpcCalls = [];
+  let balance = 20000;
+  let fullInfoQuota = 3;
+
+  global.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.startsWith("https://api.telegram.org/")) {
+      telegramCalls.push({ method: href.split("/").pop(), payload: JSON.parse(options.body || "{}") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+    }
+    const path = href.slice("https://testproject.supabase.co/rest/v1".length);
+    let data;
+    if (path === "/rpc/wallet_get") {
+      data = { ok: true, balance };
+    } else if (path === "/rpc/wallet_buy_limit") {
+      const args = JSON.parse(options.body);
+      rpcCalls.push(args);
+      const pkg = fake.rows.get(`shop_lp:${args.p_package_id}`)?.value;
+      if (!pkg) {
+        data = { ok: false, error: "not_available" };
+      } else if (balance < pkg.price) {
+        data = { ok: false, error: "insufficient_funds", price: pkg.price, balance };
+      } else {
+        balance -= pkg.price;
+        fullInfoQuota += pkg.amount;
+        data = { ok: true, order_id: 12, balance, kind: pkg.kind, amount: pkg.amount, price: pkg.price, remaining: fullInfoQuota };
+      }
+    } else if (path.startsWith("/rpc/")) {
+      data = null;
+    } else {
+      data = fake.handle(path, options);
+    }
+    return new Response(data === null ? "" : JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const userId = 7700500;
+  const send = async (bot, body) => {
+    await bot({ method: "POST", headers: { "x-telegram-bot-api-secret-token": "test-secret" }, query: {}, body }, createRes());
+  };
+  const tap = (bot, data, updateId) => send(bot, {
+    update_id: updateId,
+    callback_query: { id: `cb-${updateId}`, data, from: { id: userId, first_name: "Buyer" }, message: { message_id: 81, chat: { id: userId, type: "private" } } },
+  });
+
+  try {
+    const bot = loadBotWithSupabase();
+    const store = limitPrices.createLimitPriceStore(async (path, options) => fake.handle(path, options));
+    const fullInfo = (await store.save({ kind: "full_info", amount: 10, price: 15000, hit: true })).item;
+    const resetPw = (await store.save({ kind: "reset_pw", amount: 20, price: 9000 })).item;
+
+    // 1) "📦 Limitlar" — yangi post: turlar bo'yicha narxlar, balans, premium emoji.
+    await send(bot, {
+      update_id: 9501,
+      message: { message_id: 9501, chat: { id: userId, type: "private" }, from: { id: userId, first_name: "Buyer" }, text: "📦 Limitlar" },
+    });
+    const post = telegramCalls.find((c) => c.method === "sendMessage" && /Limit paketlari/.test(c.payload.text));
+    assert.ok(post, "limit packages post should be sent");
+    assert.match(post.payload.text, /10 ta — <b>15 000 so'm<\/b>/);
+    assert.match(post.payload.text, /20 ta — <b>9 000 so'm<\/b>/);
+    assert.match(post.payload.text, /Balansingiz: <b>20 000 so'm<\/b>/);
+    assert.match(post.payload.text, /<tg-emoji emoji-id="\d+">📦<\/tg-emoji>/, "premium emoji in the post");
+    const rows = post.payload.reply_markup.inline_keyboard;
+    assert.deepEqual(
+      rows.flat().filter((b) => b.callback_data).map((b) => b.callback_data),
+      [`shop_lp:${fullInfo.id}`, `shop_lp:${resetPw.id}`]
+    );
+    assert.match(rows.at(-1)[0].web_app?.url || "", /open=topup/);
+
+    // 2) Paket tanlandi — tasdiqlash, pul hali yechilmaydi.
+    telegramCalls.length = 0;
+    await tap(bot, `shop_lp:${fullInfo.id}`, 9502);
+    const confirm = telegramCalls.find((c) => c.method === "editMessageText");
+    assert.match(confirm.payload.text, /Xaridni tasdiqlang/);
+    assert.equal(confirm.payload.reply_markup.inline_keyboard[0][0].callback_data, `shop_lp_pay:${fullInfo.id}`);
+    assert.equal(rpcCalls.length, 0);
+
+    // 3) To'lash — limit qo'shiladi.
+    telegramCalls.length = 0;
+    await tap(bot, `shop_lp_pay:${fullInfo.id}`, 9503);
+    const paid = telegramCalls.find((c) => c.method === "editMessageText");
+    assert.match(paid.payload.text, /Limit qo'shildi/);
+    assert.match(paid.payload.text, /\+10/);
+    assert.match(paid.payload.text, /<b>13<\/b> ta/);
+    assert.match(paid.payload.text, /Qoldiq: <b>5 000 so'm<\/b>/);
+    assert.deepEqual(rpcCalls, [{ p_user_id: String(userId), p_package_id: fullInfo.id }]);
+
+    // 4) Balans yetmasa — to'lash o'rniga to'ldirish tugmasi.
+    telegramCalls.length = 0;
+    await tap(bot, `shop_lp:${resetPw.id}`, 9504);
+    const poor = telegramCalls.find((c) => c.method === "editMessageText");
+    assert.match(poor.payload.text, /yetarli emas/);
+    assert.match(poor.payload.reply_markup.inline_keyboard[0][0].web_app?.url || "", /view=cabinet&open=topup/);
+
+    // 5) O'chirilgan paket.
+    telegramCalls.length = 0;
+    await tap(bot, "shop_lp:zzzzzz", 9505);
+    assert.match(telegramCalls.find((c) => c.method === "editMessageText").payload.text, /sotuvda yo'q/);
   } finally {
     global.fetch = originalFetch;
     delete process.env.SUPABASE_URL;
