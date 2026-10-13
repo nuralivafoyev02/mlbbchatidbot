@@ -251,11 +251,11 @@ test("shop: Do'kon mode disables ID checks and lists firstmails with sold ones s
     const soldItem = (await store.create({ email: "oldmail@firstmail.ltd", password: "x", price: "9000" })).item;
     await store.setSold(soldItem.id, true);
 
-    // Asosiy klaviaturada Do'kon tugmasi bor.
-    assert.match(JSON.stringify(bot.__private.mainKeyboard({ id: userId })), /🛒 Do'kon/);
+    // Asosiy klaviaturada Do'kon tugmasi bor (emojisiz — faqat rangli).
+    assert.match(JSON.stringify(bot.__private.mainKeyboard({ id: userId })), /"text":"Do'kon"/);
 
-    // 1) Do'kon tugmasi — shop klaviaturasi.
-    await send(bot, message(9101, "🛒 Do'kon"));
+    // 1) Do'kon tugmasi — shop klaviaturasi (yangi klaviatura emojisiz matn yuboradi).
+    await send(bot, message(9101, "Do'kon"));
     const welcome = telegramCalls.find((c) => c.method === "sendMessage" && /Do'kon/.test(c.payload.text));
     assert.ok(welcome, "shop welcome should be sent");
     const welcomeButtons = welcome.payload.reply_markup.keyboard.flat().map((b) => b.text);

@@ -109,10 +109,18 @@ function isButtonDecorationError(message) {
   return /HTTP 400/.test(text) && /icon|emoji|style|button/i.test(text);
 }
 
-// Reply tugma yorlig'i: o'zi va (ikonkasi bo'lsa) emojisiz ko'rinishi.
+// Boshidagi emoji(lar)ni olib tashlaydi: "🔎 Server aniqlash" → "Server aniqlash"
+// (ikonka xaritasiga bog'liq emas — bayroq, ZWJ, rang modifikatorlari ham).
+function stripLeadingEmoji(label) {
+  return String(label ?? "")
+    .replace(/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\uFE0F\u200D\u{1F3FB}-\u{1F3FF}])+\s*/u, "")
+    .trim();
+}
+
+// Reply tugma yorlig'i: o'zi, ikonkali va emojisiz ko'rinishlari.
 function buttonLabelVariants(label) {
   const split = splitButtonIcon(label);
-  return split ? [String(label), split.text] : [String(label)];
+  return [...new Set([String(label), split ? split.text : "", stripLeadingEmoji(label)].filter(Boolean))];
 }
 
 module.exports = {
@@ -125,4 +133,5 @@ module.exports = {
   isButtonDecorationError,
   plainReplyMarkup,
   splitButtonIcon,
+  stripLeadingEmoji,
 };

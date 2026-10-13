@@ -7374,10 +7374,13 @@ function getBroadcastResultText(result = {}, lang) {
 function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
   // Rang (style): asosiy funksiyalar — ko'k, amallar — yashil, sozlamalar — oddiy.
+  // Emoji (va premium ikonka) faqat Profilim, Shaxsiy kabinet va admin
+  // tugmalarida; qolganlari emojisiz (isTranslatedKeyboardButton ikkalasini taniydi).
+  const plain = (key) => tgButtons.stripLeadingEmoji(t(key, lang));
   const keyboard = [
-    [{ text: t("btn_check", lang), style: "primary" }, { text: t("btn_full_info", lang), style: "primary" }],
-    [{ text: t("btn_reset_pw", lang), style: "success" }, { text: t("btn_shop", lang), style: "success" }],
-    [{ text: t("btn_my_profile", lang) }, { text: t("btn_language", lang) }],
+    [{ text: plain("btn_check"), style: "primary" }, { text: plain("btn_full_info"), style: "primary" }],
+    [{ text: plain("btn_reset_pw"), style: "success" }, { text: plain("btn_shop"), style: "success" }],
+    [{ text: t("btn_my_profile", lang) }, { text: plain("btn_language") }],
   ];
 
   if (isAdmin(user.id)) {

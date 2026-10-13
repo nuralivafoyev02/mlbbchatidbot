@@ -431,13 +431,18 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
   const userKeyboardText = JSON.stringify(userKeyboard);
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
-  assert.equal(userKeyboard.keyboard[0][0].text, "🔎 Server aniqlash");
+  assert.equal(userKeyboard.keyboard[0][0].text, "Server aniqlash");
   // 2 ustunli jadval, eng pastda butun qator — Shaxsiy kabinet (web_app).
+  // Emoji faqat Profilim, Shaxsiy kabinet va admin tugmalarida.
   assert.deepEqual(userKeyboard.keyboard.map((row) => row.map((button) => button.text)), [
-    ["🔎 Server aniqlash", "📋 To'liq ma'lumot"],
-    ["🔐 Parolni tiklash", "🛒 Do'kon"],
-    ["👤 Profilim", "🌐 Til"],
+    ["Server aniqlash", "To'liq ma'lumot"],
+    ["Parolni tiklash", "Do'kon"],
+    ["👤 Profilim", "Til"],
     ["💼 Shaxsiy kabinet"],
+  ]);
+  assert.deepEqual(adminKeyboard.keyboard.slice(3, 5).map((row) => row.map((button) => button.text)), [
+    ["📊 Statistika", "👥 Foydalanuvchilar"],
+    ["🎛️ Admin Panel"],
   ]);
   assert.match(userKeyboard.keyboard[3][0].web_app?.url || "", /view=cabinet/);
   assert.equal(adminKeyboard.keyboard.at(-1)[0].text, "💼 Shaxsiy kabinet");

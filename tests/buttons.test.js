@@ -32,6 +32,9 @@ test("buttons: leading emoji becomes a premium icon; ✅/❌/💰 pick a colour 
   const plain = tgButtons.plainReplyMarkup({ keyboard: [[{ text: "🔎 Server aniqlash", style: "primary", icon_custom_emoji_id: "1" }]] });
   assert.deepEqual(plain.keyboard[0][0], { text: "🔎 Server aniqlash" });
   assert.deepEqual(tgButtons.buttonLabelVariants("🔎 Server aniqlash"), ["🔎 Server aniqlash", "Server aniqlash"]);
+  assert.equal(tgButtons.stripLeadingEmoji("🇺🇿 O'zbek"), "O'zbek");
+  assert.equal(tgButtons.stripLeadingEmoji("🎛️ Admin Panel"), "Admin Panel");
+  assert.equal(tgButtons.stripLeadingEmoji("Keyingi ➡️"), "Keyingi ➡️");
 });
 
 test("cabinet launch: token is signed per user and only added for a private chat", () => {
@@ -113,7 +116,7 @@ test("bot: icon buttons send text without the emoji and still work; a rejected d
     await send(bot, 3, "/start");
     const sent = calls.filter((c) => c.method === "sendMessage" && c.payload.reply_markup?.keyboard);
     assert.equal(sent.length, 2, "decorated attempt + plain retry");
-    assert.equal(sent[1].payload.reply_markup.keyboard[0][0].text, "🔎 Server aniqlash");
+    assert.equal(sent[1].payload.reply_markup.keyboard[2][0].text, "👤 Profilim");
     assert.ok(!JSON.stringify(sent[1].payload.reply_markup).includes("icon_custom_emoji_id"));
     assert.match(sent[1].payload.reply_markup.keyboard.flat().find((b) => b.web_app).web_app.url, /lt=7701\./);
 
