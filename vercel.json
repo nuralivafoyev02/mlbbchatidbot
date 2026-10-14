@@ -4,9 +4,6 @@
     "api/bot.js": {
       "maxDuration": 10
     },
-    "api/bengkel.js": {
-      "maxDuration": 60
-    },
     "api/lookup.js": {
       "maxDuration": 15
     },

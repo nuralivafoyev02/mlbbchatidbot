@@ -16,9 +16,6 @@
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {
-    "telegram": "^2.26.22"
-  },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "wrangler": "^4.107.0"
