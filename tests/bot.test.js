@@ -3514,6 +3514,7 @@ test("full info telegraph content separates sections with colors and no images",
   assert.match(content[0].children[0].attrs.src, /akmpicture/);
   assert.equal(serialized.includes('"hero_image"'), false, "hero images must not be sent to the UI");
   assert.equal(serialized.includes("Oxirgi o'ynalgan qahramonlar"), true, "last-used heroes are labeled unambiguously");
+  assert.equal(serialized.includes("26460 (faqat skin)"), true, "collection points say they count skins only");
   assert.equal(serialized.includes('"296"'), false, "raw numeric hero ids are hidden");
   assert.equal(serialized.includes("Zetian"), true, "readable hero names still show");
   assert.equal(serialized.includes('"hr"'), true, "sections should be separated with hr dividers");

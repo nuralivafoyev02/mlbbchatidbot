@@ -4470,6 +4470,7 @@ function buildFullInfoTelegraphContent(data = {}) {
     );
   }
 
+  const collectionPoint = data.collection?.collection_point;
   const fields = [
     {
       header: `${staticEmoji("fullInfoSectionMain", "🔵")} Asosiy ma'lumotlar`,
@@ -4494,7 +4495,8 @@ function buildFullInfoTelegraphContent(data = {}) {
       header: `${staticEmoji("fullInfoSectionCollection", "🟡")} Kolleksiya`,
       condition: data.collection,
       rows: [
-        ["Kolleksiya ballari", data.collection?.collection_point],
+        // Ballar faqat skinlardan yig'iladi — foydalanuvchi buni bilishi uchun.
+        ["Kolleksiya ballari", collectionPoint !== undefined && collectionPoint !== null && collectionPoint !== "" ? `${collectionPoint} (faqat skin)` : null],
         ["Kolleksiya darajasi", data.collection?.collection_title],
         ["Qahramonlar soni", data.collection?.heroes],
         ["Skinlar soni", data.collection?.skins],
