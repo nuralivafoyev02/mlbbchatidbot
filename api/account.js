@@ -1012,9 +1012,10 @@ function serveHtml(res, filePath, color) {
 async function supabaseRequest(config, urlPath, { method = "GET", body, prefer } = {}) {
   const headers = {
     apikey: config.supabaseKey,
-    Authorization: `Bearer ${config.supabaseKey}`,
     Accept: "application/json",
   };
+  // Yangi sb_secret_ kaliti faqat apikey'da yuboriladi (Bearer'da JWT bo'lmasa rad etiladi).
+  if (!String(config.supabaseKey).startsWith("sb_")) headers.Authorization = `Bearer ${config.supabaseKey}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (prefer) headers.Prefer = prefer;
 

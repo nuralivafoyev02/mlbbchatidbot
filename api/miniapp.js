@@ -1693,9 +1693,10 @@ async function supabaseRequest(path, options = {}) {
 
   const headers = {
     apikey: SUPABASE_SERVICE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
     Accept: "application/json",
   };
+  // Yangi sb_secret_ kaliti faqat apikey'da yuboriladi (Bearer'da JWT bo'lmasa rad etiladi).
+  if (!SUPABASE_SERVICE_KEY.startsWith("sb_")) headers.Authorization = `Bearer ${SUPABASE_SERVICE_KEY}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (prefer) headers.Prefer = prefer;
 

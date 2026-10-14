@@ -1066,3 +1066,28 @@ test("cabinet: firstmail purchase still succeeds when the bot cannot deliver the
     backend.restore();
   }
 });
+
+test("cabinet: new sb_secret_ key goes only in apikey; a legacy JWT key also goes in Authorization", async () => {
+  const original = global.fetch;
+  const seen = [];
+  global.fetch = async (url, options = {}) => {
+    if (String(url).startsWith(SUPABASE)) seen.push(options.headers || {});
+    return jsonResponse([]);
+  };
+  try {
+    await call(loadAccountApp(), USER, "cabinet");
+    assert.ok(seen.length > 0);
+    assert.ok(seen.every((h) => h.apikey === "sb_secret_test-role-key" && !("Authorization" in h)));
+
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig";
+    seen.length = 0;
+    loadAccountApp();
+    process.env.SUPABASE_SERVICE_ROLE_KEY = jwt;
+    delete require.cache[require.resolve("../api/account.js")];
+    await call(require("../api/account.js"), USER, "cabinet");
+    assert.ok(seen.length > 0);
+    assert.ok(seen.every((h) => h.apikey === jwt && h.Authorization === `Bearer ${jwt}`));
+  } finally {
+    global.fetch = original;
+  }
+});
