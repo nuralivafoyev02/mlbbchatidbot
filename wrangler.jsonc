@@ -51,6 +51,12 @@
       }
     ]
   },
+  // Prod ham dev kabi yo'l bo'yicha bo'linadi: mlbb.nurali.uz/tg* (Telegram
+  // webhook) → shu Worker, WAF faqat Telegram IP'lari; qolgan hammasi
+  // (Mini App, /api/*) → Cloudflare orqali Vercel production.
+  "routes": [
+    { "pattern": "mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" }
+  ],
   "vars": {
     "MAIN_GROUP_ID": "-1003832186200",
     "SUPPORT_USERNAME": "Ksava_org",
@@ -67,7 +73,10 @@
     "TELEGRAPH_TIMEOUT_MS": "10000",
     "BROADCAST_RATE_PER_SEC": "25",
     "BROADCAST_BATCH_SIZE": "25",
-    "BROADCAST_MAX_SENDS_PER_RUN": "40"
+    "BROADCAST_MAX_SENDS_PER_RUN": "40",
+    "MINIAPP_URL": "https://mlbb.nurali.uz/api/miniapp",
+    "ACCOUNT_MINIAPP_URL": "https://mlbb.nurali.uz/api/account",
+    "BOT_LOGO_URL": "https://mlbb.nurali.uz/logo.jpg"
   },
   // Dev (beta) muhiti: `npx wrangler deploy --env dev`.
   // Alohida Worker (mlbbchatidbot-dev) + alohida Durable Object namespace.
