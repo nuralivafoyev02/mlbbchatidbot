@@ -83,6 +83,14 @@
   "env": {
     "dev": {
       "name": "mlbbchatidbot-dev",
+      // Faqat o'z domeni orqali: workers.dev va versiya preview manzillari
+      // yopiq — u yerga kelgan so'rov Worker'ni ishga tushirmaydi (limitga
+      // ham qo'shilmaydi). Domen oldida WAF: faqat Telegram IP'lari.
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        { "pattern": "dev-mlbb.nurali.uz", "custom_domain": true }
+      ],
       "durable_objects": {
         "bindings": [
           {
