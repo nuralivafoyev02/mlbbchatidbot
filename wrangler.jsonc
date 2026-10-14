@@ -57,9 +57,10 @@
   "routes": [
     { "pattern": "mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" }
   ],
-  // Vaqtincha: prod webhook hali workers.dev'da. mlbb.nurali.uz/tg ga
-  // o'tkazilgach false qilinadi.
-  "workers_dev": true,
+  // workers.dev va versiya preview manzillari yopiq — Worker faqat
+  // mlbb.nurali.uz/tg* orqali ishga tushadi (limitga ham qo'shilmaydi).
+  "workers_dev": false,
+  "preview_urls": false,
   "vars": {
     "MAIN_GROUP_ID": "-1003832186200",
     "SUPPORT_USERNAME": "Ksava_org",
