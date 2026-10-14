@@ -559,7 +559,7 @@ async function enforceMandatoryMembership(chatId, user, options = {}) {
     }
   }
 
-  const mandatoryChannel = await getMandatoryChannel();
+  const mandatoryChannel = await getMandatoryChannel({ ctx: options.ctx });
   if (!mandatoryChannel) {
     cacheUserAccess(user.id, { member: true, admin: isAdmin(user.id) });
     return true;
@@ -613,13 +613,22 @@ async function handleMessage(message, updateMeta = {}) {
   // a stored value (including "uz") means an explicit choice that must win
   // over the Telegram language_code.
   if (user.id && !stats.languageCache.has(String(user.id))) {
+    // Shaxsiy chatda pastdagi a'zolik tekshiruvi majburiy kanal sozlamasini
+    // baribir so'raydigan bo'lsa — u til bilan bir vaqtda yuklanadi (ikki marta
+    // ketma-ket kutilmaydi). Shart enforceMandatoryMembership bilan bir xil,
+    // shuning uchun ortiqcha so'rov ketmaydi.
+    const channelPrefetch =
+      !isGroupChat(message.chat) && !isAdmin(user.id) && !getCachedUserAccess(user.id)?.member
+        ? getMandatoryChannel({ ctx })
+        : null;
     const storedLang = await loadUserLangFromSupabase(user.id);
     const lang = storedLang || inferTranslationsLang(user.language_code);
     setUserLang(user.id, lang || DEFAULT_LANG);
+    await channelPrefetch;
   }
 
   if (!isGroupChat(message.chat)) {
-    const isAllowed = await enforceMandatoryMembership(chatId, user);
+    const isAllowed = await enforceMandatoryMembership(chatId, user, { ctx });
     if (!isAllowed) return;
   }
 
@@ -777,7 +786,7 @@ async function handleMessage(message, updateMeta = {}) {
 
     // Guruhda botdan foydalanayotgan foydalanuvchi majburiy guruh/kanalga
     // obuna bo'lganligi ham tekshiriladi — obuna bo'lmaguncha bot ishlatilmaydi.
-    const isAllowed = await enforceMandatoryMembership(chatId, user);
+    const isAllowed = await enforceMandatoryMembership(chatId, user, { ctx });
     if (!isAllowed) return;
 
     if (isBindInfoCommand(addressedText) || isBindInfoCommand(addressing.input)) {
@@ -1417,7 +1426,7 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
 
   if (callbackQuery.message) {
     const inGroup = isGroupChat(callbackQuery.message.chat);
-    const isAllowed = await enforceMandatoryMembership(chatId, user, { silent: inGroup });
+    const isAllowed = await enforceMandatoryMembership(chatId, user, { silent: inGroup, ctx: options.ctx });
     if (!isAllowed) {
       if (inGroup) {
         await telegram("answerCallbackQuery", {
@@ -1626,48 +1635,30 @@ async function handleMyProfileRequest(chatId, user, messageId = null) {
 
   void safeSendChatAction(chatId, "typing");
 
-  // Balans limitlar bilan parallel o'qiladi (null — balans tizimi javob bermadi).
-  const balancePromise = getWalletBalance(user.id);
+  // To'rttasi bir vaqtda so'raladi: so'rovlar soni o'sha-o'sha, kutish esa
+  // bitta so'rovchalik (ketma-ket uchta o'rniga). Xato bo'lgani "N/A" / bo'sh
+  // ro'yxat bo'lib chiqadi, qolganlari ko'rsatiladi.
+  const quotaRemaining = (name, logTag) =>
+    supabaseRpc(name, { p_user_id: toPgBigint(user.id) })
+      .then((quota) => (quota && typeof quota.remaining === "number" ? quota.remaining : "N/A"))
+      .catch((err) => {
+        console.error(logTag, err.message);
+        return "N/A";
+      });
 
-  // 1. Parolni tiklash (reset pw) qoldig'i
-  let resetPwRemaining = "N/A";
-  try {
-    const resetPwQuota = await supabaseRpc("get_reset_pw_quota", {
-      p_user_id: toPgBigint(user.id),
-    });
-    if (resetPwQuota && typeof resetPwQuota.remaining === "number") {
-      resetPwRemaining = resetPwQuota.remaining;
-    }
-  } catch (err) {
-    console.error("[MY_PROFILE_RESET_PW_ERROR]", err.message);
-  }
+  const [balance, resetPwRemaining, fullInfoRemaining, accounts] = await Promise.all([
+    // null — balans tizimi javob bermadi.
+    getWalletBalance(user.id),
+    quotaRemaining("get_reset_pw_quota", "[MY_PROFILE_RESET_PW_ERROR]"),
+    quotaRemaining("get_full_info_quota", "[MY_PROFILE_FULLINFO_ERROR]"),
+    supabaseRpc("list_user_accounts", { p_user_id: toPgBigint(user.id) })
+      .then((rows) => (Array.isArray(rows) ? rows : []))
+      .catch((err) => {
+        console.error("[MY_PROFILE_ACCOUNTS_ERROR]", err.message);
+        return [];
+      }),
+  ]);
 
-  // 2. To'liq malumot (full info) qoldig'i
-  let fullInfoRemaining = "N/A";
-  try {
-    const fullInfoQuota = await supabaseRpc("get_full_info_quota", {
-      p_user_id: toPgBigint(user.id),
-    });
-    if (fullInfoQuota && typeof fullInfoQuota.remaining === "number") {
-      fullInfoRemaining = fullInfoQuota.remaining;
-    }
-  } catch (err) {
-    console.error("[MY_PROFILE_FULLINFO_ERROR]", err.message);
-  }
-
-  // 3. Akkauntlar ro'yxati
-  let accounts = [];
-  try {
-    const accResult = await supabaseRpc("list_user_accounts", {
-      p_user_id: toPgBigint(user.id),
-    });
-    accounts = Array.isArray(accResult) ? accResult : [];
-  } catch (err) {
-    console.error("[MY_PROFILE_ACCOUNTS_ERROR]", err.message);
-    accounts = [];
-  }
-
-  const balance = await balancePromise;
   const lines = [
     t("profile_title", lang, { name: escapeHtml(displayName) }),
     "",
@@ -9364,24 +9355,62 @@ function getKnownUserRowsForSupabase() {
     .filter(Boolean);
 }
 
-async function getMandatoryChannel() {
-  if (Date.now() - botSettings.lastFetchedAt < 60000) {
+const MANDATORY_CHANNEL_TTL_MS = 60 * 1000;
+// Xatodan keyin shuncha vaqt qayta so'ralmaydi: bitta update ichida ikki marta
+// so'ralmasin, Supabase ishlamay qolganda esa har xabar yangi so'rov yubormasin.
+const MANDATORY_CHANNEL_RETRY_MS = 5 * 1000;
+
+// Bir vaqtda faqat bitta so'rov — parallel kelgan xabarlar o'shani kutadi.
+function refreshMandatoryChannel() {
+  if (botSettings.mandatoryChannelRefresh) {
+    return botSettings.mandatoryChannelRefresh;
+  }
+
+  const task = (async () => {
+    try {
+      const data = await supabaseRequest(`/bot_settings?key=eq.mandatory_channel&select=value`);
+      botSettings.mandatoryChannel = data && data.length > 0 ? data[0].value : null;
+      botSettings.lastFetchedAt = Date.now();
+    } catch (err) {
+      botSettings.lastFailedAt = Date.now();
+      console.error("[FETCH_SETTINGS_ERROR]", err);
+    }
+  })();
+
+  botSettings.mandatoryChannelRefresh = task;
+  task.finally(() => {
+    if (botSettings.mandatoryChannelRefresh === task) {
+      botSettings.mandatoryChannelRefresh = null;
+    }
+  });
+  return task;
+}
+
+// 60 soniya eskirgan bo'lsa va ctx.waitUntil bor bo'lsa (Worker) — eski qiymat
+// darhol qaytadi, yangisi fonda olinadi (javob Supabase'ni kutmaydi). Hali
+// hech qachon olinmagan bo'lsa yoki ctx yo'q bo'lsa — kutiladi.
+async function getMandatoryChannel(options = {}) {
+  const now = Date.now();
+
+  if (now - botSettings.lastFetchedAt < MANDATORY_CHANNEL_TTL_MS) {
     return botSettings.mandatoryChannel;
   }
   if (!isSupabaseConfigured()) {
     return null;
   }
-  try {
-    const data = await supabaseRequest(`/bot_settings?key=eq.mandatory_channel&select=value`);
-    if (data && data.length > 0) {
-      botSettings.mandatoryChannel = data[0].value;
-    } else {
-      botSettings.mandatoryChannel = null;
-    }
-    botSettings.lastFetchedAt = Date.now();
-  } catch (err) {
-    console.error("[FETCH_SETTINGS_ERROR]", err);
+  if (now - (botSettings.lastFailedAt || 0) < MANDATORY_CHANNEL_RETRY_MS) {
+    return botSettings.mandatoryChannel;
   }
+
+  const refresh = refreshMandatoryChannel();
+  const ctx = options.ctx;
+
+  if (botSettings.lastFetchedAt > 0 && ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(refresh);
+    return botSettings.mandatoryChannel;
+  }
+
+  await refresh;
   return botSettings.mandatoryChannel;
 }
 
