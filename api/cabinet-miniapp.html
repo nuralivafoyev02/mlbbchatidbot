@@ -708,7 +708,7 @@
           set_motion: "Animatsiyalar", set_motion_sub: "O'tish va oyna animatsiyalari", set_groups: "Foydali havolalar", set_help: "Yordam", set_help_sub: "Savol yoki muammo bo'lsa yozing",
           set_lang_saved: "Til saqlandi", set_lang_title: "Tilni tanlang", soon_badge: "Soon",
           ld_title: "Shaxsiy kabinet ochilmoqda", ld_texts: ["Telegram orqali tasdiqlanmoqda…", "Balans va limitlar yuklanmoqda…", "Akkauntlaringiz tekshirilmoqda…", "Do'kon mahsulotlari tayyorlanmoqda…", "Xaridlar tarixi yig'ilmoqda…", "Deyarli tayyor…"],
-          title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_history: "Tarix", tab_shop: "Do'kon",
+          title: "Shaxsiy kabinet", tab_home: "Asosiy", tab_accounts: "Akkauntlar", tab_settings: "Sozlamalar", tab_shop: "Do'kon",
           not_telegram_title: "Telegram orqali oching", not_telegram_text: "Kabinet botdagi «💼 Shaxsiy kabinet» tugmasi orqali ochiladi.",
           error_title: "Xatolik", error_text: "Ma'lumotni olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.", retry: "Qayta urinish",
           launch_expired_title: "Tugma eskirgan", launch_expired_text: "Botga /start yuboring va «💼 Shaxsiy kabinet» tugmasini qayta bosing.",
@@ -796,7 +796,7 @@
           set_motion: "Анимации", set_motion_sub: "Анимации переходов и окон", set_groups: "Полезные ссылки", set_help: "Помощь", set_help_sub: "Напишите, если есть вопрос или проблема",
           set_lang_saved: "Язык сохранён", set_lang_title: "Выберите язык", soon_badge: "Soon",
           ld_title: "Открываем личный кабинет", ld_texts: ["Проверяем вход через Telegram…", "Загружаем баланс и лимиты…", "Проверяем ваши аккаунты…", "Готовим товары магазина…", "Собираем историю покупок…", "Почти готово…"],
-          title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_history: "История", tab_shop: "Магазин",
+          title: "Личный кабинет", tab_home: "Главная", tab_accounts: "Аккаунты", tab_settings: "Настройки", tab_shop: "Магазин",
           not_telegram_title: "Откройте через Telegram", not_telegram_text: "Кабинет открывается в боте кнопкой «💼 Личный кабинет».",
           error_title: "Ошибка", error_text: "Не удалось загрузить данные. Попробуйте позже.", retry: "Повторить",
           launch_expired_title: "Кнопка устарела", launch_expired_text: "Отправьте боту /start и снова нажмите «💼 Личный кабинет».",
@@ -884,7 +884,7 @@
           set_motion: "Animations", set_motion_sub: "Transition and window animations", set_groups: "Useful Links", set_help: "Help", set_help_sub: "Write to us if you have a question",
           set_lang_saved: "Language saved", set_lang_title: "Choose a language", soon_badge: "Soon",
           ld_title: "Opening your cabinet", ld_texts: ["Verifying via Telegram…", "Loading balance and limits…", "Checking your accounts…", "Preparing shop items…", "Collecting purchase history…", "Almost ready…"],
-          title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_history: "History", tab_shop: "Shop",
+          title: "Personal cabinet", tab_home: "Home", tab_accounts: "Accounts", tab_settings: "Settings", tab_shop: "Shop",
           not_telegram_title: "Open in Telegram", not_telegram_text: "Open the cabinet from the bot with the “💼 Personal cabinet” button.",
           error_title: "Error", error_text: "Could not load data. Please try again later.", retry: "Retry",
           launch_expired_title: "Button expired", launch_expired_text: "Send /start to the bot and tap “💼 Personal cabinet” again.",
@@ -977,7 +977,7 @@
         main: [
           { id: "home", label: "tab_home", ico: "house", active: "house-fill" },
           { id: "accounts", label: "tab_accounts", ico: "person-badge", active: "person-badge-fill" },
-          { id: "history", label: "tab_history", ico: "clock-history", active: "clock-history" }
+          { id: "settings", label: "tab_settings", ico: "gear", active: "gear-fill" }
         ],
         shop: [
           { id: "mail", label: "sh_mail", ico: "envelope", active: "envelope-fill" },
@@ -988,7 +988,7 @@
       };
 
       // Har bir bo'lim ikonkasining harakati: tarix — soat strelkasi bir marta aylanadi va h.k.
-      var ICON_ANIM = { home: "bounce", accounts: "pop", history: "spin", mail: "wiggle", limits: "zap", donat: "flip", orders: "drop" };
+      var ICON_ANIM = { home: "bounce", accounts: "pop", settings: "gear", mail: "wiggle", limits: "zap", donat: "flip", orders: "drop" };
       // Nav ikonkasini bir marta harakatlantirish (bosilganda).
       function playIcon(el, kind) {
         if (!el || !kind) return;
@@ -1002,7 +1002,7 @@
         });
       }
 
-      var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "limits", ordTab: "purchases", data: null, view: null };
+      var state = { lang: "uz", mode: "main", tabs: { main: "home", shop: "mail" }, histTab: "viewers", ordTab: "purchases", data: null };
 
       // Shu qurilmadagi sozlamalar (Sozlamalar → Tizim sozlamalari).
       var PREFS_KEY = "mlbb_cabinet_prefs";
@@ -1246,7 +1246,7 @@
           side.setAttribute("aria-label", L(toShop ? "tab_shop" : "tab_home"));
           dock.classList.toggle("shop", !toShop);
         }
-        var activeTab = state.view ? null : currentTab();
+        var activeTab = currentTab();
         tabs.forEach(function (t) {
           var b = nav.querySelector('button[data-tab="' + t.id + '"]');
           b.classList.toggle("active", activeTab === t.id);
@@ -1258,11 +1258,10 @@
       }
 
       function goToTab(id) {
-        if (currentTab() === id && !state.view) return;
+        if (currentTab() === id) return;
         var ids = MODES[state.mode].map(function (t) { return t.id; });
-        var from = state.view ? -1 : ids.indexOf(currentTab());
+        var from = ids.indexOf(currentTab());
         haptic("select");
-        state.view = null;
         state.tabs[state.mode] = id;
         renderNav();
         render();
@@ -1285,7 +1284,6 @@
         var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         var apply = function () {
           state.mode = mode;
-          state.view = null;
           closeSheet();
           renderNav();
           render();
@@ -1322,7 +1320,7 @@
       // Telegram "Orqaga": avval oyna (sheet), keyin do'kondan asosiyga.
       function syncBackButton() {
         if (!tg || !tg.BackButton) return;
-        var open = Boolean(dlgClose) || Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop" || Boolean(state.view);
+        var open = Boolean(dlgClose) || Boolean(document.querySelector("#sheetRoot .sheet:not(.closing)")) || state.mode === "shop" || currentTab() === "settings";
         if (open) tg.BackButton.show(); else tg.BackButton.hide();
       }
 
@@ -1331,7 +1329,7 @@
         var cel = document.querySelector(".cel:not(.closing) [data-cel-close]");
         if (cel) { cel.click(); return; }
         if (document.querySelector("#sheetRoot .sheet:not(.closing)")) { closeSheet(); return; }
-        if (state.view) { closeSettings(); return; }
+        if (currentTab() === "settings") { goToTab("home"); return; }
         if (state.mode === "shop") switchMode("main");
       }
 
@@ -1479,13 +1477,13 @@
 
         var recent = d.history.slice(0, 3);
         if (recent.length) {
-          html += '<div class="section-title">' + esc(L("recent")) + '<button class="link" data-goto="history">' + esc(L("see_all")) + "</button></div>" +
+          html += '<div class="section-title">' + esc(L("recent")) + '<button class="link" data-goto="limits">' + esc(L("see_all")) + "</button></div>" +
             recent.map(historyItemHtml).join("");
         }
         app.innerHTML = html;
         document.getElementById("ctaBuy").addEventListener("click", openShopLimits);
         var more = app.querySelector("[data-goto]");
-        if (more) more.addEventListener("click", function () { goToTab("history"); });
+        if (more) more.addEventListener("click", function () { state.histTab = "limits"; goToTab("accounts"); scrollToHistory(); });
       }
 
       function renderAccounts() {
@@ -1509,7 +1507,9 @@
         if (d.accounts.length < d.accountMax) {
           html += '<button class="btn" id="addAccBtn" style="margin-top:4px">' + icon("plus-lg") + esc(L("add_account")) + "</button>";
         }
+        html += '<div id="accHistory">' + historyHtml() + "</div>";
         app.innerHTML = html;
+        bindHistory();
 
         var addBtn = document.getElementById("addAccBtn");
         if (addBtn) addBtn.addEventListener("click", openAddAccount);
@@ -1518,11 +1518,12 @@
         bindAll("[data-remove]", function (el) { removeAccount(el.dataset.remove, el); });
       }
 
-      function renderHistory() {
+      // Akkauntlar ostida: kim tekshirgani va limitlar tarixi (ikki tab).
+      function historyHtml() {
         var d = state.data;
-        var html = '<div class="seg" style="margin-top:4px">' +
-          '<button data-hist="limits" class="' + (state.histTab === "limits" ? "active" : "") + '">' + esc(L("hist_limits")) + "</button>" +
-          '<button data-hist="viewers" class="' + (state.histTab === "viewers" ? "active" : "") + '">' + esc(L("hist_viewers")) + " · " + d.viewers.length + "</button></div>";
+        var html = '<div class="seg" style="margin-top:18px">' +
+          '<button data-hist="viewers" class="' + (state.histTab === "viewers" ? "active" : "") + '">' + esc(L("hist_viewers")) + " · " + d.viewers.length + "</button>" +
+          '<button data-hist="limits" class="' + (state.histTab === "limits" ? "active" : "") + '">' + esc(L("hist_limits")) + "</button></div>";
         if (state.histTab === "limits") {
           html += d.history.length
             ? d.history.map(historyItemHtml).join("")
@@ -1532,13 +1533,22 @@
             ? d.viewers.map(viewerItemHtml).join("")
             : '<div class="empty">' + icon("eye-slash") + esc(L("no_viewers")) + "</div>";
         }
-        app.innerHTML = html;
-        bindAll("[data-hist]", function (el) {
+        return html;
+      }
+
+      function bindHistory() {
+        bindAll("#accHistory [data-hist]", function (el) {
           if (state.histTab === el.dataset.hist) return;
           haptic("select");
           state.histTab = el.dataset.hist;
-          renderHistory();
+          document.getElementById("accHistory").innerHTML = historyHtml();
+          bindHistory();
         });
+      }
+
+      function scrollToHistory() {
+        var box = document.getElementById("accHistory");
+        if (box) box.scrollIntoView({ block: "start" });
       }
 
       // Do'kon: pochtalar 30 tadan — ro'yxat oxiri ko'ringanda keyingisi yuklanadi.
@@ -1806,10 +1816,9 @@
       function render() {
         if (!state.data) return;
         if (fmObserver) { fmObserver.disconnect(); fmObserver = null; }
-        if (state.view === "settings") { renderSettings(); return; }
         var views = state.mode === "shop"
           ? { mail: renderShop, limits: renderLimits, donat: renderDonat, orders: renderOrders }
-          : { home: renderHome, accounts: renderAccounts, history: renderHistory };
+          : { home: renderHome, accounts: renderAccounts, settings: renderSettings };
         (views[currentTab()] || views[Object.keys(views)[0]])();
       }
 
@@ -2458,7 +2467,7 @@
         api("wallet").then(function (result) {
           if (!result.ok || !Array.isArray(result.transactions)) return;
           state.data.transactions = result.transactions;
-          if (state.mode === "shop" && currentTab() === "orders" && !state.view) renderOrders();
+          if (state.mode === "shop" && currentTab() === "orders") renderOrders();
         });
       }
 
@@ -2646,28 +2655,19 @@
       // ---------------------------------------------------------------- sozlamalar
       var LANG_NAMES = { uz: "O'zbekcha", ru: "Русский", en: "English" };
 
-      // Header'dagi rasm/ism bosilganda (do'kondan ham) — Sozlamalar.
+      // Header'dagi rasm/ism bosilganda (do'kondan ham) — Sozlamalar tabi.
       function openSettings() {
-        if (state.view === "settings" || warping) return;
+        if (warping) return;
+        if (state.mode === "main") { goToTab("settings"); return; }
+        if (currentTab() === "settings") return;
         haptic("light");
         closeSheet();
         state.mode = "main";
-        state.view = "settings";
+        state.tabs.main = "settings";
         renderNav();
         render();
         window.scrollTo(0, 0);
         animateApp("pop-in");
-        syncBackButton();
-      }
-
-      function closeSettings() {
-        if (!state.view) return;
-        haptic("light");
-        state.view = null;
-        renderNav();
-        render();
-        window.scrollTo(0, 0);
-        animateApp("slide-from-left");
         syncBackButton();
       }
 
