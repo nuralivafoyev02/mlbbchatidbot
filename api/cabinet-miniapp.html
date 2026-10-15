@@ -104,7 +104,7 @@
     }
     .bal-btn::after {
       content: ""; position: absolute; inset: -3px; border-radius: 15px; pointer-events: none;
-      border: 1.5px solid rgba(16, 185, 129, .45); animation: pulseRing 2.4s ease-out 3;
+      border: 1.5px solid rgba(16, 185, 129, .45); opacity: 0; animation: pulseRing 2.4s ease-out 3;
     }
     .bal-btn:active { transform: scale(.94); }
     .bal-btn .bal-ico { width: 26px; height: 26px; flex: none; border-radius: 9px; display: grid; place-items: center; font-size: 14px; background: rgba(255, 255, 255, .18); }
@@ -123,6 +123,7 @@
     .wsheet .w-big { margin: 4px 0 14px; font-size: 34px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
     .wsheet .w-big small { font-size: 16px; color: var(--text2); font-weight: 700; }
     .wsheet .pill { margin-bottom: 14px; }
+    /* Halqa faqat animatsiya paytida ko'rinadi — tugagach (yoki o'chiq rejimda) chetda qotib qolmaydi */
     @keyframes pulseRing { 0% { opacity: .9; transform: scale(1) } 100% { opacity: 0; transform: scale(1.22) } }
     @media (prefers-reduced-motion: reduce) {
       .bal-btn::after { animation: none; }
@@ -554,7 +555,7 @@
     }
     .dock-side.to-shop::before {
       content: ""; position: absolute; inset: -3px; border-radius: 29px; pointer-events: none;
-      border: 1.5px solid rgba(16, 185, 129, .5); animation: pulseRing 2.4s ease-out 3;
+      border: 1.5px solid rgba(16, 185, 129, .5); opacity: 0; animation: pulseRing 2.4s ease-out 3;
     }
     .dock-side.to-shop .bi { animation: bagSwing 3.2s ease-in-out 3; transform-origin: 50% 10%; }
     .dock-side.to-home {
@@ -1341,6 +1342,7 @@
         head.innerHTML = headerHtml();
         document.getElementById("balBtn").addEventListener("click", openWalletSheet);
         document.getElementById("headProf").addEventListener("click", openSettings);
+        watchAvatars();
       }
 
       // 20 belgidan uzun ism kesiladi ("…" bilan). Array.from — emoji/harflarni bo'lib yubormaydi.
@@ -1358,27 +1360,65 @@
       // Avatar: rasm bor — img (yuklanguncha skeleton); serverdan so'ralayotgan
       // bo'lsa — bo'sh skeleton; rasm yo'q — ismning bosh harfi.
       // cls — "avatar" (sarlavha) yoki "prof-ava" (Sozlamalar).
+      // Bir marta yuklangan rasm qayta chizilganda skeletonsiz ko'rsatiladi.
+      var avaLoaded = {};
+      var AVA_TIMEOUT = 8000;
       function avatarHtml(cls, letter) {
         var src = avatarSrc(state.data.user);
         var attrs = ' data-ava="' + cls + '" data-letter="' + esc(letter) + '"';
-        if (src) return '<img class="' + cls + ' ava-loading" src="' + esc(src) + '" alt=""' + attrs + ">";
+        if (src) return '<img class="' + cls + (avaLoaded[src] ? "" : " ava-loading") + '" src="' + esc(src) + '" alt=""' + attrs + ">";
         if (state.avatarPending) return '<div class="' + cls + ' ava-loading"' + attrs + "></div>";
         return '<div class="' + cls + '">' + esc(letter) + "</div>";
       }
 
-      // load/error ko'tarilmaydi — capture bilan ushlanadi: yuklandi → skeleton
-      // olinadi, yuklanmadi → bosh harf.
-      document.addEventListener("load", function (e) {
-        var el = e.target;
-        if (el && el.getAttribute && el.getAttribute("data-ava")) el.classList.remove("ava-loading");
-      }, true);
-      document.addEventListener("error", function (e) {
-        var el = e.target;
-        if (!el || el.tagName !== "IMG" || !el.getAttribute("data-ava")) return;
+      function avatarDone(el) {
+        avaLoaded[el.getAttribute("src")] = true;
+        el.classList.remove("ava-loading");
+      }
+
+      // Rasm yuklanmadi yoki juda uzoq yuklanyapti (t.me sekin bo'lishi mumkin):
+      // avval bir marta server orqali (Bot API) so'raladi, bo'lmasa — bosh harf.
+      function avatarFailed(el) {
+        if (!el.isConnected || !el.getAttribute("data-ava")) return;
+        var u = state.data && state.data.user;
+        if (u && !state.avatarRetried && /^https:\/\//.test(el.getAttribute("src") || "")) {
+          state.avatarRetried = true;
+          u.photo_url = "";
+          state.avatarPending = true;
+          Array.prototype.forEach.call(document.querySelectorAll("img[data-ava]"), function (img) {
+            img.outerHTML = avatarHtml(img.getAttribute("data-ava"), img.getAttribute("data-letter") || "?");
+          });
+          loadAvatar();
+          return;
+        }
         var div = document.createElement("div");
         div.className = el.getAttribute("data-ava");
         div.textContent = el.getAttribute("data-letter") || "?";
         el.replaceWith(div);
+      }
+
+      // Chizilgan har bir avatar kuzatiladi: keshdan darhol yuklangan bo'lsa —
+      // skeleton olinadi, AVA_TIMEOUT ichida yuklanmasa — avatarFailed.
+      function watchAvatars() {
+        Array.prototype.forEach.call(document.querySelectorAll("img.ava-loading[data-ava]"), function (el) {
+          if (el.dataset.watched) return;
+          el.dataset.watched = "1";
+          if (el.complete && el.naturalWidth) { avatarDone(el); return; }
+          setTimeout(function () {
+            if (el.classList.contains("ava-loading")) avatarFailed(el);
+          }, AVA_TIMEOUT);
+        });
+      }
+
+      // load/error ko'tarilmaydi — capture bilan ushlanadi.
+      document.addEventListener("load", function (e) {
+        var el = e.target;
+        if (el && el.getAttribute && el.getAttribute("data-ava")) avatarDone(el);
+      }, true);
+      document.addEventListener("error", function (e) {
+        var el = e.target;
+        if (!el || el.tagName !== "IMG" || !el.getAttribute("data-ava")) return;
+        avatarFailed(el);
       }, true);
 
       // Klaviatura tugmasidan ochilganda initData yo'q, photo_url ham yo'q —
@@ -1400,7 +1440,10 @@
       function loadAvatar() {
         if (!state.avatarPending) return;
         var u = state.data.user;
-        api("avatar").then(function (result) {
+        // Server javob bermasa ham skeleton abadiy aylanib qolmasin.
+        var timeout = new Promise(function (resolve) { setTimeout(function () { resolve({ ok: false, error: "timeout" }); }, 12000); });
+        Promise.race([api("avatar"), timeout]).then(function (result) {
+          if (!state.avatarPending) return;
           var photo = result && result.ok && result.photo ? String(result.photo) : "";
           // Tarmoq xatosi keshlanmaydi — keyingi ochilishda qayta so'raladi.
           if (result && result.ok) {
@@ -1412,6 +1455,7 @@
           Array.prototype.forEach.call(document.querySelectorAll("div[data-ava]"), function (el) {
             el.outerHTML = avatarHtml(el.getAttribute("data-ava"), el.getAttribute("data-letter") || "?");
           });
+          watchAvatars();
         });
       }
 
@@ -2717,6 +2761,7 @@
           html += '<div class="set-group">' + setRow("chat-dots", L("set_help"), "@" + d.supportUsername, '<span class="set-val">' + icon("chevron-right") + "</span>", "button", ' id="setHelp"') + "</div>";
         }
         app.innerHTML = html + '<div style="height:8px"></div>';
+        watchAvatars();
 
         bindCopy(app);
         document.getElementById("setLang").addEventListener("click", openLangSheet);
