@@ -272,7 +272,9 @@
     /* Nav ikonkasi — bosilganda o'ziga xos harakat bir marta (ICON_ANIM) */
     .ico-play { display: inline-block; transform-origin: 50% 55%; }
     .ico-play[data-anim="spin"] { animation: icoSpin .7s cubic-bezier(.45, .05, .25, 1) both; }
-    .ico-play[data-anim="gear"] { animation: icoGear .7s cubic-bezier(.45, .05, .25, 1) both; }
+    .ico-play[data-anim="gear"] { animation: icoGear .7s cubic-bezier(.45, .05, .25, 1) both; transform-origin: 50% 50%; }
+    /* G'ildirak o'z markazida aylansin: glif qutiga to'liq tekislanadi */
+    .nav-ico .bi-gear::before, .nav-ico .bi-gear-fill::before { display: block; }
     .ico-play[data-anim="bounce"] { animation: icoBounce .55s ease both; transform-origin: 50% 100%; }
     .ico-play[data-anim="pop"] { animation: icoPop .45s ease both; }
     .ico-play[data-anim="wiggle"] { animation: icoWiggle .55s ease both; }
@@ -521,7 +523,7 @@
       transition: color .2s, transform .15s; -webkit-user-select: none; user-select: none;
     }
     .nav button:active { transform: scale(.94); }
-    .nav button .bi { font-size: 20px; line-height: 1; }
+    .nav button .bi { font-size: 20px; line-height: 1; display: inline-block; vertical-align: top; }
     .nav button.active { color: #fff; }
     .nav button.active .bi { color: #c4b5fd; }
     .dock.shop .nav button.active .bi { color: #6ee7b7; }
