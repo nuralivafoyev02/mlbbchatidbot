@@ -6,6 +6,8 @@ import {
   runBroadcastSlice,
 } from "./broadcast-core.mjs";
 import { AsyncRunner, getBindRunnerName } from "./async-runner.mjs";
+import { MONITOR_CRON, MONITOR_RUNNER_NAME } from "./webhook-monitor.mjs";
+import { flushHealthCounters } from "./health-counters.mjs";
 import {
   createInternalRequest,
   createVercelRequest,
@@ -19,6 +21,7 @@ import {
 } from "./worker-runtime.mjs";
 
 const BIND_INFO_COMMAND_RE = /^\/(?:info|bind|ulanish|ulamalar|ulanmalar)(?:@\w+)?(?:\s|$)/i;
+const STATISTICS_COMMAND_RE = /^\/statistics(?:@(\w+))?(?:\s|$)/i;
 const BROADCAST_QUEUE_NAME = "mlbbchatidbot-broadcast";
 const RUNNER_BASE_URL = "https://async-runner.internal";
 const QUEUE_MESSAGE_WARN_BYTES = 100_000;
@@ -30,6 +33,12 @@ export default {
     const body = await parseRequestBody(request);
     const req = createVercelRequest(request, body);
 
+    if (isStatisticsCommand(body, env) && isAuthorizedWebhook(request, env)) {
+      ctx?.waitUntil?.(requestHealthReport(body.message, env));
+
+      return jsonResponse({ ok: true });
+    }
+
     if (shouldDeferBindInfoUpdate(body) && isAuthorizedWebhook(request, env)) {
       const waitMessage = await sendBindInfoWaitMessage(body, env);
       await dispatchBindInfoUpdate(body, env, ctx, waitMessage);
@@ -40,7 +49,10 @@ export default {
       });
     }
 
-    return runVercelHandler(req, env, ctx);
+    const response = await runVercelHandler(req, env, ctx);
+    ctx?.waitUntil?.(flushHealthCounters(env));
+
+    return response;
   },
 
   async queue(batch, env) {
@@ -71,9 +83,17 @@ export default {
         message.ack();
       }
     }
+
+    await flushHealthCounters(env);
   },
 
   async scheduled(event, env, ctx) {
+    // Har cron o'z ishiga: webhook kuzatuvi kunlik hisobotni qo'zg'atmasligi kerak.
+    if (event?.cron === MONITOR_CRON) {
+      await runWebhookMonitorCheck(env);
+      return;
+    }
+
     try {
       await handler.sendDailyUsageReport(env);
     } catch (error) {
@@ -81,6 +101,67 @@ export default {
     }
   },
 };
+
+// /statistics faqat MAIN_GROUP'da; boshqa chatlarda odatdagi handler'ga o'tadi.
+// Guruhda ikkala bot (prod/dev) bo'lsa, @username'siz buyruqqa ikkalasi javob beradi.
+export function isStatisticsCommand(update, env = {}) {
+  const message = update?.message;
+  const match = String(message?.text || "").trim().match(STATISTICS_COMMAND_RE);
+
+  if (!match || !env.MAIN_GROUP_ID || String(message.chat?.id) !== String(env.MAIN_GROUP_ID)) {
+    return false;
+  }
+
+  return !match[1] || match[1].toLowerCase() === String(env.TELEGRAM_BOT_USERNAME || "").toLowerCase();
+}
+
+async function requestHealthReport(message, env) {
+  const namespace = env?.ASYNC_RUNNER;
+
+  if (!namespace || typeof namespace.idFromName !== "function") {
+    console.error("[STATISTICS_NO_RUNNER]");
+    return;
+  }
+
+  try {
+    const stub = namespace.get(namespace.idFromName(MONITOR_RUNNER_NAME));
+    const response = await stub.fetch(`${RUNNER_BASE_URL}/health-report`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatId: message.chat.id, replyTo: message.message_id }),
+    });
+
+    if (!response.ok) {
+      console.error("[STATISTICS_RUNNER_ERROR]", response.status, await response.text());
+    }
+  } catch (error) {
+    console.error("[STATISTICS_ERROR]", error);
+  }
+}
+
+async function runWebhookMonitorCheck(env) {
+  const namespace = env?.ASYNC_RUNNER;
+
+  if (!namespace || typeof namespace.idFromName !== "function") {
+    console.error("[WEBHOOK_MONITOR_NO_RUNNER]");
+    return;
+  }
+
+  try {
+    const stub = namespace.get(namespace.idFromName(MONITOR_RUNNER_NAME));
+    const response = await stub.fetch(`${RUNNER_BASE_URL}/monitor`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    if (!response.ok) {
+      console.error("[WEBHOOK_MONITOR_RUNNER_ERROR]", response.status, await response.text());
+    }
+  } catch (error) {
+    console.error("[WEBHOOK_MONITOR_ERROR]", error);
+  }
+}
 
 async function processBroadcastMessage(body = {}, env = {}) {
   const job = normalizeBroadcastJob(body);

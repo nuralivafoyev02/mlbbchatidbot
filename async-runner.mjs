@@ -18,6 +18,17 @@ import {
   MODE_RUNNER_NAME_PREFIX,
   MODE_TTL_MS,
 } from "./runner-routing.mjs";
+import { MONITOR_RUNNER_NAME, MONITOR_STATE_KEY, runWebhookMonitor } from "./webhook-monitor.mjs";
+import { flushHealthCounters } from "./health-counters.mjs";
+import {
+  collectHealthReport,
+  countersKey,
+  formatHealthReport,
+  getReportMark,
+  isReportDue,
+  LAST_REPORT_KEY,
+  mergeCounters,
+} from "./health-report.mjs";
 
 const BIND_TASK_KEY = "bind:tasks";
 const BROADCAST_JOB_KEY = "broadcast:job";
@@ -26,6 +37,8 @@ const BIND_REARM_DELAY_MS = 50;
 const MAX_BIND_TASKS_PER_OBJECT = 20;
 const MAX_BROADCAST_JOB_BYTES = 1_500_000;
 const MODE_KEY = "mode:user";
+const MANUAL_REPORT_KEY = "health:last-manual";
+const MANUAL_REPORT_COOLDOWN_MS = 30 * 1000;
 
 export {
   BIND_RUNNER_NAME_PREFIX,
@@ -68,6 +81,10 @@ export class AsyncRunner {
 
     if (name.startsWith(MODE_RUNNER_NAME_PREFIX)) {
       return "mode";
+    }
+
+    if (name === MONITOR_RUNNER_NAME) {
+      return "monitor";
     }
 
     return "bind";
@@ -119,6 +136,18 @@ export class AsyncRunner {
       return this.handleModeSet(body);
     }
 
+    if (url.pathname === "/monitor") {
+      return this.handleMonitor();
+    }
+
+    if (url.pathname === "/health-counters") {
+      return this.handleHealthCounters(body);
+    }
+
+    if (url.pathname === "/health-report") {
+      return this.handleHealthReportRequest(body);
+    }
+
     return jsonResponse({ ok: false, error: "Unknown route" }, 404);
   }
 
@@ -157,6 +186,101 @@ export class AsyncRunner {
     await this.state.storage.put(MODE_KEY, { userId, mode, at: Date.now() });
 
     return jsonResponse({ ok: true, mode });
+  }
+
+  async handleMonitor() {
+    if (this.kind !== "monitor") {
+      return jsonResponse({ ok: false, error: "Not a monitor runner" }, 400);
+    }
+
+    const result = await runWebhookMonitor({ env: this.env, storage: this.state.storage });
+    let report = null;
+
+    try {
+      report = await this.sendDailyHealthReportIfDue(result.state);
+    } catch (error) {
+      console.error("[HEALTH_REPORT_ERROR]", error);
+    }
+
+    return jsonResponse({ ...result, state: undefined, report }, result.ok ? 200 : 500);
+  }
+
+  async handleHealthCounters(body = {}) {
+    if (this.kind !== "monitor") {
+      return jsonResponse({ ok: false, error: "Not a monitor runner" }, 400);
+    }
+
+    const key = countersKey();
+    const current = await this.state.storage.get(key);
+
+    await this.state.storage.put(key, mergeCounters(current, body.delta));
+
+    return jsonResponse({ ok: true });
+  }
+
+  async sendDailyHealthReportIfDue(monitorState = {}, now = Date.now()) {
+    const lastReportMark = await this.state.storage.get(LAST_REPORT_KEY);
+
+    if (!isReportDue(now, this.env, lastReportMark)) {
+      return null;
+    }
+
+    // Avval belgilaymiz: yuborish yiqilsa ham har 10 daqiqada qayta urinmasin.
+    await this.state.storage.put(LAST_REPORT_KEY, getReportMark(now, this.env));
+
+    return this.sendHealthReport(this.env?.MAIN_GROUP_ID, monitorState, now);
+  }
+
+  // /statistics buyrug'i (faqat MAIN_GROUP'da — worker.mjs tekshiradi).
+  async handleHealthReportRequest(body = {}, now = Date.now()) {
+    if (this.kind !== "monitor") {
+      return jsonResponse({ ok: false, error: "Not a monitor runner" }, 400);
+    }
+
+    const lastAt = Number(await this.state.storage.get(MANUAL_REPORT_KEY)) || 0;
+
+    if (now - lastAt < MANUAL_REPORT_COOLDOWN_MS) {
+      return jsonResponse({ ok: true, result: "cooldown" });
+    }
+
+    await this.state.storage.put(MANUAL_REPORT_KEY, now);
+
+    const monitorState = (await this.state.storage.get(MONITOR_STATE_KEY)) || {};
+    const result = await this.sendHealthReport(body.chatId, monitorState, now, body.replyTo);
+
+    return jsonResponse({ ok: true, result });
+  }
+
+  async sendHealthReport(chatId, monitorState = {}, now = Date.now(), replyTo = null) {
+    if (!chatId || !this.env?.TELEGRAM_BOT_TOKEN) {
+      return "not_configured";
+    }
+
+    const report = await collectHealthReport({
+      env: this.env,
+      storage: this.state.storage,
+      monitorState,
+      botDb: (date) => botHandler.getDailyHealthDb(date),
+      now,
+    });
+    const response = await fetch(`https://api.telegram.org/bot${this.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: formatHealthReport(report, { now }),
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("[HEALTH_REPORT_SEND_ERROR]", response.status, await response.text());
+      return "send_failed";
+    }
+
+    return "sent";
   }
 
   async handleStatus() {
@@ -317,6 +441,8 @@ export class AsyncRunner {
       } catch (error) {
         console.error("[ASYNC_RUNNER_BIND_ERROR]", error);
       }
+
+      await flushHealthCounters(this.env);
     }
 
     if (tasks.length > 0) {

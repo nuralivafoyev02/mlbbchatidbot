@@ -61,11 +61,20 @@
   // mlbb.nurali.uz/tg* orqali ishga tushadi (limitga ham qo'shilmaydi).
   "workers_dev": false,
   "preview_urls": false,
+  // Webhook kuzatuvi + 23:50 dagi kunlik holat hisoboti (webhook-monitor.mjs,
+  // health-report.mjs). Free plan: akkauntga 5 ta cron — bu bilan 5/5.
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
   "vars": {
     "MAIN_GROUP_ID": "-1003832186200",
     "SUPPORT_USERNAME": "Ksava_org",
     "ADMIN_IDS": "5081175125,7396686285",
     "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
+    // Kunlik holat hisoboti (health-report.mjs): Cloudflare statistikasi
+    // shu Worker nomi bo'yicha; token — `wrangler secret put CF_ANALYTICS_TOKEN`.
+    "WORKER_NAME": "mlbbchatidbot",
+    "CF_ACCOUNT_ID": "47f7e844771fdf5c35456fd8337f940a",
     "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
     "ADVANCED_SERVER_RANGES": "5101-5800",
     "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",
@@ -100,6 +109,10 @@
       "routes": [
         { "pattern": "dev-mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" }
       ],
+      // Webhook kuzatuvi + kunlik holat hisoboti (prod'dagi kabi).
+      "triggers": {
+        "crons": ["*/10 * * * *"]
+      },
       "durable_objects": {
         "bindings": [
           {
@@ -119,6 +132,8 @@
         "SUPPORT_USERNAME": "Ksava_org",
         "ADMIN_IDS": "5081175125,7396686285",
         "TELEGRAM_BOT_USERNAME": "devcheckmlbbidBot",
+        "WORKER_NAME": "mlbbchatidbot-dev",
+        "CF_ACCOUNT_ID": "47f7e844771fdf5c35456fd8337f940a",
         "MLBB_LOOKUP_API_URL": "https://api.isan.eu.org/nickname/ml",
         "ADVANCED_SERVER_RANGES": "5101-5800",
         "SUPABASE_URL": "https://trybbxovootehqvaiydn.supabase.co",

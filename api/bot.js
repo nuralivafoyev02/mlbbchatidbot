@@ -282,6 +282,7 @@ if (!global.__MLBB_BOT_STATS__) {
     userProfiles: new Map(),
     errors: [],
     errorCounts: {},
+    limitCounts: {},
     featureCounts: {},
     userActionCounts: new Map(),
     startNotifiedUsers: new Set(),
@@ -324,6 +325,7 @@ if (!(stats.userProfiles instanceof Map)) {
 }
 stats.errors ||= [];
 stats.errorCounts ||= {};
+stats.limitCounts ||= {};
 stats.featureCounts ||= {};
 if (!(stats.userActionCounts instanceof Map)) {
   stats.userActionCounts = new Map(Object.entries(stats.userActionCounts || {}));
@@ -6258,6 +6260,18 @@ async function registerBotCommands() {
     await telegram("setMyCommands", {
       commands: buildBotCommands(DEFAULT_LANG),
     });
+
+    // /statistics faqat asosiy guruh menyusida ko'rinadi (worker.mjs bajaradi).
+    if (MAIN_GROUP_ID) {
+      await telegram("setMyCommands", {
+        commands: [
+          ...buildBotCommands(DEFAULT_LANG),
+          { command: "statistics", description: "Tizim holati va kunlik statistika📊" },
+        ],
+        scope: { type: "chat", chat_id: MAIN_GROUP_ID },
+      });
+    }
+
     stats.commandsRegistered = true;
     return true;
   } catch (err) {
@@ -8829,6 +8843,59 @@ function getDailyReportText(report = {}, lang) {
   return lines.join("\n");
 }
 
+// Kunlik holat hisoboti (health-report.mjs) uchun DB ko'rsatkichlari.
+// Har bo'lim alohida: bittasi yiqilsa qolganlari baribir qaytadi.
+async function getDailyHealthDb(now = new Date(), lang = DEFAULT_LANG) {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, error: getSupabaseConfigError() || "Supabase sozlanmagan" };
+  }
+
+  const bounds = getTashkentDayBounds(now);
+  const result = { ok: true };
+  const startedAt = Date.now();
+
+  try {
+    const users = await supabaseRequest("/bot_users?select=user_id&limit=1", {
+      prefer: "count=exact",
+      returnMeta: true,
+    });
+    result.pingMs = Date.now() - startedAt;
+    result.totalUsers = users.count;
+  } catch (error) {
+    return { ok: false, error: error.message, pingMs: Date.now() - startedAt };
+  }
+
+  const settled = await Promise.allSettled([
+    supabaseRequest(
+      `/bot_users?select=user_id&limit=1&first_seen_at=gte.${encodeURIComponent(bounds.startIso)}`,
+      { prefer: "count=exact", returnMeta: true }
+    ),
+    supabaseRpc("get_daily_usage_report", { p_date: getTashkentDateString(now) }),
+    supabaseRpc("get_db_health", {}),
+  ]);
+  const [newUsers, usage, dbHealth] = settled;
+
+  if (newUsers.status === "fulfilled") {
+    result.newUsers = newUsers.value.count;
+  }
+
+  if (usage.status === "fulfilled" && Array.isArray(usage.value?.actions)) {
+    result.actions = usage.value.actions.map((entry) => ({
+      label: getDailyReportActionLabel(entry.action, lang),
+      count: Number(entry.count || 0),
+    }));
+  }
+
+  if (dbHealth.status === "fulfilled" && dbHealth.value && typeof dbHealth.value === "object") {
+    result.dbBytes = Number(dbHealth.value.db_bytes) || null;
+    result.connections = Number(dbHealth.value.connections) || null;
+  } else {
+    result.dbHealthMissing = true;
+  }
+
+  return result;
+}
+
 async function syncKnownUsersToSupabase() {
   if (!isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) {
     return {
@@ -9169,11 +9236,19 @@ function parseContentRangeTotal(contentRange) {
   return Number.isFinite(total) ? total : null;
 }
 
+const LIMIT_ERROR_RE = /rate[_ ]?limit|too[_ ]many|\b429\b/i;
+
 function recordError(type, message, meta = {}) {
   const safeType = cleanEnv(type) || "unknown_error";
   const safeMessage = cleanEnv(message) || "Noma’lum xatolik";
 
   stats.errorCounts[safeType] = (stats.errorCounts[safeType] || 0) + 1;
+
+  // Kunlik holat hisobotida "limitga urilish" alohida ko'rsatiladi.
+  if (Number(meta?.status) === 429 || LIMIT_ERROR_RE.test(`${safeType} ${safeMessage}`)) {
+    stats.limitCounts[safeType] = (stats.limitCounts[safeType] || 0) + 1;
+  }
+
   stats.errors.push({
     at: new Date().toISOString(),
     type: safeType,
@@ -9477,12 +9552,14 @@ function sanitizeTelegramText(value) {
 }
 
 module.exports.sendDailyUsageReport = sendDailyUsageReport;
+module.exports.getDailyHealthDb = getDailyHealthDb;
 module.exports.sendBroadcastPayload = sendBroadcastPayload;
 module.exports.categorizeBroadcastSendError = categorizeBroadcastSendError;
 module.exports.sendBroadcastReport = sendBroadcastReport;
 module.exports.getBroadcastChatIds = getBroadcastChatIds;
 module.exports.enrichPremiumEmojis = enrichPremiumEmojis;
 module.exports.__private = {
+  recordError,
   buildMlCodeMode,
   buildMyProfileKeyboard,
   getMlAccountSummaryText,
