@@ -113,6 +113,9 @@
       "triggers": {
         "crons": ["*/10 * * * *"]
       },
+      // Faqat beta: account Mini App'ining Vercel Preview muhitida ham
+      // JEBRAY_DEVICE_LOGOUT_ENABLED=true va beta'dagi FULL_INFO_API_KEY
+      // (yoki alohida JEBRAY_RESELLER_API_KEY) secret kerak.
       "durable_objects": {
         "bindings": [
           {
@@ -140,6 +143,7 @@
         "FULL_INFO_API": "https://api.jebray.com",
         "FULL_INFO_TIMEOUT_MS": "30000",
         "FULL_INFO_RETRIES": "2",
+        "JEBRAY_DEVICE_LOGOUT_ENABLED": "true",
         "TELEGRAM_TIMEOUT_MS": "5000",
         "BROADCAST_RATE_PER_SEC": "25",
         "BROADCAST_BATCH_SIZE": "25",

@@ -32,6 +32,7 @@ const {
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
+const { JebrayResellerError, requestDeviceLogout } = require("./_jebray-reseller.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 const { verifyCabinetLaunchToken } = require("./_cabinet-launch.js");
 
@@ -49,6 +50,8 @@ function getConfig() {
     supabaseUrl: cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, ""),
     supabaseKey: resolveServiceKey(process.env),
     linkSecret: arena.resolveLinkSecret(process.env),
+    resellerApiKey: cleanEnv(process.env.JEBRAY_RESELLER_API_KEY || process.env.FULL_INFO_API_KEY),
+    deviceLogoutEnabled: process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true",
   };
 }
 
@@ -106,6 +109,8 @@ module.exports = async function handler(req, res) {
         return await handleMlSession(res, ctx);
       case "logout":
         return await handleLogout(res, ctx);
+      case "device_logout":
+        return await handleDeviceLogout(res, ctx);
       // Shaxsiy kabinet (?view=cabinet)
       case "cabinet":
         return await handleCabinet(res, ctx);
@@ -165,6 +170,7 @@ async function handleBootstrap(res, { config, user }) {
   return json(res, 200, {
     ok: true,
     lang,
+    deviceLogoutEnabled: config.deviceLogoutEnabled && Boolean(config.resellerApiKey),
     botUsername: config.botUsername || null,
     user: { id: String(user.id), first_name: user.first_name || "", photo_url: user.photo_url || null },
     accounts: list,
@@ -186,6 +192,53 @@ async function handleLogout(res, { config, user, body }) {
 
   const cleared = await supabaseRpc(config, "clear_user_account_ml_link", { p_user_id: String(user.id), p_row_id: rowId });
   return json(res, 200, { ok: Boolean(cleared && cleared.ok === true) });
+}
+
+async function handleDeviceLogout(res, { config, user, body }) {
+  if (!config.deviceLogoutEnabled) {
+    return json(res, 404, { ok: false, error: "not_available" });
+  }
+  if (!config.resellerApiKey) {
+    return json(res, 503, { ok: false, error: "not_configured" });
+  }
+
+  const rowId = parseRowId(body.rowId);
+  if (!rowId) {
+    return json(res, 400, { ok: false, error: "invalid_account" });
+  }
+  const account = await supabaseRpc(config, "get_user_account_ml_link", {
+    p_user_id: String(user.id),
+    p_row_id: rowId,
+  });
+  if (!account || account.ok !== true) {
+    return json(res, 404, { ok: false, error: "not_found" });
+  }
+
+  try {
+    const result = await requestDeviceLogout(body, { apiKey: config.resellerApiKey });
+    return json(res, 200, result);
+  } catch (error) {
+    const reason = error instanceof JebrayResellerError ? error.reason : "service_unavailable";
+    console.error("[DEVICE_LOGOUT_API_ERROR]", reason, error?.status || "");
+
+    const status = {
+      invalid_input: 400,
+      invalid_email: 400,
+      invalid_password: 400,
+      invalid_code: 400,
+      rate_limited: 429,
+      not_configured: 503,
+      timeout: 504,
+      network: 502,
+      result_unknown: 502,
+      service_unavailable: 502,
+    }[reason] || 422;
+    return json(res, status, {
+      ok: false,
+      error: reason,
+      ...(Number.isInteger(error?.remaining) ? { remaining: error.remaining } : {}),
+    });
+  }
 }
 
 // "Mening akkauntim": egasiga uning Arena JWT'si (Mini App Arena'ga o'zi boradi).

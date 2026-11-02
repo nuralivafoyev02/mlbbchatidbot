@@ -106,6 +106,7 @@ const BUTTON_ADMIN_PANEL = "🎛️ Admin Panel";
 const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/miniapp`;
 // Foydalanuvchining shaxsiy Mini App'i ("🎮 Mening akkauntim") — api/account.js.
 const ACCOUNT_MINIAPP_URL = cleanEnv(process.env.ACCOUNT_MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/account`;
+const DEVICE_LOGOUT_ENABLED = process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true";
 // Shaxsiy kabinet — o'sha Vercel funksiyasi, ?view=cabinet bilan.
 const CABINET_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=cabinet`;
 // "Balansni to'ldirish" — kabinet ochilishi bilan to'ldirish oynasi chiqadi.
@@ -893,6 +894,23 @@ async function handleMessage(message, updateMeta = {}) {
 
   if (isCommand(text, "commands")) {
     await sendMessage(chatId, getCommandsText(user), mainKeyboard(user));
+    return;
+  }
+
+  if (isCommand(text, "device_logout")) {
+    const lang = getUserLang(user.id);
+    const url = DEVICE_LOGOUT_ENABLED ? getDeviceLogoutMiniAppUrl() : null;
+    if (Number(chatId) <= 0 || !url) {
+      await sendMessage(chatId, t("device_logout_unavailable", lang), mainKeyboard(user));
+      return;
+    }
+
+    await sendMessage(chatId, t("device_logout_bot_open", lang), {
+      inline_keyboard: [[{
+        text: t("device_logout_bot_button", lang),
+        web_app: { url },
+      }]],
+    });
     return;
   }
 
@@ -6222,6 +6240,10 @@ function getCommandsText(user = {}) {
     t("cmd_language", lang),
   ];
 
+  if (DEVICE_LOGOUT_ENABLED) {
+    commands.splice(commands.length - 1, 0, t("cmd_device_logout", lang));
+  }
+
   if (isAdmin(user.id)) {
     commands.push(
       "",
@@ -6244,7 +6266,7 @@ function stripHtmlTags(str) {
 }
 
 function buildBotCommands(lang) {
-  return [
+  const commands = [
     { command: "start", description: "Botni qayta faollashtirish♻️" },
     { command: "check", description: "Region nikname aniqlash🤓" },
     { command: "fullinfo", description: "Akkaunt to\u02BBliq malumotini chiqarish🤓" },
@@ -6253,6 +6275,26 @@ function buildBotCommands(lang) {
     { command: "feedback", description: "Fikr izoh yozish🌐" },
     { command: "help", description: "Foydalanish yo\u02BBriqnomasi🤓" },
   ];
+
+  if (DEVICE_LOGOUT_ENABLED) {
+    commands.splice(commands.length - 1, 0, {
+      command: "device_logout",
+      description: "Barcha qurilmalardan chiqish",
+    });
+  }
+
+  return commands;
+}
+
+function getDeviceLogoutMiniAppUrl() {
+  try {
+    const url = new URL(ACCOUNT_MINIAPP_URL);
+    if (url.protocol !== "https:") return null;
+    url.searchParams.set("device_logout", "1");
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 async function registerBotCommands() {

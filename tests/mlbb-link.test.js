@@ -90,9 +90,10 @@ function createFakeSupabase() {
 }
 
 // Global fetch: Telegram, Supabase va Arena chaqiruvlarini yozib boradi.
-function installFetch({ supabase, arenaHandler }) {
+function installFetch({ supabase, arenaHandler, resellerHandler }) {
   const telegram = [];
   const arenaCalls = [];
+  const resellerCalls = [];
   const original = global.fetch;
 
   global.fetch = async (url, options = {}) => {
@@ -113,6 +114,17 @@ function installFetch({ supabase, arenaHandler }) {
       return jsonResponse([]);
     }
 
+    if (href.startsWith("https://api.jebray.com/reseller/v1/logout")) {
+      const call = {
+        method: options.method || "GET",
+        url: href,
+        headers: options.headers || {},
+        body: options.body ? JSON.parse(options.body) : null,
+      };
+      resellerCalls.push(call);
+      return resellerHandler ? resellerHandler(call) : jsonResponse({ success: true });
+    }
+
     if (href.startsWith(ARENA)) {
       const parsed = new URL(href);
       const call = {
@@ -129,10 +141,10 @@ function installFetch({ supabase, arenaHandler }) {
     return jsonResponse({});
   };
 
-  return { telegram, arenaCalls, restore: () => { global.fetch = original; } };
+  return { telegram, arenaCalls, resellerCalls, restore: () => { global.fetch = original; } };
 }
 
-function loadBot() {
+function loadBot({ deviceLogoutEnabled = false } = {}) {
   process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
   process.env.SUPPORT_USERNAME = "Ksava_org";
@@ -142,6 +154,7 @@ function loadBot() {
   process.env.MLBB_ARENA_API_URL = ARENA;
   process.env.MLBB_LINK_SECRET = LINK_SECRET;
   process.env.ACCOUNT_MINIAPP_URL = MINIAPP;
+  process.env.JEBRAY_DEVICE_LOGOUT_ENABLED = deviceLogoutEnabled ? "true" : "false";
   delete process.env.SUPABASE_SERVICE_KEY;
   delete process.env.MAIN_GROUP_ID;
   delete global.__MLBB_BOT_STATS__;
@@ -149,13 +162,16 @@ function loadBot() {
   return require("../api/bot.js");
 }
 
-function loadAccountApp() {
+function loadAccountApp({ deviceLogoutEnabled = false } = {}) {
   process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
   process.env.TELEGRAM_BOT_USERNAME = "checkmlbbidBot";
   process.env.SUPABASE_URL = "https://testproject.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_test-role-key";
   process.env.MLBB_ARENA_API_URL = ARENA;
   process.env.MLBB_LINK_SECRET = LINK_SECRET;
+  process.env.JEBRAY_DEVICE_LOGOUT_ENABLED = deviceLogoutEnabled ? "true" : "false";
+  process.env.JEBRAY_RESELLER_API_KEY = "test-jebray-reseller-key";
+  process.env.JEBRAY_RESELLER_API_URL = "https://api.jebray.com";
   delete require.cache[require.resolve("../api/account.js")];
   return require("../api/account.js");
 }
@@ -532,6 +548,45 @@ test("bot: code mode string fits the 32-char DO limit", () => {
   assert.equal(parseMlCodeMode("profile_add"), null);
 });
 
+test("bot: device logout command opens the beta Mini App without collecting credentials in chat", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+
+  try {
+    const bot = loadBot({ deviceLogoutEnabled: true });
+    const userId = 7700199;
+    await sendUpdate(bot, textUpdate(90, userId, "/device_logout"));
+    const message = lastText(net.telegram);
+    const button = buttonsOf(message).find((item) => item.web_app);
+
+    assert.ok(message.payload.text.includes("Mini App"));
+    assert.ok(button);
+    const target = new URL(button.web_app.url);
+    assert.equal(target.origin, "https://mini.example.test");
+    assert.equal(target.searchParams.get("device_logout"), "1");
+    assert.ok(!message.payload.text.includes("password"));
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("bot: device logout command stays unavailable without the beta flag", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+
+  try {
+    const bot = loadBot();
+    const userId = 7700198;
+    await sendUpdate(bot, textUpdate(91, userId, "/device_logout"));
+    const message = lastText(net.telegram);
+    assert.ok(message.payload.text.includes("beta"));
+    assert.equal(buttonsOf(message).some((item) => item.web_app), false);
+  } finally {
+    net.restore();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Mini App backend (api/account.js)
 // ---------------------------------------------------------------------------
@@ -556,6 +611,26 @@ test("account app: rejects requests without a valid Telegram signature", async (
     await app({ method: "GET", headers: {}, query: {} }, page);
     assert.equal(page.statusCode, 200);
     assert.match(page.body, /telegram-web-app\.js/);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account Mini App opens device logout without requiring the Arena overview session", async () => {
+  const net = installFetch({ supabase: createFakeSupabase(), arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const page = createRes();
+    await app({ method: "GET", headers: {}, query: { device_logout: "1" } }, page);
+
+    const entry = page.body.indexOf("if (deviceLogoutRequested)");
+    const linkedAccountsCheck = page.body.indexOf("var linked = linkedAccounts();", entry);
+    assert.ok(entry >= 0);
+    assert.ok(linkedAccountsCheck > entry);
+    assert.match(page.body.slice(entry, linkedAccountsCheck), /state\.deviceLogoutStandalone = true/);
+    assert.match(page.body.slice(entry, linkedAccountsCheck), /renderDeviceLogout\(\)/);
+    assert.doesNotMatch(page.body.slice(entry, linkedAccountsCheck), /loadOverview\(|arenaSession\(/);
+    assert.equal(net.arenaCalls.length, 0);
   } finally {
     net.restore();
   }
@@ -606,6 +681,159 @@ test("account app: ml_session gives the owner (only) the token; bootstrap never 
     assert.equal(supabase.rows[0].ml_token, null);
     assert.equal((await callAccount(app, { action: "ml_session", initData, rowId })).statusCode, 409);
     assert.equal(net.arenaCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: device logout runs only for an enabled beta and the linked account owner", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: (call) => jsonResponse({
+      success: true,
+      message: "provider response must not be forwarded",
+      cost: call.body.type === "verify-code2" ? 25000 : undefined,
+      balance_after: 405000,
+      password: "provider-secret",
+    }),
+  });
+
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const userId = 7700188;
+    const rowId = supabase.rpc("add_user_account", {
+      p_user_id: userId,
+      p_account_id: "1006613098",
+      p_zone_id: "13019",
+    }).id;
+    supabase.rpc("set_user_account_ml_link", {
+      p_user_id: userId,
+      p_row_id: rowId,
+      p_token: arena.sealArenaToken("jwt-abc", LINK_SECRET),
+      p_nickname: "Lily",
+    });
+    const initData = signInitData({ id: userId });
+
+    const boot = await callAccount(app, { action: "bootstrap", initData });
+    assert.equal(boot.body.deviceLogoutEnabled, true);
+    assert.ok(!JSON.stringify(boot.body).includes("test-jebray-reseller-key"));
+
+    const send = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId,
+      type: "send-code",
+      email: "owner@example.test",
+      password: "Pass1234",
+    });
+    assert.equal(send.statusCode, 200);
+    assert.deepEqual(send.body, { ok: true, type: "send-code", cost: null });
+    assert.equal(net.resellerCalls[0].url, "https://api.jebray.com/reseller/v1/logout");
+    assert.equal(net.resellerCalls[0].headers["X-API-Key"], "test-jebray-reseller-key");
+    assert.deepEqual(net.resellerCalls[0].body, {
+      type: "send-code",
+      email: "owner@example.test",
+      password: "Pass1234",
+    });
+    assert.ok(!JSON.stringify(send.body).includes("Pass1234"));
+
+    const firstCode = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId,
+      type: "verify-code1",
+      email: "owner@example.test",
+      code: "123456",
+    });
+    assert.equal(firstCode.body.type, "verify-code1");
+
+    const final = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId,
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "654321",
+    });
+    assert.deepEqual(final.body, { ok: true, type: "verify-code2", cost: 25000 });
+    assert.ok(!JSON.stringify(final.body).includes("provider-secret"));
+
+    const unlinkedRowId = supabase.rpc("add_user_account", {
+      p_user_id: userId,
+      p_account_id: "11113333",
+      p_zone_id: "3001",
+    }).id;
+    const withoutArenaSession = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId: unlinkedRowId,
+      type: "cancel",
+      email: "owner@example.test",
+    });
+    assert.equal(withoutArenaSession.statusCode, 200);
+    assert.equal(withoutArenaSession.body.type, "cancel");
+
+    const callsBeforeIntruder = net.resellerCalls.length;
+    const intruder = await callAccount(app, {
+      action: "device_logout",
+      initData: signInitData({ id: userId + 1 }),
+      rowId,
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "654321",
+    });
+    assert.equal(intruder.statusCode, 404);
+    assert.equal(net.resellerCalls.length, callsBeforeIntruder);
+
+    const invalid = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId,
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "not-a-code",
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(invalid.body.error, "invalid_code");
+    assert.equal(net.resellerCalls.length, callsBeforeIntruder);
+
+    const missingAccount = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      type: "cancel",
+      email: "owner@example.test",
+    });
+    assert.equal(missingAccount.statusCode, 400);
+    assert.equal(missingAccount.body.error, "invalid_account");
+    assert.equal(net.resellerCalls.length, callsBeforeIntruder);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: device logout is disabled by default and makes no provider request", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+
+  try {
+    const app = loadAccountApp();
+    const initData = signInitData({ id: 7700187 });
+    const boot = await callAccount(app, { action: "bootstrap", initData });
+    assert.equal(boot.body.deviceLogoutEnabled, false);
+
+    const result = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId: "100",
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "654321",
+    });
+    assert.equal(result.statusCode, 404);
+    assert.equal(result.body.error, "not_available");
+    assert.equal(net.resellerCalls.length, 0);
   } finally {
     net.restore();
   }
