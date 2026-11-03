@@ -28,6 +28,7 @@ const TZ_OFFSET_MS = 5 * 3600 * 1000; // Asia/Tashkent (UTC+5, yozgi vaqt yo'q)
 const TOPUP_DEFAULTS = Object.freeze({
   min: 5000,
   max: 5000000,
+  deviceLogoutPrice: 25000,
   // Provayder (ElderPay/Hamyon) buyurtmasi 5 daqiqa amal qiladi; provayder
   // ulanmagan bo'lsa (admin qo'lda tasdiqlaydi) so'rov 30 daqiqa turadi.
   ttlMinutes: elderpay.ORDER_TTL_MINUTES,
@@ -74,6 +75,7 @@ function normalizeWalletConfig(stored = {}, env = process.env) {
   const value = stored && typeof stored === "object" ? stored : {};
   const min = parsePositiveInt(value.min);
   const max = parsePositiveInt(value.max);
+  const deviceLogoutPrice = parsePositiveInt(value.deviceLogoutPrice);
   const presets = Array.isArray(value.presets)
     ? value.presets.map(parsePositiveInt).filter((n) => Number.isFinite(n)).slice(0, 6)
     : [];
@@ -84,6 +86,9 @@ function normalizeWalletConfig(stored = {}, env = process.env) {
     cardBank: cleanText(value.cardBank || env.WALLET_CARD_BANK, 40),
     min: Number.isFinite(min) ? min : TOPUP_DEFAULTS.min,
     max: Number.isFinite(max) ? max : TOPUP_DEFAULTS.max,
+    deviceLogoutPrice: Number.isFinite(deviceLogoutPrice) && deviceLogoutPrice <= 1000000000
+      ? deviceLogoutPrice
+      : TOPUP_DEFAULTS.deviceLogoutPrice,
     presets: presets.length ? presets : TOPUP_DEFAULTS.presets.slice(),
     // Admin to'ldirishni vaqtincha o'chirib qo'yishi mumkin.
     enabled: value.enabled !== false,
@@ -93,7 +98,7 @@ function normalizeWalletConfig(stored = {}, env = process.env) {
   return config;
 }
 
-function normalizeWalletConfigInput(input = {}) {
+function normalizeWalletConfigInput(input = {}, previous = {}) {
   const cardNumber = cleanCardNumber(input.cardNumber);
   if (String(input.cardNumber || "").trim() && !cardNumber) {
     return { ok: false, error: "card_invalid" };
@@ -101,8 +106,15 @@ function normalizeWalletConfigInput(input = {}) {
 
   const min = parsePositiveInt(input.min);
   const max = parsePositiveInt(input.max);
+  const hasDeviceLogoutPrice = input.deviceLogoutPrice !== undefined;
+  const deviceLogoutPrice = hasDeviceLogoutPrice
+    ? parsePositiveInt(input.deviceLogoutPrice)
+    : parsePositiveInt(previous.deviceLogoutPrice) || TOPUP_DEFAULTS.deviceLogoutPrice;
   if (input.min !== undefined && input.min !== "" && Number.isNaN(min)) return { ok: false, error: "min_invalid" };
   if (input.max !== undefined && input.max !== "" && Number.isNaN(max)) return { ok: false, error: "max_invalid" };
+  if ((hasDeviceLogoutPrice && !Number.isFinite(deviceLogoutPrice)) || deviceLogoutPrice > 1000000000) {
+    return { ok: false, error: "device_logout_price_invalid" };
+  }
   if (Number.isFinite(min) && Number.isFinite(max) && max < min) return { ok: false, error: "max_invalid" };
 
   const presets = String(Array.isArray(input.presets) ? input.presets.join(",") : input.presets ?? "")
@@ -119,6 +131,7 @@ function normalizeWalletConfigInput(input = {}) {
       cardBank: cleanText(input.cardBank, 40),
       min: Number.isFinite(min) ? min : null,
       max: Number.isFinite(max) ? max : null,
+      deviceLogoutPrice,
       presets,
       enabled: !(input.enabled === false || input.enabled === "false" || input.enabled === 0 || input.enabled === "0"),
     },
@@ -328,7 +341,8 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
   }
 
   async function saveConfig(input) {
-    const normalized = normalizeWalletConfigInput(input);
+    const { config: current } = await load();
+    const normalized = normalizeWalletConfigInput(input, current);
     if (!normalized.ok) return normalized;
 
     await requestFn("/bot_settings?on_conflict=key", {
@@ -424,6 +438,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
       bank: config.cardBank,
       min: config.min,
       max: config.max,
+      deviceLogoutPrice: config.deviceLogoutPrice,
       presets: config.presets,
       auto: Boolean(config.auto),
       provider: config.auto ? config.provider : null,

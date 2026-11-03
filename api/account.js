@@ -32,7 +32,7 @@ const {
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
-const { JebrayResellerError, requestDeviceLogout } = require("./_jebray-reseller.js");
+const { JebrayResellerError, requestDeviceLogout, validateDeviceLogoutInput } = require("./_jebray-reseller.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 const { verifyCabinetLaunchToken } = require("./_cabinet-launch.js");
 
@@ -158,6 +158,15 @@ async function handleBootstrap(res, { config, user }) {
     supabaseRpc(config, "list_user_accounts", { p_user_id: String(user.id) }),
     loadPreferredLanguage(config, user),
   ]);
+  const deviceLogoutEnabled = config.deviceLogoutEnabled && Boolean(config.resellerApiKey);
+  let deviceLogoutPrice = walletLib.TOPUP_DEFAULTS.deviceLogoutPrice;
+  let deviceLogoutBalance = null;
+  if (deviceLogoutEnabled) {
+    const wallet = createWalletFor(config);
+    const [walletConfig, balance] = await Promise.all([wallet.getConfig(), wallet.getBalance(user.id)]);
+    deviceLogoutPrice = walletConfig.deviceLogoutPrice;
+    deviceLogoutBalance = balance;
+  }
   const list = (Array.isArray(accounts) ? accounts : []).map((acc) => ({
     id: String(acc.id),
     account_id: String(acc.account_id),
@@ -170,7 +179,10 @@ async function handleBootstrap(res, { config, user }) {
   return json(res, 200, {
     ok: true,
     lang,
-    deviceLogoutEnabled: config.deviceLogoutEnabled && Boolean(config.resellerApiKey),
+    deviceLogoutEnabled,
+    deviceLogoutPrice,
+    deviceLogoutBalance,
+    deviceLogoutAffordable: deviceLogoutBalance !== null && deviceLogoutBalance >= deviceLogoutPrice,
     botUsername: config.botUsername || null,
     user: { id: String(user.id), first_name: user.first_name || "", photo_url: user.photo_url || null },
     accounts: list,
@@ -214,11 +226,53 @@ async function handleDeviceLogout(res, { config, user, body }) {
     return json(res, 404, { ok: false, error: "not_found" });
   }
 
+  let input;
+  try {
+    input = validateDeviceLogoutInput(body);
+  } catch (error) {
+    const reason = error instanceof JebrayResellerError ? error.reason : "invalid_input";
+    return json(res, 400, { ok: false, error: reason });
+  }
+
+  const wallet = createWalletFor(config);
+  const walletConfig = await wallet.getConfig();
+  const price = walletConfig.deviceLogoutPrice;
+  if (input.type === "send-code") {
+    const balance = await wallet.getBalance(user.id);
+    if (balance < price) {
+      return json(res, 402, { ok: false, error: "insufficient_funds", price, balance });
+    }
+  }
+
+  let chargedBalance = null;
+  if (input.type === "verify-code2") {
+    const debit = await wallet.adminAdjust(user.id, -price, "Device logout");
+    if (!debit || debit.ok !== true) {
+      return json(res, debit?.error === "insufficient_funds" ? 402 : 503, {
+        ok: false,
+        error: debit?.error === "insufficient_funds" ? "insufficient_funds" : "charge_failed",
+        price,
+        ...(Number.isFinite(Number(debit?.balance)) ? { balance: Number(debit.balance) } : {}),
+      });
+    }
+    chargedBalance = debit.balance;
+  }
+
   try {
     const result = await requestDeviceLogout(body, { apiKey: config.resellerApiKey });
+    if (input.type === "verify-code2") {
+      return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance });
+    }
     return json(res, 200, result);
   } catch (error) {
     const reason = error instanceof JebrayResellerError ? error.reason : "service_unavailable";
+    if (input.type === "verify-code2" && reason !== "result_unknown") {
+      const refund = await wallet.adminAdjust(user.id, price, "Device logout refund");
+      if (!refund || refund.ok !== true) {
+        console.error("[DEVICE_LOGOUT_REFUND_FAILED]", user.id, price, refund?.error || "unknown");
+        return json(res, 500, { ok: false, error: "charge_refund_failed" });
+      }
+    }
     console.error("[DEVICE_LOGOUT_API_ERROR]", reason, error?.status || "");
 
     const status = {

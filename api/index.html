@@ -3646,6 +3646,8 @@
           <div class="modal-field"><label>Bank / tur</label><input type="text" id="wlBank" maxlength="40" placeholder="Uzcard, Humo..."></div>
           <div class="modal-field"><label>Eng kam (so'm)</label><input type="text" id="wlMin" inputmode="numeric" placeholder="5000"></div>
           <div class="modal-field"><label>Eng ko'p (so'm)</label><input type="text" id="wlMax" inputmode="numeric" placeholder="5000000"></div>
+          <div class="modal-field"><label>Qurilmalardan chiqish narxi (so'm)</label><input type="text" id="wlDeviceLogoutPrice" inputmode="numeric" placeholder="25000"></div>
+          <div class="hint pay-hint">Bu summa foydalanuvchining bot balansidan yechiladi. Jebray provayder narxi API hisobidan alohida yechiladi.</div>
         </div>
         <div class="modal-field" style="margin-top:8px"><label>Tez summalar (vergul bilan)</label><input type="text" id="wlPresets" placeholder="10000, 20000, 50000, 100000"></div>
         <div class="modal-field lp-hit-row">
@@ -6086,6 +6088,7 @@
         document.getElementById("wlBank").value = c.cardBank || "";
         document.getElementById("wlMin").value = c.min || "";
         document.getElementById("wlMax").value = c.max || "";
+        document.getElementById("wlDeviceLogoutPrice").value = c.deviceLogoutPrice || "";
         document.getElementById("wlPresets").value = (c.presets || []).join(", ");
         document.getElementById("wlEnabled").checked = c.enabled !== false;
         bindWalletButtons(document.getElementById("featScreen"));
@@ -6572,6 +6575,7 @@
           cardBank: document.getElementById("wlBank").value,
           min: document.getElementById("wlMin").value.replace(/\s+/g, ""),
           max: document.getElementById("wlMax").value.replace(/\s+/g, ""),
+          deviceLogoutPrice: document.getElementById("wlDeviceLogoutPrice").value.replace(/\s+/g, ""),
           presets: document.getElementById("wlPresets").value,
           enabled: document.getElementById("wlEnabled").checked
         }).then(function (result) {

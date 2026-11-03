@@ -430,15 +430,17 @@
           device_logout_title: "Barcha qurilmalardan chiqish", device_logout_button: "📱 Barcha qurilmalardan chiqish",
           device_logout_standalone_back: "Botga qaytish", device_logout_account: "Profilingiz",
           device_logout_account_required: "Davom etish uchun avval botdagi Shaxsiy kabinet orqali akkauntingizni qo‘shing. Mobile Legends sessiyasiga qayta kirish shart emas.",
-          device_logout_intro: "Akkauntdagi barcha qurilmalardan chiqish uchun email va parol kerak. Parol saqlanmaydi. Yakuniy bosqichda muvaffaqiyatli bajarilsa Rp 25.000 yechiladi.",
+          device_logout_intro: "Akkauntdagi barcha qurilmalardan chiqish uchun email va parol kerak. Parol saqlanmaydi. Faqat muvaffaqiyatli tugasa {price} yechiladi.",
           device_logout_email: "Moonton email", device_logout_password: "Moonton parol", device_logout_send: "1-kodni emailga yuborish",
           device_logout_code1_title: "1-kodni tasdiqlash", device_logout_code1_text: "Emailga kelgan birinchi kodni kiriting.",
           device_logout_code2_title: "2-kodni tasdiqlash", device_logout_code2_text: "Muhim: davom etishdan oldin Mobile Legends o‘yiniga kiring va ilovani yopmang. Emailga kelgan yangi kodni kiriting.",
-          device_logout_code: "Tasdiqlash kodi", device_logout_verify1: "1-kodni tasdiqlash", device_logout_verify2: "Chiqish va Rp 25.000 to‘lash",
+          device_logout_code: "Tasdiqlash kodi", device_logout_verify1: "1-kodni tasdiqlash", device_logout_verify2: "Chiqish va {price} to‘lash",
           device_logout_cancel: "Jarayonni bekor qilish", device_logout_back: "Sozlamalarga qaytish",
           device_logout_confirm_title: "Barcha qurilmalarni chiqarish",
-          device_logout_confirm_text: "Faqat muvaffaqiyatli tugasa Rp 25.000 yechiladi. Mobile Legends ichiga kirganingiz va 2-kodni olganingizni tasdiqlang.",
-          device_logout_success: "✅ Barcha qurilmalardan chiqildi. Yechildi: Rp {cost}.",
+          device_logout_confirm_text: "Faqat muvaffaqiyatli tugasa {price} yechiladi. Mobile Legends ichiga kirganingiz va 2-kodni olganingizni tasdiqlang.",
+          device_logout_success: "✅ Barcha qurilmalardan chiqildi. Yechildi: {cost}.",
+          device_logout_insufficient: "Balansingizda mablag‘ yetarli emas. Narx: {price}; balans: {balance}.",
+          device_logout_topup: "Balansni to‘ldirish",
           device_logout_cancelled: "Jarayon bekor qilindi. Mablag‘ yechilmadi.",
           device_logout_error_invalid_email: "Email manzilini tekshiring.",
           device_logout_error_invalid_password: "Parol kamida 8 ta belgi, bitta katta harf va bitta raqamdan iborat bo‘lishi, belgi ishlatmasligi kerak.",
@@ -446,6 +448,8 @@
           device_logout_error_wrong_code: "Kod noto‘g‘ri. Emaildagi kodni tekshiring.",
           device_logout_error_attempts_exceeded: "Urinishlar limiti tugadi. Jarayonni qayta boshlang.",
           device_logout_error_insufficient_balance: "Reseller xizmatida mablag‘ yetarli emas. Yordamga murojaat qiling.",
+          device_logout_error_charge_failed: "Balansdan to‘lovni yechib bo‘lmadi. Qayta urinib ko‘ring.",
+          device_logout_error_charge_refund_failed: "Provayder so‘rovi xato berdi, ammo balansni qaytarish amalga oshmadi. Yordam xizmatiga murojaat qiling.",
           device_logout_error_rate_limited: "Juda ko‘p so‘rov yuborildi. Biroz kutib qayta urinib ko‘ring.",
           device_logout_error_result_unknown: "Yakuniy so‘rov natijasi tasdiqlanmadi. Takrorlamang; avval akkaunt holatini tekshiring yoki yordamga murojaat qiling.",
           device_logout_error_not_configured: "Beta xizmati sozlanmagan. Yordamga xabar bering.",
@@ -477,15 +481,17 @@
           device_logout_title: "Выход со всех устройств", device_logout_button: "📱 Выйти со всех устройств",
           device_logout_standalone_back: "Вернуться в бот", device_logout_account: "Ваш аккаунт",
           device_logout_account_required: "Сначала добавьте аккаунт через Личный кабинет бота. Повторный вход в сессию Mobile Legends не требуется.",
-          device_logout_intro: "Для выхода со всех устройств нужны email и пароль. Пароль не сохраняется. Rp 25 000 списываются только при успешном завершении.",
+          device_logout_intro: "Для выхода со всех устройств нужны email и пароль. Пароль не сохраняется. {price} списываются только при успешном завершении.",
           device_logout_email: "Email Moonton", device_logout_password: "Пароль Moonton", device_logout_send: "Отправить код 1 на email",
           device_logout_code1_title: "Подтвердите код 1", device_logout_code1_text: "Введите первый код из письма.",
           device_logout_code2_title: "Подтвердите код 2", device_logout_code2_text: "Важно: перед продолжением войдите в Mobile Legends и не закрывайте игру. Введите новый код из письма.",
-          device_logout_code: "Код подтверждения", device_logout_verify1: "Подтвердить код 1", device_logout_verify2: "Выйти и оплатить Rp 25 000",
+          device_logout_code: "Код подтверждения", device_logout_verify1: "Подтвердить код 1", device_logout_verify2: "Выйти и оплатить {price}",
           device_logout_cancel: "Отменить процесс", device_logout_back: "Вернуться в настройки",
           device_logout_confirm_title: "Выход со всех устройств",
-          device_logout_confirm_text: "Rp 25 000 спишутся только при успешном завершении. Подтвердите, что вошли в Mobile Legends и получили код 2.",
-          device_logout_success: "✅ Выполнен выход со всех устройств. Списано: Rp {cost}.",
+          device_logout_confirm_text: "{price} спишутся только при успешном завершении. Подтвердите, что вошли в Mobile Legends и получили код 2.",
+          device_logout_success: "✅ Выполнен выход со всех устройств. Списано: {cost}.",
+          device_logout_insufficient: "На балансе недостаточно средств. Цена: {price}; баланс: {balance}.",
+          device_logout_topup: "Пополнить баланс",
           device_logout_cancelled: "Процесс отменён. Средства не списаны.",
           device_logout_error_invalid_email: "Проверьте адрес email.",
           device_logout_error_invalid_password: "Пароль должен содержать не менее 8 символов, заглавную букву и цифру, без спецсимволов.",
@@ -493,6 +499,8 @@
           device_logout_error_wrong_code: "Неверный код. Проверьте письмо.",
           device_logout_error_attempts_exceeded: "Лимит попыток исчерпан. Начните процесс заново.",
           device_logout_error_insufficient_balance: "На балансе reseller недостаточно средств. Обратитесь в поддержку.",
+          device_logout_error_charge_failed: "Не удалось списать средства с баланса. Попробуйте ещё раз.",
+          device_logout_error_charge_refund_failed: "Провайдер отклонил запрос, но вернуть средства не удалось. Обратитесь в поддержку.",
           device_logout_error_rate_limited: "Слишком много запросов. Подождите и попробуйте снова.",
           device_logout_error_result_unknown: "Результат финального запроса не подтверждён. Не повторяйте запрос; сначала проверьте аккаунт или обратитесь в поддержку.",
           device_logout_error_not_configured: "Beta-сервис не настроен. Сообщите в поддержку.",
@@ -524,15 +532,17 @@
           device_logout_title: "Log out all devices", device_logout_button: "📱 Log out all devices",
           device_logout_standalone_back: "Return to bot", device_logout_account: "Your account",
           device_logout_account_required: "Add your account through the bot's Personal Cabinet first. You do not need to sign in to the Mobile Legends session again.",
-          device_logout_intro: "Your email and password are required. The password is not stored. Rp 25,000 is charged only if the final step succeeds.",
+          device_logout_intro: "Your email and password are required. The password is not stored. {price} is charged only if the final step succeeds.",
           device_logout_email: "Moonton email", device_logout_password: "Moonton password", device_logout_send: "Send code 1 to email",
           device_logout_code1_title: "Verify code 1", device_logout_code1_text: "Enter the first code sent to your email.",
           device_logout_code2_title: "Verify code 2", device_logout_code2_text: "Important: log into Mobile Legends before continuing and keep the game open. Enter the new code from your email.",
-          device_logout_code: "Verification code", device_logout_verify1: "Verify code 1", device_logout_verify2: "Log out and pay Rp 25,000",
+          device_logout_code: "Verification code", device_logout_verify1: "Verify code 1", device_logout_verify2: "Log out and pay {price}",
           device_logout_cancel: "Cancel process", device_logout_back: "Back to settings",
           device_logout_confirm_title: "Log out all devices",
-          device_logout_confirm_text: "Rp 25,000 is charged only if this succeeds. Confirm you are logged into Mobile Legends and have received code 2.",
-          device_logout_success: "✅ All devices logged out. Charged: Rp {cost}.",
+          device_logout_confirm_text: "{price} is charged only if this succeeds. Confirm you are logged into Mobile Legends and have received code 2.",
+          device_logout_success: "✅ All devices logged out. Charged: {cost}.",
+          device_logout_insufficient: "Your balance is too low. Price: {price}; balance: {balance}.",
+          device_logout_topup: "Top up balance",
           device_logout_cancelled: "Process cancelled. No charge was made.",
           device_logout_error_invalid_email: "Check the email address.",
           device_logout_error_invalid_password: "Password must be at least 8 characters and contain an uppercase letter and a number, with no symbols.",
@@ -540,6 +550,8 @@
           device_logout_error_wrong_code: "Incorrect code. Check the email.",
           device_logout_error_attempts_exceeded: "The maximum number of attempts was reached. Start again.",
           device_logout_error_insufficient_balance: "The reseller account has insufficient balance. Contact support.",
+          device_logout_error_charge_failed: "The balance charge could not be completed. Please try again.",
+          device_logout_error_charge_refund_failed: "The provider request failed, but the balance could not be refunded. Contact support.",
           device_logout_error_rate_limited: "Too many requests. Wait a bit and try again.",
           device_logout_error_result_unknown: "The final request result could not be confirmed. Do not retry; check the account or contact support first.",
           device_logout_error_not_configured: "The beta service is not configured. Contact support.",
@@ -573,6 +585,9 @@
         sid: null,
         lists: {},
         deviceLogoutEnabled: false,
+        deviceLogoutPrice: 25000,
+        deviceLogoutBalance: null,
+        deviceLogoutAffordable: false,
         deviceLogoutStandalone: false,
         deviceLogoutFlow: null,
         deviceLogoutError: "",
@@ -588,6 +603,13 @@
       }
 
       function L(key) { return (I18N[state.lang] || I18N.uz)[key] || I18N.en[key] || key; }
+      function deviceLogoutMoney(value) {
+        var amount = num(value);
+        return amount + (state.lang === "uz" ? " so'm" : state.lang === "ru" ? " сум" : " UZS");
+      }
+      function deviceLogoutText(key) {
+        return L(key).replace(/\{price\}/g, deviceLogoutMoney(state.deviceLogoutPrice));
+      }
 
       // ---- yuklanish ekrani: aylanuvchi halqalar + almashib turadigan matnlar.
       // Til bootstrap'gacha noma'lum — Telegram'dagi tildan taxmin qilinadi.
@@ -791,6 +813,10 @@
         if (tg) tg.close();
       }
 
+      function openWalletCabinet() {
+        location.href = location.pathname + "?view=cabinet";
+      }
+
       // ---------------------------------------------------------------- states
       function renderState(iconName, title, text, actions, warn) {
         var buttons = (actions || []).map(function (a, i) {
@@ -817,7 +843,9 @@
             { label: L("open_bot"), onClick: openBot }
           ];
           if (state.deviceLogoutEnabled) {
-            actions.unshift({ label: L("device_logout_button"), cls: "primary", onClick: openDeviceLogoutFlow });
+            actions.unshift(state.deviceLogoutAffordable
+              ? { label: L("device_logout_button"), cls: "primary", onClick: openDeviceLogoutFlow }
+              : { label: L("device_logout_topup"), cls: "primary", onClick: openWalletCabinet });
           }
           renderState("hourglass-split", L("expired_title"), L("expired_text"), [
             ...actions
@@ -1389,6 +1417,28 @@
         return L(key) === key ? L("device_logout_error_request_failed") : L(key);
       }
 
+      function renderDeviceLogoutInsufficient(balance) {
+        if (Number.isFinite(Number(balance))) state.deviceLogoutBalance = Number(balance);
+        state.deviceLogoutAffordable = false;
+        var text = L("device_logout_insufficient")
+          .replace("{price}", deviceLogoutMoney(state.deviceLogoutPrice))
+          .replace("{balance}", deviceLogoutMoney(state.deviceLogoutBalance || 0));
+        renderState("wallet2", L("device_logout_title"), text, [
+          { label: L("device_logout_topup"), cls: "primary", onClick: openWalletCabinet },
+          {
+            label: state.deviceLogoutStandalone ? L("device_logout_standalone_back") : L("device_logout_back"),
+            onClick: function () {
+              if (state.deviceLogoutStandalone) openBot();
+              else {
+                state.deviceLogoutFlow = null;
+                state.deviceLogoutError = "";
+                renderTab();
+              }
+            }
+          }
+        ], true);
+      }
+
       function renderDeviceLogout() {
         var flow = state.deviceLogoutFlow;
         var html = '<div class="section-title">' + icon("shield-lock") + esc(L("device_logout_title")) + "</div>";
@@ -1415,7 +1465,7 @@
 
         if (state.deviceLogoutSuccess) {
           html += '<div class="notice"><i class="bi bi-check-circle" aria-hidden="true"></i><div><div class="item-title">' +
-            esc(L("device_logout_success").replace("{cost}", num(state.deviceLogoutSuccess.cost || 25000))) +
+            esc(L("device_logout_success").replace("{cost}", deviceLogoutMoney(state.deviceLogoutSuccess.cost))) +
             "</div></div></div>" +
             '<button class="btn" id="deviceLogoutBack">' + esc(backLabel) + "</button>";
         } else if (flow && flow.stage === "unknown") {
@@ -1427,7 +1477,7 @@
             esc(L("device_logout_account_required")) + "</p></div></div>" +
             '<button class="btn" id="deviceLogoutBack">' + esc(backLabel) + "</button>";
         } else if (!flow) {
-          html += '<div class="card"><p class="item-sub">' + esc(L("device_logout_intro")) + "</p></div>" +
+          html += '<div class="card"><p class="item-sub">' + esc(deviceLogoutText("device_logout_intro")) + "</p></div>" +
             '<label class="item-sub" for="deviceLogoutEmail">' + esc(L("device_logout_email")) + "</label>" +
             '<input id="deviceLogoutEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" required>' +
             '<label class="item-sub" for="deviceLogoutPassword">' + esc(L("device_logout_password")) + "</label>" +
@@ -1438,7 +1488,7 @@
           var isCode1 = flow.stage === "code1";
           var heading = isCode1 ? L("device_logout_code1_title") : L("device_logout_code2_title");
           var description = isCode1 ? L("device_logout_code1_text") : L("device_logout_code2_text");
-          var submitLabel = isCode1 ? L("device_logout_verify1") : L("device_logout_verify2");
+          var submitLabel = isCode1 ? L("device_logout_verify1") : deviceLogoutText("device_logout_verify2");
           html += '<div class="card"><div class="item-title">' + esc(heading) + '</div><p class="item-sub">' +
             esc(description) + '</p><div class="item-sub">' + esc(flow.email) + "</div></div>" +
             '<label class="item-sub" for="deviceLogoutCode">' + esc(L("device_logout_code")) + "</label>" +
@@ -1488,6 +1538,10 @@
           payload.password = "";
           request.then(function (result) {
             if (!result.ok) {
+              if (result.error === "insufficient_funds") {
+                renderDeviceLogoutInsufficient(result.balance);
+                return;
+              }
               state.deviceLogoutError = deviceLogoutErrorText(result.error);
               haptic("error");
               renderDeviceLogout();
@@ -1513,8 +1567,12 @@
             setBusy(verifyButton, true);
             request.then(function (result) {
               if (!result.ok) {
+                if (result.error === "insufficient_funds") {
+                  renderDeviceLogoutInsufficient(result.balance);
+                  return;
+                }
                 var uncertain = type === "verify-code2" &&
-                  ["network", "bad_response", "server_error", "timeout", "service_unavailable", "result_unknown"].indexOf(result.error) >= 0;
+                  ["network", "bad_response", "server_error", "timeout", "service_unavailable", "result_unknown", "charge_refund_failed"].indexOf(result.error) >= 0;
                 if (uncertain) {
                   state.deviceLogoutFlow = { stage: "unknown" };
                 }
@@ -1529,7 +1587,7 @@
                 state.deviceLogoutFlow = { email: flow.email, stage: "code2" };
               } else {
                 state.deviceLogoutFlow = null;
-                state.deviceLogoutSuccess = { cost: result.cost };
+                state.deviceLogoutSuccess = { cost: result.chargedAmount };
               }
               renderDeviceLogout();
             });
@@ -1541,8 +1599,8 @@
           }
           confirmAction({
             title: L("device_logout_confirm_title"),
-            text: L("device_logout_confirm_text"),
-            ok: L("device_logout_verify2"),
+            text: deviceLogoutText("device_logout_confirm_text"),
+            ok: deviceLogoutText("device_logout_verify2"),
             icon: "shield-lock"
           }).then(function (confirmed) {
             if (confirmed) submit();
@@ -1587,6 +1645,10 @@
           toast(L("device_logout_error_not_configured"));
           return;
         }
+        if (!state.deviceLogoutAffordable) {
+          renderDeviceLogoutInsufficient(state.deviceLogoutBalance);
+          return;
+        }
         state.deviceLogoutFlow = null;
         state.deviceLogoutError = "";
         state.deviceLogoutSuccess = null;
@@ -1627,6 +1689,9 @@
           document.getElementById("ldTitle").textContent = L("ld_title");
           state.botUsername = result.botUsername;
           state.deviceLogoutEnabled = Boolean(result.deviceLogoutEnabled);
+          state.deviceLogoutPrice = Number(result.deviceLogoutPrice) || 25000;
+          state.deviceLogoutBalance = Number.isFinite(Number(result.deviceLogoutBalance)) ? Number(result.deviceLogoutBalance) : null;
+          state.deviceLogoutAffordable = Boolean(result.deviceLogoutAffordable);
           state.accounts = result.accounts || [];
           document.documentElement.lang = state.lang;
           document.title = L("title");
@@ -1644,6 +1709,10 @@
               renderState("exclamation-triangle-fill", L("error_title"), deviceLogoutErrorText("not_configured"), [
                 { label: L("device_logout_standalone_back"), onClick: openBot }
               ], true);
+              return;
+            }
+            if (state.rowId && !state.deviceLogoutAffordable) {
+              renderDeviceLogoutInsufficient(state.deviceLogoutBalance);
               return;
             }
             renderDeviceLogout();

@@ -1182,6 +1182,7 @@ const WALLET_ERROR_TEXTS = {
   card_invalid: "Karta raqami 16 ta raqamdan iborat bo'lishi kerak",
   min_invalid: "Eng kam summa noto'g'ri",
   max_invalid: "Eng ko'p summa eng kamidan kichik bo'lmasin",
+  device_logout_price_invalid: "Qurilmalardan chiqish narxi 1 dan 1 000 000 000 so'mgacha bo'lishi kerak",
   invalid_amount: "Summa noto'g'ri",
   insufficient_funds: "Balansda buncha mablag' yo'q",
   not_found: "Topilmadi",
@@ -1824,4 +1825,3 @@ async function requireAuth(req, res) {
   }
   return true;
 }
-

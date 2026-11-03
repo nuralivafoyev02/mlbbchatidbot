@@ -178,6 +178,7 @@ test("wallet: config merges admin settings over env and validates input", () => 
   const fromEnv = walletLib.normalizeWalletConfig(null, env);
   assert.equal(fromEnv.cardNumber, "8600123456789012");
   assert.deepEqual([fromEnv.min, fromEnv.max, fromEnv.enabled], [5000, 5000000, true]);
+  assert.equal(fromEnv.deviceLogoutPrice, 25000);
   assert.equal(walletLib.formatCardNumber(fromEnv.cardNumber), "8600 1234 5678 9012");
 
   const stored = walletLib.normalizeWalletConfig({ cardNumber: "9860000011112222", min: "1000", presets: [5000, "x"] }, env);
@@ -185,8 +186,12 @@ test("wallet: config merges admin settings over env and validates input", () => 
 
   assert.equal(walletLib.normalizeWalletConfigInput({ cardNumber: "1234" }).error, "card_invalid");
   assert.equal(walletLib.normalizeWalletConfigInput({ min: "10", max: "5" }).error, "max_invalid");
+  assert.equal(walletLib.normalizeWalletConfigInput({ deviceLogoutPrice: "0" }).error, "device_logout_price_invalid");
+  assert.equal(walletLib.normalizeWalletConfigInput({ deviceLogoutPrice: "1000000001" }).error, "device_logout_price_invalid");
   const ok = walletLib.normalizeWalletConfigInput({ cardNumber: "8600 0000 1111 2222", presets: "10000, 20 000;50000", enabled: "false" });
   assert.deepEqual([ok.value.presets, ok.value.enabled], [[10000, 20000, 50000], false]);
+  assert.equal(walletLib.normalizeWalletConfigInput({}, { deviceLogoutPrice: 42000 }).value.deviceLogoutPrice, 42000);
+  assert.equal(walletLib.normalizeWalletConfigInput({ deviceLogoutPrice: "42000" }).value.deviceLogoutPrice, 42000);
 });
 
 // ---------------------------------------------------------------------------
@@ -339,6 +344,7 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     wallet_credit_topup: { ok: true, status: "credited", user_id: 777, amount: 20347, balance: 40347 },
     wallet_admin_adjust: { ok: false, error: "insufficient_funds", balance: 100 },
   };
+  const settings = new Map();
   global.fetch = async (url, options = {}) => {
     const href = String(url);
     if (href.startsWith("https://api.telegram.org/")) {
@@ -351,6 +357,15 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
       const name = path.slice(5);
       rpcCalls.push({ name, body: JSON.parse(options.body) });
       payload = rpcResults[name] || { ok: true };
+    } else if (path.startsWith("/bot_settings")) {
+      if (options.method === "POST") {
+        const setting = JSON.parse(options.body);
+        settings.set(setting.key, setting.value);
+      } else {
+        const key = new URL(href).searchParams.get("key").replace(/^eq\./, "");
+        const value = settings.get(key);
+        payload = value ? [{ value }] : [];
+      }
     }
     return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
   };
@@ -391,6 +406,10 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     assert.deepEqual([adjust.status, adjust.payload.error], [400, "insufficient_funds"]);
     assert.equal((await call("wallet_adjust", { user_id: "abc", delta: 5 }, cookie)).payload.error, "invalid_user");
     assert.equal((await call("wallet_config_save", { cardNumber: "123" }, cookie)).payload.error, "card_invalid");
+    const savedConfig = await call("wallet_config_save", { deviceLogoutPrice: "42000" }, cookie);
+    assert.equal(savedConfig.payload.data.config.deviceLogoutPrice, 42000);
+    assert.equal(settings.get("wallet_config").deviceLogoutPrice, 42000);
+    assert.equal((await call("wallet_config_save", { deviceLogoutPrice: "" }, cookie)).payload.error, "device_logout_price_invalid");
   } finally {
     global.fetch = originalFetch;
     for (const key of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ADMIN_PANEL_SECRET", "ADMIN_PANEL_USERNAME", "ADMIN_PANEL_PASSWORD", "TELEGRAM_BOT_TOKEN"]) {

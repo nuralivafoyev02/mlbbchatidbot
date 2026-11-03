@@ -37,6 +37,9 @@ function signInitData(user, { token = BOT_TOKEN, authDate = Math.floor(Date.now(
 function createFakeSupabase() {
   const rows = [];
   const calls = [];
+  const balances = new Map();
+  const settings = new Map();
+  const walletAdjustments = [];
   let nextId = 100;
   const own = (args) => rows.find((r) => String(r.id) === String(args.p_row_id) && String(r.user_id) === String(args.p_user_id));
 
@@ -81,12 +84,31 @@ function createFakeSupabase() {
       case "get_reset_pw_quota":
       case "get_full_info_quota":
         return { remaining: 3 };
+      case "wallet_get":
+        return { ok: true, balance: balances.get(String(args.p_user_id)) || 0 };
+      case "wallet_admin_adjust": {
+        const userId = String(args.p_user_id);
+        const balance = balances.get(userId) || 0;
+        const nextBalance = balance + Number(args.p_delta);
+        walletAdjustments.push({ userId, delta: Number(args.p_delta), note: args.p_note });
+        if (nextBalance < 0) return { ok: false, error: "insufficient_funds", balance };
+        balances.set(userId, nextBalance);
+        return { ok: true, balance: nextBalance };
+      }
       default:
         return null;
     }
   }
 
-  return { rows, calls, rpc };
+  return {
+    rows,
+    calls,
+    settings,
+    walletAdjustments,
+    setBalance(userId, balance) { balances.set(String(userId), balance); },
+    getBalance(userId) { return balances.get(String(userId)) || 0; },
+    rpc,
+  };
 }
 
 // Global fetch: Telegram, Supabase va Arena chaqiruvlarini yozib boradi.
@@ -110,6 +132,17 @@ function installFetch({ supabase, arenaHandler, resellerHandler }) {
         const name = decodeURIComponent(path.slice(5).split("?")[0]);
         const data = supabase.rpc(name, options.body ? JSON.parse(options.body) : {});
         return new Response(data === null ? "" : JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (path.startsWith("/bot_settings")) {
+        const parsed = new URL(href);
+        if (options.method === "POST") {
+          const setting = JSON.parse(options.body);
+          supabase.settings.set(setting.key, setting.value);
+          return jsonResponse([]);
+        }
+        const key = String(parsed.searchParams.get("key") || "").replace(/^eq\./, "");
+        const value = supabase.settings.get(key);
+        return jsonResponse(value ? [{ value }] : []);
       }
       return jsonResponse([]);
     }
@@ -628,6 +661,8 @@ test("account Mini App opens device logout without requiring the Arena overview 
     assert.ok(entry >= 0);
     assert.ok(linkedAccountsCheck > entry);
     assert.match(page.body.slice(entry, linkedAccountsCheck), /state\.deviceLogoutStandalone = true/);
+    assert.match(page.body.slice(entry, linkedAccountsCheck), /!state\.deviceLogoutAffordable/);
+    assert.match(page.body, /function renderDeviceLogoutInsufficient/);
     assert.match(page.body.slice(entry, linkedAccountsCheck), /renderDeviceLogout\(\)/);
     assert.doesNotMatch(page.body.slice(entry, linkedAccountsCheck), /loadOverview\(|arenaSession\(/);
     assert.equal(net.arenaCalls.length, 0);
@@ -703,6 +738,8 @@ test("account app: device logout runs only for an enabled beta and the linked ac
   try {
     const app = loadAccountApp({ deviceLogoutEnabled: true });
     const userId = 7700188;
+    supabase.setBalance(userId, 100000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 42000 });
     const rowId = supabase.rpc("add_user_account", {
       p_user_id: userId,
       p_account_id: "1006613098",
@@ -718,6 +755,9 @@ test("account app: device logout runs only for an enabled beta and the linked ac
 
     const boot = await callAccount(app, { action: "bootstrap", initData });
     assert.equal(boot.body.deviceLogoutEnabled, true);
+    assert.equal(boot.body.deviceLogoutPrice, 42000);
+    assert.equal(boot.body.deviceLogoutBalance, 100000);
+    assert.equal(boot.body.deviceLogoutAffordable, true);
     assert.ok(!JSON.stringify(boot.body).includes("test-jebray-reseller-key"));
 
     const send = await callAccount(app, {
@@ -757,7 +797,9 @@ test("account app: device logout runs only for an enabled beta and the linked ac
       email: "owner@example.test",
       code: "654321",
     });
-    assert.deepEqual(final.body, { ok: true, type: "verify-code2", cost: 25000 });
+    assert.deepEqual(final.body, { ok: true, type: "verify-code2", cost: 25000, chargedAmount: 42000, balance: 58000 });
+    assert.equal(supabase.getBalance(userId), 58000);
+    assert.deepEqual(supabase.walletAdjustments.at(-1), { userId: String(userId), delta: -42000, note: "Device logout" });
     assert.ok(!JSON.stringify(final.body).includes("provider-secret"));
 
     const unlinkedRowId = supabase.rpc("add_user_account", {
@@ -808,6 +850,138 @@ test("account app: device logout runs only for an enabled beta and the linked ac
     assert.equal(missingAccount.statusCode, 400);
     assert.equal(missingAccount.body.error, "invalid_account");
     assert.equal(net.resellerCalls.length, callsBeforeIntruder);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: device logout checks wallet balance before opening or contacting Jebray", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const userId = 881177;
+    const rowId = supabase.rpc("add_user_account", {
+      p_user_id: userId,
+      p_account_id: "21112222",
+      p_zone_id: "3011",
+    }).id;
+    supabase.setBalance(userId, 24999);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000 });
+    const initData = signInitData({ id: userId });
+
+    const bootstrap = await callAccount(app, { action: "bootstrap", initData });
+    assert.equal(bootstrap.body.deviceLogoutAffordable, false);
+    assert.equal(bootstrap.body.deviceLogoutPrice, 25000);
+
+    const send = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId,
+      type: "send-code",
+      email: "owner@example.test",
+      password: "Pass1234",
+    });
+    assert.equal(send.statusCode, 402);
+    assert.deepEqual(send.body, { ok: false, error: "insufficient_funds", price: 25000, balance: 24999 });
+    assert.equal(net.resellerCalls.length, 0);
+
+    const finalWithoutFunds = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId,
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "123456",
+    });
+    assert.equal(finalWithoutFunds.statusCode, 402);
+    assert.equal(finalWithoutFunds.body.error, "insufficient_funds");
+    assert.equal(net.resellerCalls.length, 0);
+
+    supabase.setBalance(userId, 50000);
+    const unknownAccount = await callAccount(app, {
+      action: "device_logout",
+      initData,
+      rowId: rowId + 9999,
+      type: "send-code",
+      email: "owner@example.test",
+      password: "Pass1234",
+    });
+    assert.equal(unknownAccount.statusCode, 404);
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: refund device logout charge when provider rejects the final code", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: (call) => call.body.type === "verify-code2"
+      ? jsonResponse({ success: false, error: "Wrong verification code" }, 400)
+      : jsonResponse({ success: true }),
+  });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const userId = 992277;
+    const rowId = supabase.rpc("add_user_account", {
+      p_user_id: userId,
+      p_account_id: "31112222",
+      p_zone_id: "3022",
+    }).id;
+    supabase.setBalance(userId, 60000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000 });
+
+    const rejected = await callAccount(app, {
+      action: "device_logout",
+      initData: signInitData({ id: userId }),
+      rowId,
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "123456",
+    });
+    assert.equal(rejected.statusCode, 422);
+    assert.equal(rejected.body.error, "wrong_code");
+    assert.equal(supabase.getBalance(userId), 60000);
+    assert.deepEqual(supabase.walletAdjustments.map(({ delta }) => delta), [-25000, 25000]);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: keep final charge when provider outcome is unknown to prevent unsafe retries", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: () => jsonResponse({ error: "temporary provider error" }, 503),
+  });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const userId = 772299;
+    const rowId = supabase.rpc("add_user_account", {
+      p_user_id: userId,
+      p_account_id: "41112222",
+      p_zone_id: "4022",
+    }).id;
+    supabase.setBalance(userId, 60000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000 });
+
+    const result = await callAccount(app, {
+      action: "device_logout",
+      initData: signInitData({ id: userId }),
+      rowId,
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "123456",
+    });
+    assert.equal(result.statusCode, 502);
+    assert.equal(result.body.error, "result_unknown");
+    assert.equal(supabase.getBalance(userId), 35000);
+    assert.deepEqual(supabase.walletAdjustments.map(({ delta }) => delta), [-25000]);
+    assert.equal(net.resellerCalls.length, 1);
   } finally {
     net.restore();
   }
