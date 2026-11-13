@@ -120,7 +120,7 @@ export async function handlePublicApi(request, env = {}, ctx) {
   const auth = await checkToken(token, env, url.origin);
   if (!auth.ok) {
     if (auth.id) guard.dead(auth, ip);
-    else if (auth.status !== 503) guard.bad(ip, country);
+    else if (auth.status !== 503) guard.bad(ip, country, `${token.slice(0, 14)}...`);
     scheduleGuardFlush(env, ctx);
     const body = { ok: false, error: auth.error };
     if (auth.status !== 503) body.message = TOKEN_HINT;

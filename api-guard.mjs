@@ -15,6 +15,7 @@ const BUCKET_MS = 60 * 1000;
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_IPS = 30;
 const MAX_ALERT_KEYS = 500;
+const MAX_TRIED_KEYS = 5;
 
 export const GUARD_RULES = Object.freeze({
   rateAbuse: { limited: 10, cooldownMs: 60 * 60 * 1000 },
@@ -35,7 +36,7 @@ export function createGuardCollector() {
   const ipEntry = (ip, country) => {
     let entry = ips.get(ip);
     if (!entry) {
-      entry = { ip, country: country || null, tokens: new Set(), bad: 0 };
+      entry = { ip, country: country || null, tokens: new Set(), bad: 0, tried: new Set() };
       ips.set(ip, entry);
     }
     return entry;
@@ -65,9 +66,12 @@ export function createGuardCollector() {
       entry.hits += 1;
       if (ip && entry.ips.size < MAX_IPS) entry.ips.add(ip);
     },
-    // Mavjud bo'lmagan yoki noto'g'ri formatdagi token.
-    bad(ip, country) {
-      if (ip) ipEntry(ip, country).bad += 1;
+    // Mavjud bo'lmagan yoki noto'g'ri formatdagi token (tried — kalit boshi).
+    bad(ip, country, tried) {
+      if (!ip) return;
+      const entry = ipEntry(ip, country);
+      entry.bad += 1;
+      if (tried && entry.tried.size < MAX_TRIED_KEYS) entry.tried.add(tried);
     },
     isEmpty() {
       return !tokens.size && !ips.size && !dead.size;
@@ -76,7 +80,7 @@ export function createGuardCollector() {
       const batch = {
         tokens: [...tokens.values()].map((t) => ({ ...t, ips: [...t.ips] })),
         dead: [...dead.values()].map((t) => ({ ...t, ips: [...t.ips] })),
-        ips: [...ips.values()].map((i) => ({ ...i, tokens: [...i.tokens] })),
+        ips: [...ips.values()].map((i) => ({ ...i, tokens: [...i.tokens], tried: [...i.tried] })),
       };
       tokens = new Map();
       ips = new Map();
@@ -101,8 +105,9 @@ export function mergeBatch(state = {}, batch = {}, now = Date.now()) {
   for (const t of batch.tokens || []) mergeToken(bucket.tokens, t);
   for (const t of batch.dead || []) mergeToken(bucket.dead, t);
   for (const i of batch.ips || []) {
-    const cur = bucket.ips[i.ip] || (bucket.ips[i.ip] = { ip: i.ip, country: i.country || null, tokens: [], bad: 0 });
+    const cur = bucket.ips[i.ip] || (bucket.ips[i.ip] = { ip: i.ip, country: i.country || null, tokens: [], bad: 0, tried: [] });
     cur.bad += Number(i.bad) || 0;
+    cur.tried = union(cur.tried, i.tried).slice(0, MAX_TRIED_KEYS);
     cur.tokens = union(cur.tokens, i.tokens);
     cur.country = cur.country || i.country || null;
   }
@@ -134,8 +139,9 @@ export function summarizeWindow(state = {}, now = Date.now()) {
     for (const t of Object.values(b.tokens || {})) mergeToken(tokens, t);
     for (const t of Object.values(b.dead || {})) mergeToken(dead, t);
     for (const i of Object.values(b.ips || {})) {
-      const cur = ips[i.ip] || (ips[i.ip] = { ip: i.ip, country: i.country, tokens: [], bad: 0 });
+      const cur = ips[i.ip] || (ips[i.ip] = { ip: i.ip, country: i.country, tokens: [], bad: 0, tried: [] });
       cur.bad += i.bad || 0;
+      cur.tried = union(cur.tried, i.tried).slice(0, MAX_TRIED_KEYS);
       cur.tokens = union(cur.tokens, i.tokens);
     }
   }
@@ -167,6 +173,7 @@ export function detectIncidents(summary, rules = GUARD_RULES) {
         ip: ip.ip,
         country: ip.country,
         tokens: [],
+        tried: ip.tried || [],
         detail: `${ip.bad} marta mavjud bo'lmagan token bilan urinish (token taxmin qilinayotgan bo'lishi mumkin)`,
       });
     }
@@ -232,9 +239,21 @@ export function formatIncident(incident, { botUsername } = {}) {
     lines.push(`🌐 IP: ${shown}${incident.ips.length > 5 ? ` va yana ${incident.ips.length - 5} ta` : ""}`);
   }
 
-  for (const t of [...(incident.tokens || []), ...(incident.deadTokens || [])]) {
-    const label = t.title ? escapeHtml(t.title) : "nomsiz";
-    lines.push(`🔑 #${escapeHtml(t.id)} · ${label}${t.prefix ? ` · <code>${escapeHtml(t.prefix)}</code>` : ""} · ${t.hits} so'rov${t.limited ? `, ${t.limited} ta 429` : ""}`);
+  if (incident.tokens?.length) {
+    lines.push("", incident.tokens.length > 1 ? "🔑 <b>Kalitlar (o'chirish uchun):</b>" : "🔑 <b>Kalit (o'chirish uchun):</b>");
+    for (const t of incident.tokens) lines.push(tokenLine(t));
+  }
+
+  if (incident.deadTokens?.length) {
+    lines.push("", "🔑 <b>Kalit (allaqachon yaroqsiz):</b>");
+    for (const t of incident.deadTokens) lines.push(tokenLine(t));
+    lines.push("Bu kalit endi ishlamaydi — o'chirish shart emas. Egasi bilan bog'lanib, eski kalitni ishlatishni to'xtatishini so'rang.");
+  }
+
+  if (incident.rule === "bruteforce") {
+    lines.push("", "🔑 <b>Sinab ko'rilgan kalitlar — tizimda yo'q:</b>");
+    lines.push(incident.tried?.length ? incident.tried.map((k) => `<code>${escapeHtml(k)}</code>`).join(", ") : "—");
+    lines.push("Bu kalitlar mavjud emas, o'chiradigan narsa yo'q: hech qaysi haqiqiy kalitingiz ishlatilmagan. Takrorlansa — shu IP'ni Cloudflare'da bloklang.");
   }
 
   lines.push("", "<i>Oxirgi 10 daqiqa bo'yicha.</i>");
@@ -245,9 +264,15 @@ export function formatIncident(incident, { botUsername } = {}) {
   return lines.join("\n");
 }
 
+function tokenLine(t) {
+  const name = t.title ? `<b>${escapeHtml(t.title)}</b>` : "<b>nomsiz kalit</b>";
+  const stats = `${t.hits} so'rov${t.limited ? `, ${t.limited} ta limitdan oshgan` : ""}`;
+  return `• ${name} — #${escapeHtml(t.id)}${t.prefix ? ` · <code>${escapeHtml(t.prefix)}</code>` : ""} · ${stats}`;
+}
+
 export function incidentKeyboard(incident) {
   const rows = (incident.tokens || []).slice(0, 5).map((t) => [{
-    text: `⛔ #${t.id}${t.title ? ` ${String(t.title).slice(0, 24)}` : ""} — bekor qilish`,
+    text: `⛔ ${t.title ? String(t.title).slice(0, 28) : "nomsiz"} (#${t.id}) — o'chirish`,
     callback_data: `${REVOKE_CALLBACK_PREFIX}${t.id}`,
     style: "danger",
   }]);

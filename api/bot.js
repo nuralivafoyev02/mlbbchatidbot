@@ -7424,15 +7424,22 @@ async function handleApiTokenRevokeCallback(callbackQuery, data) {
     return;
   }
 
+  let revoked = null;
   try {
-    await supabaseRequest(`/api_tokens?id=eq.${tokenId}`, { method: "PATCH", body: { is_revoked: true } });
+    const rows = await supabaseRequest(`/api_tokens?id=eq.${tokenId}&select=title,token_prefix`, {
+      method: "PATCH",
+      body: { is_revoked: true },
+      prefer: "return=representation",
+    });
+    revoked = Array.isArray(rows) ? rows[0] : null;
   } catch (error) {
     console.error("[API_TOKEN_REVOKE_CALLBACK]", error);
     await answer("❌ Bekor qilib bo'lmadi, admin paneldan urinib ko'ring.", true);
     return;
   }
 
-  await answer(`✅ Token #${tokenId} bekor qilindi (1 daqiqada kuchga kiradi).`);
+  const keyName = revoked?.title ? `«${revoked.title}» (#${tokenId})` : `#${tokenId}`;
+  await answer(`✅ ${keyName} kaliti o'chirildi (1 daqiqada kuchga kiradi).`);
 
   if (message?.chat?.id && message.message_id) {
     // Bosilgan tugmani olib tashlaymiz, qolganlari qoladi.
@@ -7448,7 +7455,7 @@ async function handleApiTokenRevokeCallback(callbackQuery, data) {
     const who = user.username ? `@${escapeHtml(user.username)}` : escapeHtml(user.first_name || String(user.id));
     await telegram("sendMessage", {
       chat_id: message.chat.id,
-      text: `⛔ Token <b>#${tokenId}</b> bekor qilindi — ${who}`,
+      text: `⛔ Kalit o'chirildi: <b>${escapeHtml(revoked?.title || "nomsiz")}</b> — #${tokenId}${revoked?.token_prefix ? ` · <code>${escapeHtml(revoked.token_prefix)}</code>` : ""}\nO'chirdi: ${who}`,
       parse_mode: "HTML",
       reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
     }).catch((error) => console.error("[API_TOKEN_REVOKE_NOTE]", error));

@@ -46,7 +46,9 @@ test("token rotation from one IP alerts the main group and every admin once", as
   const msg = sent[0].payload;
   assert.match(msg.text, /Limitni chetlab o'tish/);
   assert.match(msg.text, /1\.2\.3\.4/);
-  assert.match(msg.text, /#1 · client-1/);
+  assert.match(msg.text, /Kalitlar \(o'chirish uchun\)/);
+  assert.match(msg.text, /<b>client-1<\/b> — #1 · <code>mlbb_1abc\.\.\.<\/code>/);
+  assert.equal(msg.reply_markup.inline_keyboard[0][0].text, "⛔ client-1 (#1) — o'chirish");
   assert.deepEqual(msg.reply_markup.inline_keyboard.map((r) => r[0].callback_data), ["apitok_revoke:1", "apitok_revoke:2"]);
 
   // Cooldown ichida qayta xabar yo'q.
@@ -96,7 +98,7 @@ test("brute force, leaked and revoked tokens are reported", async () => {
   const { sent, fetchImpl } = telegramSink();
   const c = createGuardCollector();
 
-  for (let i = 0; i < 15; i += 1) c.bad("6.6.6.6", "RU");
+  for (let i = 0; i < 15; i += 1) c.bad("6.6.6.6", "RU", `mlbb_guess${i % 7}...`);
   for (let i = 0; i < 8; i += 1) c.hit(tok(3), `10.0.0.${i}`);
   for (let i = 0; i < 3; i += 1) c.dead(tok(4, { kind: "token_revoked" }), "7.7.7.7");
 
@@ -106,8 +108,13 @@ test("brute force, leaked and revoked tokens are reported", async () => {
   assert.match(texts, /brute force/);
   assert.match(texts, /oshkor bo'lgan bo'lishi mumkin/);
   assert.match(texts, /Bekor qilingan token bilan 3 marta/);
-  // Brute force'da bekor qilinadigan token yo'q — tugma ham yo'q.
-  assert.equal(sent.find((m) => /brute force/.test(m.payload.text)).payload.reply_markup, undefined);
+  // Brute force'da bekor qilinadigan token yo'q — tugma ham yo'q, sinalgan kalitlar ko'rsatiladi.
+  const brute = sent.find((m) => /brute force/.test(m.payload.text)).payload;
+  assert.equal(brute.reply_markup, undefined);
+  assert.match(brute.text, /Sinab ko'rilgan kalitlar — tizimda yo'q/);
+  assert.equal((brute.text.match(/mlbb_guess\d\.\.\./g) || []).length, 5);
+  assert.match(brute.text, /o'chiradigan narsa yo'q/);
+  assert.match(texts, /Kalit \(allaqachon yaroqsiz\):[\s\S]*<b>client-4<\/b> — #4/);
 });
 
 test("recipients are de-duplicated and HTML is escaped", async () => {
@@ -191,7 +198,7 @@ test("bot: revoke button works only for admins", async () => {
   global.fetch = async (url, init = {}) => {
     const u = String(url);
     calls.push({ url: u, method: init.method || "GET", body: init.body ? JSON.parse(init.body) : null });
-    return Response.json(u.includes("supabase") ? [] : { ok: true, result: true });
+    return Response.json(u.includes("supabase") ? [{ title: "shop.uz", token_prefix: "mlbb_42ab..." }] : { ok: true, result: true });
   };
 
   const press = (fromId) => bot(
@@ -224,11 +231,14 @@ test("bot: revoke button works only for admins", async () => {
     calls.length = 0;
     await press(5081175125);
     const patch = calls.find((c) => c.method === "PATCH");
-    assert.match(patch.url, /api_tokens\?id=eq\.42$/);
+    assert.match(patch.url, /api_tokens\?id=eq\.42&select=title,token_prefix$/);
     assert.deepEqual(patch.body, { is_revoked: true });
     const markup = calls.find((c) => /editMessageReplyMarkup$/.test(c.url)).body.reply_markup;
     assert.deepEqual(markup.inline_keyboard.map((r) => r[0].callback_data), ["apitok_revoke:43"]);
-    assert.match(calls.find((c) => /sendMessage$/.test(c.url) && /bekor qilindi/.test(c.body.text)).body.text, /@boss/);
+    assert.match(calls.find((c) => /answerCallbackQuery$/.test(c.url)).body.text, /«shop\.uz» \(#42\) kaliti o'chirildi/);
+    const note = calls.find((c) => /sendMessage$/.test(c.url) && /Kalit o'chirildi/.test(c.body.text)).body.text;
+    assert.match(note, /<b>shop\.uz<\/b> — #42 · <code>mlbb_42ab\.\.\.<\/code>/);
+    assert.match(note, /@boss/);
   } finally {
     global.fetch = originalFetch;
     process.env = saved;
