@@ -3364,7 +3364,7 @@ async function handleBindInfoRequest(chatId, input, user = {}, options = {}) {
     const inlineKeyboard = {
       inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
-    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+    await notifyMainGroupAfterResult(options.ctx, notificationText, inlineKeyboard);
   }
 }
 
@@ -3416,7 +3416,7 @@ function buildInlineHintResult(lang) {
   };
 }
 
-async function notifyInlineUsage(user, accountId, zoneId, feature) {
+async function notifyInlineUsage(user, accountId, zoneId, feature, ctx) {
   if (!MAIN_GROUP_ID) return;
   const userMention = user.username
     ? `@${user.username}`
@@ -3429,11 +3429,27 @@ async function notifyInlineUsage(user, accountId, zoneId, feature) {
   const inlineKeyboard = {
     inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]],
   };
-  try {
-    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
-  } catch (error) {
-    console.error("[INLINE_MAIN_GROUP_NOTIFY_FAILED]", error.message);
+  await notifyMainGroupAfterResult(ctx, notificationText, inlineKeyboard);
+}
+
+// Asosiy guruhga "#foydalanish" xabari — faqat user natijasini olgandan keyin
+// chaqiriladi. Worker'da (ctx.waitUntil) orqa fonda ketadi va javobni ushlab
+// turmaydi; ctx bo'lmasa (DO ichida) — oddiy kutiladi, lekin baribir natijadan keyin.
+function notifyMainGroupAfterResult(ctx, text, keyboard) {
+  if (!MAIN_GROUP_ID) {
+    return Promise.resolve();
   }
+
+  const task = safeSendMessage(MAIN_GROUP_ID, text, keyboard).catch((error) => {
+    console.error("[MAIN_GROUP_NOTIFY_FAILED]", error?.message || error);
+  });
+
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(task);
+    return Promise.resolve();
+  }
+
+  return task;
 }
 
 async function handleInlineQuery(inlineQuery, options = {}) {
@@ -3526,14 +3542,8 @@ async function handleInlineQuery(inlineQuery, options = {}) {
 
     await answerInlineQuery(queryId, results);
 
-    // Main guruhga foydalanish xabari — muvaffaqiyatli tekshiruv uchun.
-    if (serverLookup.ok) {
-      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
-      runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
-    }
-
     // Inline boshqa chatda ishlatilgan bo'lsa — natijalarni userni bot bilan
-    // shaxsiy chatiga ham yuboramiz.
+    // shaxsiy chatiga ham yuboramiz. Natija birinchi — guruh xabari keyin.
     if (!isPrivate) {
       for (const resultText of privateCopies) {
         try {
@@ -3542,6 +3552,12 @@ async function handleInlineQuery(inlineQuery, options = {}) {
           console.error("[INLINE_PRIVATE_COPY_FAILED]", error.message);
         }
       }
+    }
+
+    // Main guruhga foydalanish xabari — muvaffaqiyatli tekshiruv uchun (orqa fonda).
+    if (serverLookup.ok) {
+      runAccountOwnerNotify(options.ctx, user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK);
+      await notifyInlineUsage(user, parsed.accountId, parsed.zoneId, FEATURE_ACTIONS.SERVER_CHECK, options.ctx);
     }
   } catch (error) {
     // MUHIM: Bu yerda xatolikni faqat logga yozib qo'yib, Telegramga hech
@@ -3749,7 +3765,7 @@ async function handleFullInfoRequest(chatId, input, user = {}, options = {}) {
     const inlineKeyboard = {
       inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
-    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+    await notifyMainGroupAfterResult(options.ctx, notificationText, inlineKeyboard);
   }
 }
 
@@ -4109,7 +4125,7 @@ async function handleResetPwRequest(chatId, input, user = {}, options = {}) {
     const inlineKeyboard = {
       inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
-    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+    await notifyMainGroupAfterResult(options.ctx, notificationText, inlineKeyboard);
   }
 }
 
@@ -4875,7 +4891,7 @@ async function detectAndReply(chatId, input, user = {}, options = {}) {
     const inlineKeyboard = {
       inline_keyboard: [[{ text: t("btn_open_profile", getUserLang(user.id)), url: `tg://user?id=${user.id}` }]]
     };
-    await safeSendMessage(MAIN_GROUP_ID, notificationText, inlineKeyboard);
+    await notifyMainGroupAfterResult(options.ctx, notificationText, inlineKeyboard);
   }
 }
 
