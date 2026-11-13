@@ -83,7 +83,7 @@ const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987,7396686285");
 const MAIN_GROUP_ID =
   process.env.MAIN_GROUP_ID === undefined || process.env.MAIN_GROUP_ID === null
-    ? "-5345450308"
+    ? "-1004434649076"
     : cleanEnv(process.env.MAIN_GROUP_ID);
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;
@@ -7357,6 +7357,18 @@ async function safeSendMessage(chatId, text, replyMarkup) {
   try {
     return await sendMessage(chatId, text, replyMarkup);
   } catch (error) {
+    // Guruh supergroup'ga aylantirilsa Telegram yangi ID'ni beradi — xabar
+    // yo'qolmasligi uchun shu ID'ga qayta yuboramiz (MAIN_GROUP_ID'ni yangilash kerak).
+    const migratedId = String(error?.message || "").match(/"migrate_to_chat_id":(-?\d+)/)?.[1];
+    if (migratedId && migratedId !== String(chatId)) {
+      console.error("[CHAT_MIGRATED]", chatId, "->", migratedId);
+      try {
+        return await sendMessage(migratedId, text, replyMarkup);
+      } catch (retryError) {
+        console.error("[SEND_MESSAGE_ERROR]", retryError);
+        return null;
+      }
+    }
     console.error("[SEND_MESSAGE_ERROR]", error);
     return null;
   }

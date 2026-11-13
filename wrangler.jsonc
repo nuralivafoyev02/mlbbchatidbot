@@ -74,7 +74,7 @@
     "crons": ["*/10 * * * *"]
   },
   "vars": {
-    "MAIN_GROUP_ID": "-5345450308",
+    "MAIN_GROUP_ID": "-1004434649076",
     "SUPPORT_USERNAME": "Ksava_org",
     "ADMIN_IDS": "5081175125,7396686285",
     "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
@@ -142,7 +142,7 @@
         { "name": "PUBLIC_API_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
       ],
       "vars": {
-        "MAIN_GROUP_ID": "-5345450308",
+        "MAIN_GROUP_ID": "-1004434649076",
         "SUPPORT_USERNAME": "Ksava_org",
         "ADMIN_IDS": "5081175125,7396686285",
         "TELEGRAM_BOT_USERNAME": "devcheckmlbbidBot",
