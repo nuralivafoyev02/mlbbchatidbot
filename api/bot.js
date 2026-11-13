@@ -83,7 +83,7 @@ const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
 const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987,7396686285");
 const MAIN_GROUP_ID =
   process.env.MAIN_GROUP_ID === undefined || process.env.MAIN_GROUP_ID === null
-    ? "-1003832186200"
+    ? "-5345450308"
     : cleanEnv(process.env.MAIN_GROUP_ID);
 const BROADCAST_USER_IDS = parseIdList(process.env.BROADCAST_USER_IDS);
 const BROADCAST_TTL_MS = 15 * 60 * 1000;

@@ -621,7 +621,7 @@ test("shop: firstmail is paid from the balance inside the bot — confirm, then 
     assert.match(paid.payload.text, /paid\.box@firstmail\.ltd/);
     assert.match(paid.payload.text, /pw-777/);
     assert.match(paid.payload.text, /Qoldiq: <b>5 000 so'm<\/b>/, "bot ichida ham qolgan balans");
-    const groupSale = telegramCalls.find((c) => c.method === "sendMessage" && String(c.payload.chat_id) === "-1003832186200");
+    const groupSale = telegramCalls.find((c) => c.method === "sendMessage" && String(c.payload.chat_id) === "-5345450308");
     assert.ok(groupSale, "pochta xaridi asosiy guruhga boradi");
     assert.match(groupSale.payload.text, /#sotuv #firstmail/);
     assert.match(groupSale.payload.text, /Buyer<\/a> <b>paid\.box@firstmail\.ltd<\/b> ni sotib oldi — 15 000 so'm\./);
@@ -740,7 +740,7 @@ test("shop: Limitlar posts the packages and sells them from the balance", async 
     assert.match(paid.payload.text, /<b>13<\/b> ta/);
     assert.match(paid.payload.text, /Qoldiq: <b>5 000 so'm<\/b>/);
     assert.deepEqual(rpcCalls, [{ p_user_id: String(userId), p_package_id: fullInfo.id }]);
-    const groupSale = telegramCalls.find((c) => c.method === "sendMessage" && String(c.payload.chat_id) === "-1003832186200");
+    const groupSale = telegramCalls.find((c) => c.method === "sendMessage" && String(c.payload.chat_id) === "-5345450308");
     assert.ok(groupSale, "limit xaridi asosiy guruhga boradi");
     assert.match(groupSale.payload.text, /#sotuv #limit/);
     assert.match(groupSale.payload.text, /To'liq ma'lumot.*limitidan <b>10 ta<\/b> sotib oldi — 15 000 so'm\./);
@@ -797,7 +797,7 @@ test("shop: sale notice reaches the main group without the profile button when t
   try {
     const bot = loadBotWithSupabase();
     await bot.__private.notifyMainGroupSale(buyer, { kind: "limit", item: { kind: "reset_pw", amount: 20 }, price: 9000 });
-    const delivered = botSent.filter((p) => String(p.chat_id) === "-1003832186200" && !p.reply_markup?.inline_keyboard);
+    const delivered = botSent.filter((p) => String(p.chat_id) === "-5345450308" && !p.reply_markup?.inline_keyboard);
     assert.equal(delivered.length, 1, "tugmasiz qayta yuborildi");
     assert.match(delivered[0].text, /#sotuv #limit/);
     assert.match(delivered[0].text, /limitidan <b>20 ta<\/b> sotib oldi — 9 000 so'm\./);
