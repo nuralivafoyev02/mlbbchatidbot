@@ -1398,6 +1398,12 @@ async function handleCallbackQuery(callbackQuery, updateMeta = {}, options = {})
     ...updateMeta,
   });
 
+  // Ommaviy API ogohlantirishidagi "bekor qilish" tugmasi (api-guard.mjs).
+  if (data.startsWith("apitok_revoke:")) {
+    await handleApiTokenRevokeCallback(callbackQuery, data);
+    return;
+  }
+
   if (data === "check_membership") {
     const mandatoryChannel = await getMandatoryChannel();
     if (mandatoryChannel) {
@@ -7400,6 +7406,53 @@ async function safeDeleteBindWaitMessage(fallbackChatId, waitMessage) {
   const normalized = normalizeBindWaitMessage(waitMessage);
 
   return safeDeleteMessage(normalized?.chatId || fallbackChatId, normalized?.messageId);
+}
+
+async function handleApiTokenRevokeCallback(callbackQuery, data) {
+  const user = callbackQuery.from || {};
+  const message = callbackQuery.message;
+  const tokenId = data.slice("apitok_revoke:".length);
+  const answer = (text, showAlert = false) =>
+    telegram("answerCallbackQuery", { callback_query_id: callbackQuery.id, text, show_alert: showAlert }).catch(() => null);
+
+  if (!isAdmin(user.id)) {
+    await answer("⛔ Tokenni faqat adminlar bekor qila oladi.", true);
+    return;
+  }
+  if (!/^\d{1,18}$/.test(tokenId)) {
+    await answer("Token ID noto'g'ri.", true);
+    return;
+  }
+
+  try {
+    await supabaseRequest(`/api_tokens?id=eq.${tokenId}`, { method: "PATCH", body: { is_revoked: true } });
+  } catch (error) {
+    console.error("[API_TOKEN_REVOKE_CALLBACK]", error);
+    await answer("❌ Bekor qilib bo'lmadi, admin paneldan urinib ko'ring.", true);
+    return;
+  }
+
+  await answer(`✅ Token #${tokenId} bekor qilindi (1 daqiqada kuchga kiradi).`);
+
+  if (message?.chat?.id && message.message_id) {
+    // Bosilgan tugmani olib tashlaymiz, qolganlari qoladi.
+    const rows = (message.reply_markup?.inline_keyboard || [])
+      .map((row) => row.filter((button) => button.callback_data !== data))
+      .filter((row) => row.length);
+    await telegram("editMessageReplyMarkup", {
+      chat_id: message.chat.id,
+      message_id: message.message_id,
+      reply_markup: { inline_keyboard: rows },
+    }).catch(() => null);
+
+    const who = user.username ? `@${escapeHtml(user.username)}` : escapeHtml(user.first_name || String(user.id));
+    await telegram("sendMessage", {
+      chat_id: message.chat.id,
+      text: `⛔ Token <b>#${tokenId}</b> bekor qilindi — ${who}`,
+      parse_mode: "HTML",
+      reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
+    }).catch((error) => console.error("[API_TOKEN_REVOKE_NOTE]", error));
+  }
 }
 
 async function answerCallbackQuery(callbackQueryId) {

@@ -20,6 +20,9 @@
 // Limiting binding — PUBLIC_API_LIMITER; bo'lmasa isolate RAM'idagi hisob).
 // Hujjat: https://docs-mlbb.nurali.uz (docs-site/).
 
+import { createGuardCollector } from "./api-guard.mjs";
+import { MONITOR_RUNNER_NAME } from "./webhook-monitor.mjs";
+
 const API_PREFIX = "/v1";
 const DEFAULT_LOOKUP_URL = "https://api.isan.eu.org/nickname/ml";
 const CACHE_PATH = "/__cache/v1";
@@ -43,6 +46,10 @@ const tokenMem = new Map();
 const inflight = new Map();
 const pendingUsage = new Map();
 const rateMem = new Map();
+// Suiiste'mol signallari — 30 s'da bir "monitor" DO'ga (api-guard.mjs).
+const guard = createGuardCollector();
+const GUARD_FLUSH_MS = 30 * 1000;
+let lastGuardFlushAt = 0;
 let lastUsageFlushAt = 0;
 
 const CORS_HEADERS = {
@@ -100,6 +107,9 @@ export async function handlePublicApi(request, env = {}, ctx) {
     }, startedAt);
   }
 
+  const ip = request.headers.get("cf-connecting-ip") || "";
+  const country = request.cf?.country || null;
+
   const token = readToken(request, q);
   if (!token) {
     return reply(401, { ok: false, error: "token_required", message: TOKEN_HINT }, startedAt);
@@ -107,12 +117,19 @@ export async function handlePublicApi(request, env = {}, ctx) {
 
   const auth = await checkToken(token, env, url.origin);
   if (!auth.ok) {
+    if (auth.id) guard.dead(auth, ip);
+    else if (auth.status !== 503) guard.bad(ip, country);
+    scheduleGuardFlush(env, ctx);
     const body = { ok: false, error: auth.error };
     if (auth.status !== 503) body.message = TOKEN_HINT;
     return reply(auth.status || 401, body, startedAt);
   }
 
-  if (!(await withinRateLimit(env, `tok:${auth.id}`))) {
+  const allowed = await withinRateLimit(env, `tok:${auth.id}`);
+  guard.hit(auth, ip, country, !allowed);
+  scheduleGuardFlush(env, ctx);
+
+  if (!allowed) {
     return reply(429, {
       ok: false,
       error: "rate_limited",
@@ -332,19 +349,46 @@ async function checkToken(rawToken, env, origin) {
 
 async function loadToken(hash, env) {
   try {
-    const rows = await supabase(env, `/api_tokens?token_hash=eq.${hash}&select=id,expires_at,is_revoked&limit=1`);
+    const rows = await supabase(env, `/api_tokens?token_hash=eq.${hash}&select=id,title,token_prefix,expires_at,is_revoked&limit=1`);
     const row = Array.isArray(rows) ? rows[0] : null;
 
     if (!row) return { ok: false, error: "token_not_found" };
-    if (row.is_revoked) return { ok: false, error: "token_revoked" };
+
+    const meta = { id: row.id, title: row.title || "", prefix: row.token_prefix || "" };
+    if (row.is_revoked) return { ok: false, error: "token_revoked", kind: "token_revoked", ...meta };
 
     const expiresAt = row.expires_at ? Date.parse(row.expires_at) : 0;
-    if (expiresAt && expiresAt <= Date.now()) return { ok: false, error: "token_expired" };
+    if (expiresAt && expiresAt <= Date.now()) return { ok: false, error: "token_expired", kind: "token_expired", ...meta };
 
-    return { ok: true, id: row.id, expiresAt };
+    return { ok: true, ...meta, expiresAt };
   } catch (error) {
     console.error("[PUBLIC_API_TOKEN]", error?.message || error);
     return { ok: false, status: 503, error: "auth_unavailable" };
+  }
+}
+
+function scheduleGuardFlush(env, ctx) {
+  if (guard.isEmpty() || Date.now() - lastGuardFlushAt < GUARD_FLUSH_MS) return;
+  lastGuardFlushAt = Date.now();
+  waitUntil(ctx, flushGuard(env));
+}
+
+export async function flushGuard(env) {
+  if (guard.isEmpty()) return;
+  const batch = guard.drain();
+  const namespace = env?.ASYNC_RUNNER;
+  if (!namespace || typeof namespace.idFromName !== "function") return;
+
+  try {
+    const stub = namespace.get(namespace.idFromName(MONITOR_RUNNER_NAME));
+    const response = await stub.fetch("https://async-runner.internal/api-guard", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ batch }),
+    });
+    if (!response.ok) console.error("[PUBLIC_API_GUARD]", response.status);
+  } catch (error) {
+    console.error("[PUBLIC_API_GUARD]", error?.message || error);
   }
 }
 
@@ -493,5 +537,7 @@ export function resetPublicApiState() {
   inflight.clear();
   pendingUsage.clear();
   rateMem.clear();
+  guard.drain();
   lastUsageFlushAt = 0;
+  lastGuardFlushAt = 0;
 }

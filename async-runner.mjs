@@ -20,6 +20,7 @@ import {
 } from "./runner-routing.mjs";
 import { MONITOR_RUNNER_NAME, MONITOR_STATE_KEY, runWebhookMonitor } from "./webhook-monitor.mjs";
 import { flushHealthCounters } from "./health-counters.mjs";
+import { runApiGuard } from "./api-guard.mjs";
 import {
   collectHealthReport,
   countersKey,
@@ -148,6 +149,10 @@ export class AsyncRunner {
       return this.handleHealthReportRequest(body);
     }
 
+    if (url.pathname === "/api-guard") {
+      return this.handleApiGuard(body);
+    }
+
     return jsonResponse({ ok: false, error: "Unknown route" }, 404);
   }
 
@@ -203,6 +208,17 @@ export class AsyncRunner {
     }
 
     return jsonResponse({ ...result, state: undefined, report }, result.ok ? 200 : 500);
+  }
+
+  // Ommaviy API signallari (api-guard.mjs) — shubha bo'lsa guruh + adminlarga xabar.
+  async handleApiGuard(body = {}) {
+    if (this.kind !== "monitor") {
+      return jsonResponse({ ok: false, error: "Not a monitor runner" }, 400);
+    }
+
+    const result = await runApiGuard({ env: this.env, storage: this.state.storage, batch: body.batch || {} });
+
+    return jsonResponse(result);
   }
 
   async handleHealthCounters(body = {}) {
