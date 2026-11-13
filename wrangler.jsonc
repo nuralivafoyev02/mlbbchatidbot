@@ -25,6 +25,11 @@
       "new_sqlite_classes": ["AsyncRunner"]
     }
   ],
+  // Ommaviy API (/v1) rate limit: token boshiga 60 so'rov / 60 s
+  // (public-api.mjs RATE_LIMIT bilan bir xil bo'lsin).
+  "ratelimits": [
+    { "name": "PUBLIC_API_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }
+  ],
   "queues": {
     "producers": [
       {
@@ -55,7 +60,9 @@
   // webhook) → shu Worker, WAF faqat Telegram IP'lari; qolgan hammasi
   // (Mini App, /api/*) → Cloudflare orqali Vercel production.
   "routes": [
-    { "pattern": "mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" }
+    { "pattern": "mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" },
+    // Ommaviy nickname+region API (public-api.mjs) — edge'da, kesh bilan.
+    { "pattern": "mlbb.nurali.uz/v1*", "zone_name": "nurali.uz" }
   ],
   // workers.dev va versiya preview manzillari yopiq — Worker faqat
   // mlbb.nurali.uz/tg* orqali ishga tushadi (limitga ham qo'shilmaydi).
@@ -107,7 +114,8 @@
       "workers_dev": false,
       "preview_urls": false,
       "routes": [
-        { "pattern": "dev-mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" }
+        { "pattern": "dev-mlbb.nurali.uz/tg*", "zone_name": "nurali.uz" },
+        { "pattern": "dev-mlbb.nurali.uz/v1*", "zone_name": "nurali.uz" }
       ],
       // Webhook kuzatuvi + kunlik holat hisoboti (prod'dagi kabi).
       "triggers": {
@@ -129,6 +137,9 @@
           "tag": "v1",
           "new_sqlite_classes": ["AsyncRunner"]
         }
+      ],
+      "ratelimits": [
+        { "name": "PUBLIC_API_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
       ],
       "vars": {
         "MAIN_GROUP_ID": "-1003832186200",

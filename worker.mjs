@@ -8,6 +8,7 @@ import {
 import { AsyncRunner, getBindRunnerName } from "./async-runner.mjs";
 import { MONITOR_CRON, MONITOR_RUNNER_NAME } from "./webhook-monitor.mjs";
 import { flushHealthCounters } from "./health-counters.mjs";
+import { handlePublicApi, isPublicApiPath } from "./public-api.mjs";
 import {
   createInternalRequest,
   createVercelRequest,
@@ -30,6 +31,11 @@ export { AsyncRunner };
 
 export default {
   async fetch(request, env, ctx) {
+    // Ommaviy API (/v1/*) — webhook'dan oldin, body o'qilmasdan.
+    if (isPublicApiPath(new URL(request.url).pathname)) {
+      return handlePublicApi(request, env, ctx);
+    }
+
     const body = await parseRequestBody(request);
     const req = createVercelRequest(request, body);
 

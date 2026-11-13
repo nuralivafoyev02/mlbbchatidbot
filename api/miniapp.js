@@ -176,6 +176,12 @@ module.exports = async function handler(req, res) {
           return handleWalletProviderTest(req, res, body);
         case "wallet_events":
           return handleWalletEvents(req, res, body);
+        case "api_tokens_list":
+          return handleApiTokensList(req, res);
+        case "api_token_create":
+          return handleApiTokenCreate(req, res, body);
+        case "api_token_revoke":
+          return handleApiTokenRevoke(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -1677,6 +1683,75 @@ function serveBackground(res) {
   } catch (e) {
     console.error("[MINIAPP_BG_ERROR]", e.message);
     return res.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").send("not found");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ommaviy API tokenlari (/v1/check — public-api.mjs, Cloudflare Worker)
+// ---------------------------------------------------------------------------
+const API_TOKEN_FIELDS = "id,token_prefix,title,created_at,expires_at,last_used_at,usage_count,is_revoked";
+
+// Worker mlbb.nurali.uz/v1* va dev-mlbb.nurali.uz/v1* route'larida ishlaydi —
+// panel qaysi domendan ochilgan bo'lsa, o'sha domenning /v1 manzili.
+function publicApiBaseUrl(req) {
+  const fromEnv = (process.env.PUBLIC_API_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (fromEnv) return fromEnv;
+  const host = String(req.headers?.["x-forwarded-host"] || req.headers?.host || "").split(",")[0].trim().toLowerCase();
+  if (/^([a-z0-9-]+\.)*nurali\.uz$/.test(host)) return `https://${host}/v1`;
+  return "https://mlbb.nurali.uz/v1";
+}
+
+async function handleApiTokensList(req, res) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    const tokens = await supabaseRequest(`/api_tokens?select=${API_TOKEN_FIELDS}&order=created_at.desc&limit=200`);
+    return json(res, 200, { ok: true, data: { baseUrl: publicApiBaseUrl(req), tokens: Array.isArray(tokens) ? tokens : [] } });
+  } catch (e) {
+    console.error("[API_TOKENS_LIST]", e.message);
+    return json(res, 500, { ok: false, error: "tokens_unavailable", data: { baseUrl: publicApiBaseUrl(req), tokens: [] } });
+  }
+}
+
+async function handleApiTokenCreate(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const title = String(body.title || "").trim().slice(0, 80);
+  const days = parseInt(body.days, 10);
+  if (!title) return json(res, 400, { ok: false, error: "title_required" });
+  if (!Number.isFinite(days) || days < 1 || days > 3650) return json(res, 400, { ok: false, error: "invalid_days" });
+
+  const rawToken = `mlbb_${crypto.randomBytes(20).toString("hex")}`;
+  try {
+    const rows = await supabaseRequest("/api_tokens", {
+      method: "POST",
+      prefer: "return=representation",
+      body: {
+        token_hash: crypto.createHash("sha256").update(rawToken).digest("hex"),
+        token_prefix: rawToken.slice(0, 14) + "...",
+        title,
+        created_by: adminAuth.getAdminSessionSubject() || "admin",
+        expires_at: new Date(Date.now() + days * 86400000).toISOString(),
+        is_revoked: false,
+        usage_count: 0,
+      },
+    });
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return json(res, 200, { ok: true, data: { token: rawToken, id: row?.id || null, baseUrl: publicApiBaseUrl(req) } });
+  } catch (e) {
+    console.error("[API_TOKEN_CREATE]", e.message);
+    return json(res, 500, { ok: false, error: "create_failed" });
+  }
+}
+
+async function handleApiTokenRevoke(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const id = toPgBigint(body.id);
+  if (!id) return json(res, 400, { ok: false, error: "invalid_id" });
+  try {
+    await supabaseRequest(`/api_tokens?id=eq.${id}`, { method: "PATCH", body: { is_revoked: true } });
+    return json(res, 200, { ok: true });
+  } catch (e) {
+    console.error("[API_TOKEN_REVOKE]", e.message);
+    return json(res, 500, { ok: false, error: "revoke_failed" });
   }
 }
 

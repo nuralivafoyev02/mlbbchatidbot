@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // Ommaviy API hujjati — faqat statik fayllar (Worker kodi yo'q).
+  // Statik so'rovlar bepul va Workers kunlik limitiga qo'shilmaydi.
+  // Deploy: `npx wrangler deploy -c docs-site/wrangler.jsonc`
+  "name": "mlbb-docs",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    { "pattern": "docs-mlbb.nurali.uz", "custom_domain": true }
+  ],
+  "workers_dev": false,
+  "preview_urls": false
+}

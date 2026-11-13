@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MLBB Check API — hujjat</title>
+  <meta name="description" content="Mobile Legends: Bang Bang akkaunt ID va server bo'yicha nickname va regionni aniqlovchi API hujjati.">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236366f1'/><path d='M18 4 9 18h6l-2 10 10-15h-6z' fill='white'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --bg2: #0f1424;
+      --surface: #121829;
+      --surface2: #182036;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --accent: #6366f1;
+      --accent2: #8b5cf6;
+      --accent3: #a5b4fc;
+      --green: #10b981;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --blue: #60a5fa;
+      --code-bg: #0b1020;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #f7f8fc;
+        --bg2: #eef0f8;
+        --surface: #ffffff;
+        --surface2: #f3f4fb;
+        --border: rgba(15, 23, 42, 0.1);
+        --text: #0f172a;
+        --text2: #5b6478;
+        --accent: #4f46e5;
+        --accent2: #7c3aed;
+        --accent3: #4338ca;
+        --green: #059669;
+        --red: #dc2626;
+        --yellow: #b45309;
+        --blue: #2563eb;
+        --code-bg: #0f172a;
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      }
+    }
+
+    :root[data-theme="light"] {
+      --bg: #f7f8fc;
+      --bg2: #eef0f8;
+      --surface: #ffffff;
+      --surface2: #f3f4fb;
+      --border: rgba(15, 23, 42, 0.1);
+      --text: #0f172a;
+      --text2: #5b6478;
+      --accent: #4f46e5;
+      --accent2: #7c3aed;
+      --accent3: #4338ca;
+      --green: #059669;
+      --red: #dc2626;
+      --yellow: #b45309;
+      --blue: #2563eb;
+      --code-bg: #0f172a;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box }
+
+    html { scroll-behavior: smooth; scroll-padding-top: 80px }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent3); text-decoration: none }
+    a:hover { text-decoration: underline }
+
+    code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace }
+
+    :not(pre) > code {
+      font-size: 0.86em;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 60px;
+      padding: 0 20px;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: saturate(160%) blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.01em; color: var(--text) }
+    .brand:hover { text-decoration: none }
+    .logo {
+      width: 30px; height: 30px; border-radius: 9px;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; font-size: 16px;
+    }
+    .badge {
+      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+      color: var(--accent3); background: color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+    .spacer { flex: 1 }
+    .icon-btn {
+      height: 36px; min-width: 36px; padding: 0 10px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer; font: 600 13px Inter, system-ui, sans-serif;
+    }
+    .icon-btn:hover { border-color: var(--accent); text-decoration: none }
+    .tg-btn { background: linear-gradient(135deg, #229ed9, #1c86c0); color: #fff; border: 0 }
+    .menu-btn { display: none }
+
+    /* Layout */
+    .layout {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 40px;
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    nav.side {
+      position: sticky;
+      top: 60px;
+      align-self: start;
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 28px 0;
+    }
+
+    nav.side .group { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text2); margin: 18px 0 6px 10px }
+    nav.side .group:first-child { margin-top: 0 }
+    nav.side a {
+      display: block; padding: 6px 10px; border-radius: 8px;
+      color: var(--text2); font-size: 14px; font-weight: 500;
+    }
+    nav.side a:hover { color: var(--text); background: var(--surface2); text-decoration: none }
+    nav.side a.active { color: var(--accent3); background: color-mix(in srgb, var(--accent) 12%, transparent) }
+
+    main { padding: 36px 0 80px; min-width: 0 }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 36px 32px;
+      border-radius: 20px;
+      background:
+        radial-gradient(600px 220px at 100% 0%, color-mix(in srgb, var(--accent2) 30%, transparent), transparent 70%),
+        radial-gradient(500px 220px at 0% 100%, color-mix(in srgb, var(--accent) 25%, transparent), transparent 70%),
+        var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .hero h1 { margin: 0 0 10px; font-size: clamp(28px, 4vw, 40px); line-height: 1.15; letter-spacing: -0.02em }
+    .hero p { margin: 0; color: var(--text2); max-width: 640px; font-size: 16px }
+    .hero .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+    .pill b { color: var(--accent3) }
+
+    section { padding-top: 44px }
+    h2 { font-size: 24px; letter-spacing: -0.01em; margin: 0 0 12px; display: flex; align-items: center; gap: 10px }
+    h2 .num {
+      width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+      display: inline-grid; place-items: center; font-size: 13px;
+      color: var(--accent3); background: color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+    h3 { font-size: 17px; margin: 26px 0 8px }
+    p { margin: 0 0 12px }
+    .muted { color: var(--text2) }
+
+    .endpoint {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 12px 14px; border-radius: 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-family: "JetBrains Mono", monospace; font-size: 14px; overflow-wrap: anywhere;
+    }
+    .method { font-weight: 700; font-size: 12px; padding: 3px 8px; border-radius: 6px; color: #fff; background: var(--green) }
+    .endpoint .path { flex: 1; min-width: 0 }
+    .endpoint .copy { margin-left: auto }
+
+    /* Code blocks */
+    .code {
+      position: relative;
+      margin: 12px 0 16px;
+      border-radius: 14px;
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+    .code-head {
+      display: flex; align-items: center; gap: 4px;
+      padding: 6px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .tab {
+      border: 0; background: transparent; color: #8b95ab; cursor: pointer;
+      font: 600 12.5px Inter, system-ui, sans-serif; padding: 6px 10px; border-radius: 8px;
+    }
+    .tab.active { color: #fff; background: rgba(255, 255, 255, 0.08) }
+    .code-title { color: #8b95ab; font-size: 12.5px; font-weight: 600; padding: 6px 6px }
+    .copy {
+      margin-left: auto; border: 1px solid rgba(255, 255, 255, 0.12); background: transparent; color: #c7cfdd;
+      font: 600 12px Inter, system-ui, sans-serif; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+    }
+    .endpoint .copy { color: var(--text2); border-color: var(--border) }
+    .copy:hover { color: #fff; border-color: var(--accent) }
+    pre {
+      margin: 0; padding: 16px 18px; overflow-x: auto;
+      color: #dbe2f0; font-size: 13px; line-height: 1.7;
+    }
+    pre[hidden] { display: none }
+    .k { color: #c4b5fd } .s { color: #86efac } .n { color: #fcd34d } .c { color: #64748b } .p { color: #7dd3fc }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface) }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 520px }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); background: var(--surface2) }
+    tr:last-child td { border-bottom: 0 }
+    .st { font-family: "JetBrains Mono", monospace; font-weight: 600; white-space: nowrap }
+    .st.ok { color: var(--green) } .st.warn { color: var(--yellow) } .st.err { color: var(--red) }
+    .yes { color: var(--green); font-weight: 600 } .no { color: var(--red); font-weight: 600 }
+
+    /* Callouts */
+    .note {
+      display: flex; gap: 12px; padding: 14px 16px; margin: 14px 0; border-radius: 14px;
+      background: color-mix(in srgb, var(--blue) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+    }
+    .note.warn { background: color-mix(in srgb, var(--yellow) 9%, var(--surface)); border-color: color-mix(in srgb, var(--yellow) 35%, transparent) }
+    .note.ok { background: color-mix(in srgb, var(--green) 9%, var(--surface)); border-color: color-mix(in srgb, var(--green) 35%, transparent) }
+    .note .ic { font-size: 18px; line-height: 1.4 }
+    .note p:last-child { margin: 0 }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 14px 0 }
+    .stat { padding: 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border) }
+    .stat .v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em }
+    .stat .l { font-size: 13px; color: var(--text2) }
+
+    .steps { counter-reset: s; list-style: none; padding: 0; margin: 12px 0 }
+    .steps li { counter-increment: s; position: relative; padding: 0 0 14px 40px }
+    .steps li::before {
+      content: counter(s); position: absolute; left: 0; top: 0;
+      width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+      font-size: 13px; font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    }
+
+    .contact {
+      display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+      padding: 22px; border-radius: 18px; margin-top: 14px;
+      background: linear-gradient(135deg, color-mix(in srgb, #229ed9 18%, var(--surface)), var(--surface));
+      border: 1px solid color-mix(in srgb, #229ed9 35%, transparent);
+    }
+    .contact .tg-ic { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: #229ed9; flex-shrink: 0 }
+    .contact .body { flex: 1; min-width: 200px }
+    .contact .body b { font-size: 17px }
+    .contact .big { height: 44px; padding: 0 18px; font-size: 15px }
+
+    footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text2); font-size: 13px }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+      background: var(--text); color: var(--bg); font-weight: 600; font-size: 13px;
+      padding: 8px 14px; border-radius: 10px; opacity: 0; pointer-events: none; transition: .2s;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0) }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; gap: 0; padding: 0 16px }
+      .menu-btn { display: inline-flex }
+      nav.side {
+        position: fixed; top: 60px; left: 0; right: 0; bottom: 0; z-index: 15;
+        max-height: none; padding: 20px 16px; background: var(--bg);
+        transform: translateX(-100%); transition: transform .2s;
+      }
+      nav.side.open { transform: none }
+      .topbar { padding: 0 16px }
+      .hide-sm { display: none }
+      .hero { padding: 26px 20px }
+      main { padding-top: 24px }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menyu">☰</button>
+    <a class="brand" href="#"><span class="logo">⚡</span> MLBB Check API <span class="badge">v1</span></a>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="themeBtn" aria-label="Mavzuni almashtirish">◐</button>
+    <a class="icon-btn tg-btn" href="https://t.me/vafoyev_n" target="_blank" rel="noopener">✈ <span class="hide-sm">Token olish</span></a>
+  </header>
+
+  <div class="layout">
+    <nav class="side" id="side">
+      <div class="group">Boshlash</div>
+      <a href="#intro">Umumiy</a>
+      <a href="#quickstart">Tezkor boshlash</a>
+      <a href="#token">Token olish</a>
+      <div class="group">Ma'lumotnoma</div>
+      <a href="#auth">Autentifikatsiya</a>
+      <a href="#check">GET /v1/check</a>
+      <a href="#response">Javob maydonlari</a>
+      <a href="#errors">Xato kodlari</a>
+      <a href="#headers">Javob sarlavhalari</a>
+      <div class="group">Qoidalar</div>
+      <a href="#limits">Limitlar</a>
+      <a href="#retry">Qayta yuborish</a>
+      <a href="#cache">Kesh</a>
+      <a href="#security">Xavfsizlik</a>
+      <div class="group">Boshqa</div>
+      <a href="#examples">Kod namunalari</a>
+      <a href="#contact">Aloqa</a>
+    </nav>
+
+    <main>
+      <div class="hero" id="intro">
+        <h1>Nickname va regionni bir so'rovda oling</h1>
+        <p>Mobile Legends: Bang Bang akkauntining <b>ID</b> va <b>server (zone) ID</b> si bo'yicha o'yinchi nickname'i, region (davlat) va server turini qaytaradigan tezkor API.</p>
+        <div class="pills">
+          <span class="pill">⚡ Cloudflare edge</span>
+          <span class="pill">🗄 Kesh: <b>30 daqiqa</b></span>
+          <span class="pill">⏱ Limit: <b>60 so'rov / daqiqa</b></span>
+          <span class="pill">🔑 Token bilan</span>
+        </div>
+      </div>
+
+      <section id="quickstart">
+        <h2><span class="num">1</span>Tezkor boshlash</h2>
+        <div class="endpoint"><span class="method">BASE</span><span class="path" id="baseUrl">https://mlbb.nurali.uz/v1</span><button class="copy" data-copy="https://mlbb.nurali.uz/v1">Nusxa</button></div>
+        <p style="margin-top:14px">Birinchi so'rov:</p>
+        <div class="code">
+          <div class="code-head"><span class="code-title">bash</span><button class="copy" data-copy-pre>Nusxa</button></div>
+<pre>curl -H <span class="s">"Authorization: Bearer mlbb_SIZNING_TOKENINGIZ"</span> \
+  <span class="s">"https://mlbb.nurali.uz/v1/check?id=1290132154&amp;zone=15246"</span></pre>
+        </div>
+        <div class="code">
+          <div class="code-head"><span class="code-title">200 OK · application/json</span></div>
+<pre>{
+  <span class="p">"ok"</span>: <span class="k">true</span>,
+  <span class="p">"account_id"</span>: <span class="s">"1290132154"</span>,
+  <span class="p">"zone_id"</span>: <span class="s">"15246"</span>,
+  <span class="p">"nickname"</span>: <span class="s">"Ｗａｄｅｒ〆"</span>,
+  <span class="p">"region"</span>: <span class="s">"Uzbekistan"</span>,
+  <span class="p">"server_type"</span>: <span class="s">"Original Server"</span>
+}</pre>
+        </div>
+      </section>
+
+      <section id="token">
+        <h2><span class="num">2</span>Token olish</h2>
+        <p>API faqat token bilan ishlaydi. Token admin tomonidan beriladi.</p>
+        <ol class="steps">
+          <li>Telegram orqali <a href="https://t.me/vafoyev_n" target="_blank" rel="noopener"><b>@vafoyev_n</b></a> ga yozing: loyihangiz nomi va kutilayotgan so'rovlar sonini ayting.</li>
+          <li>Sizga <code>mlbb_</code> bilan boshlanadigan token beriladi. U <b>faqat bir marta</b> ko'rsatiladi — xavfsiz joyda saqlang.</li>
+          <li>Har bir so'rovda tokenni <code>Authorization</code> sarlavhasida yuboring.</li>
+        </ol>
+        <div class="note warn"><span class="ic">⚠️</span><div><p>Token muddatli (odatda 1 yil). Muddati tugasa yoki token oshkor bo'lsa — yangisini olish uchun <b>@vafoyev_n</b> ga yozing; eski token bekor qilinadi.</p></div></div>
+      </section>
+
+      <section id="auth">
+        <h2><span class="num">3</span>Autentifikatsiya</h2>
+        <p>Token uch usulda qabul qilinadi (birinchisi tavsiya etiladi):</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Usul</th><th>Misol</th><th>Izoh</th></tr></thead>
+          <tbody>
+            <tr><td><b>Bearer</b> sarlavha</td><td><code>Authorization: Bearer mlbb_…</code></td><td><span class="yes">Tavsiya etiladi</span></td></tr>
+            <tr><td>Maxsus sarlavha</td><td><code>X-API-Token: mlbb_…</code></td><td>Bearer ishlatib bo'lmasa</td></tr>
+            <tr><td>Query parametr</td><td><code>?token=mlbb_…</code></td><td>Token loglarda qolishi mumkin — faqat test uchun</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="check">
+        <h2><span class="num">4</span>GET /v1/check</h2>
+        <p>Akkaunt nickname'i va regionini qaytaradi. Ikki xil yozilishi bor:</p>
+        <div class="endpoint"><span class="method">GET</span><span class="path">/v1/check?id={account_id}&amp;zone={zone_id}</span></div>
+        <div class="endpoint" style="margin-top:8px"><span class="method">GET</span><span class="path">/v1/check/{account_id}/{zone_id}</span></div>
+        <h3>Parametrlar</h3>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Nomi</th><th>Turi</th><th>Majburiy</th><th>Tavsif</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code> <span class="muted">(yoki <code>account_id</code>)</span></td><td>raqam, 1–12 belgi</td><td class="yes">ha</td><td>O'yindagi akkaunt ID. Masalan <code>1290132154</code></td></tr>
+            <tr><td><code>zone</code> <span class="muted">(yoki <code>zone_id</code>, <code>server</code>)</span></td><td>raqam, 1–8 belgi</td><td class="yes">ha</td><td>Server (zone) ID — profildagi qavs ichidagi raqam. Masalan <code>15246</code></td></tr>
+            <tr><td><code>token</code></td><td>satr</td><td class="muted">yo'q</td><td>Sarlavha o'rniga (qarang: Autentifikatsiya)</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note"><span class="ic">ℹ️</span><div><p>O'yinda ID odatda <code>1290132154 (15246)</code> ko'rinishida beriladi: birinchisi <code>id</code>, qavs ichidagisi <code>zone</code>.</p></div></div>
+        <h3>Holat so'rovi</h3>
+        <p><code>GET /v1</code> — token talab qilmaydi; servis ishlayotganini va limitni qaytaradi. Monitoring uchun qulay.</p>
+      </section>
+
+      <section id="response">
+        <h2><span class="num">5</span>Javob maydonlari</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Maydon</th><th>Turi</th><th>Tavsif</th></tr></thead>
+          <tbody>
+            <tr><td><code>ok</code></td><td>boolean</td><td>Muvaffaqiyatli bo'lsa <code>true</code></td></tr>
+            <tr><td><code>account_id</code></td><td>string</td><td>So'ralgan akkaunt ID</td></tr>
+            <tr><td><code>zone_id</code></td><td>string</td><td>So'ralgan server ID</td></tr>
+            <tr><td><code>nickname</code></td><td>string</td><td>O'yinchi nickname'i (Unicode belgilar bo'lishi mumkin)</td></tr>
+            <tr><td><code>region</code></td><td>string | null</td><td>Akkaunt davlati, masalan <code>Uzbekistan</code>. Ba'zan <code>null</code></td></tr>
+            <tr><td><code>server_type</code></td><td>string</td><td><code>Original Server</code> yoki <code>Advanced Server</code> (zone ID bo'yicha)</td></tr>
+          </tbody>
+        </table></div>
+        <p class="muted">Xato bo'lganda: <code>{"ok": false, "error": "kod", "message": "izoh"}</code>. Dasturda <code>error</code> kodiga tayaning — <code>message</code> matni o'zgarishi mumkin.</p>
+      </section>
+
+      <section id="errors">
+        <h2><span class="num">6</span>Xato kodlari</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>HTTP</th><th><code>error</code></th><th>Sababi</th><th>Qayta yuborish?</th></tr></thead>
+          <tbody>
+            <tr><td class="st ok">200</td><td>—</td><td>Topildi</td><td>—</td></tr>
+            <tr><td class="st warn">400</td><td><code>invalid_params</code></td><td><code>id</code> yoki <code>zone</code> yo'q / raqam emas</td><td class="no">Yo'q — so'rovni tuzating</td></tr>
+            <tr><td class="st warn">401</td><td><code>token_required</code></td><td>Token yuborilmagan</td><td class="no">Yo'q</td></tr>
+            <tr><td class="st warn">401</td><td><code>token_invalid</code></td><td>Token formati noto'g'ri</td><td class="no">Yo'q</td></tr>
+            <tr><td class="st warn">401</td><td><code>token_not_found</code></td><td>Bunday token yo'q</td><td class="no">Yo'q — @vafoyev_n</td></tr>
+            <tr><td class="st warn">401</td><td><code>token_revoked</code></td><td>Token bekor qilingan</td><td class="no">Yo'q — @vafoyev_n</td></tr>
+            <tr><td class="st warn">401</td><td><code>token_expired</code></td><td>Token muddati tugagan</td><td class="no">Yo'q — @vafoyev_n</td></tr>
+            <tr><td class="st warn">404</td><td><code>account_not_found</code></td><td>Bu ID + zone bo'yicha akkaunt yo'q</td><td class="no">Yo'q — ID/zone'ni tekshiring</td></tr>
+            <tr><td class="st warn">405</td><td><code>method_not_allowed</code></td><td>Faqat <code>GET</code> qabul qilinadi</td><td class="no">Yo'q</td></tr>
+            <tr><td class="st err">429</td><td><code>rate_limited</code></td><td>Daqiqalik limit tugadi</td><td class="yes">Ha — <code>Retry-After</code> dan keyin</td></tr>
+            <tr><td class="st err">502</td><td><code>upstream_unavailable</code></td><td>Manba servis vaqtincha javob bermadi</td><td class="yes">Ha — kutib (backoff)</td></tr>
+            <tr><td class="st err">503</td><td><code>auth_unavailable</code></td><td>Token tekshiruvi vaqtincha ishlamadi</td><td class="yes">Ha — kutib (backoff)</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="headers">
+        <h2><span class="num">7</span>Javob sarlavhalari</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Sarlavha</th><th>Qiymat</th><th>Ma'nosi</th></tr></thead>
+          <tbody>
+            <tr><td><code>X-Cache</code></td><td><code>HIT-MEM</code> · <code>HIT-EDGE</code> · <code>MISS</code> · <code>STALE</code></td><td>Javob qayerdan olingani (qarang: Kesh)</td></tr>
+            <tr><td><code>X-RateLimit-Limit</code></td><td><code>60</code></td><td>Daqiqasiga ruxsat etilgan so'rovlar</td></tr>
+            <tr><td><code>Retry-After</code></td><td>soniya</td><td>Faqat 429 da: shuncha kutib qayta yuboring</td></tr>
+            <tr><td><code>Server-Timing</code></td><td><code>total;dur=3</code></td><td>Server ichida ketgan vaqt (ms)</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="limits">
+        <h2><span class="num">8</span>Limitlar</h2>
+        <div class="grid">
+          <div class="stat"><div class="v">60</div><div class="l">so'rov / daqiqa — har bir token uchun</div></div>
+          <div class="stat"><div class="v">1</div><div class="l">so'rov = 1 akkaunt (batch yo'q)</div></div>
+          <div class="stat"><div class="v">6 s</div><div class="l">eng uzoq kutish (keshda bo'lmasa)</div></div>
+        </div>
+        <ul>
+          <li>Limit <b>token boshiga</b> hisoblanadi va har 60 soniyada yangilanadi. Keshdan qaytgan javoblar ham hisobga kiradi.</li>
+          <li>Limitdan oshsa — <span class="st err">429</span> <code>rate_limited</code> va <code>Retry-After: 60</code> qaytadi. Bu vaqtda yuborilgan so'rovlar ham rad etiladi, shuning uchun to'xtab turing.</li>
+          <li>Limit Cloudflare tarmog'ining har bir hududida alohida hisoblanadi, shuning uchun chegara atrofida bir oz farq bo'lishi mumkin — 60 ga yaqin ishlamang, o'z tomoningizda navbat (queue) qiling.</li>
+          <li>Ko'proq kerak bo'lsa (masalan, ommaviy tekshiruv) — Telegram orqali <a href="https://t.me/vafoyev_n" target="_blank" rel="noopener"><b>@vafoyev_n</b></a> ga yozing.</li>
+        </ul>
+        <div class="note warn"><span class="ic">⚠️</span><div><p>Limitni chetlab o'tish uchun bir nechta tokendan navbat bilan foydalanish yoki suiiste'mol aniqlansa, token ogohlantirishsiz bekor qilinadi.</p></div></div>
+      </section>
+
+      <section id="retry">
+        <h2><span class="num">9</span>Qayta yuborish (retry) qoidalari</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Javob</th><th>Nima qilish kerak</th></tr></thead>
+          <tbody>
+            <tr><td class="st ok">200</td><td>Natijani o'z tomoningizda ham keshlang (kamida 5–30 daqiqa).</td></tr>
+            <tr><td class="st warn">400 / 401 / 404 / 405</td><td><b>Qayta yubormang.</b> Natija o'zgarmaydi — so'rov yoki tokenni tuzating. 404 ni ham qisqa muddat keshlang.</td></tr>
+            <tr><td class="st err">429</td><td><code>Retry-After</code> soniya kuting, keyin bitta so'rov yuboring. Parallel oqimlarni kamaytiring.</td></tr>
+            <tr><td class="st err">502 / 503 / tarmoq xatosi</td><td>Eksponensial kutish: <b>1 s → 2 s → 4 s</b> (+ tasodifiy 0–500 ms), ko'pi bilan <b>3 marta</b>. Keyin foydalanuvchiga xato ko'rsating.</td></tr>
+          </tbody>
+        </table></div>
+        <ul>
+          <li>So'rov uchun <b>8–10 soniya</b> timeout qo'ying.</li>
+          <li>Bir xil <code>id + zone</code> ni bir vaqtda qayta-qayta yubormang — bitta javobni kuting.</li>
+          <li>Foydalanuvchi kiritayotgan har bir harf uchun emas, faqat "Tekshirish" bosilganda so'rov yuboring.</li>
+        </ul>
+        <div class="code">
+          <div class="code-head"><span class="code-title">JavaScript — to'g'ri retry</span><button class="copy" data-copy-pre>Nusxa</button></div>
+<pre><span class="k">async function</span> <span class="p">checkMlbb</span>(id, zone) {
+  <span class="k">for</span> (<span class="k">let</span> attempt = <span class="n">0</span>; attempt &lt; <span class="n">4</span>; attempt++) {
+    <span class="k">let</span> res;
+    <span class="k">try</span> {
+      res = <span class="k">await</span> fetch(<span class="s">`https://mlbb.nurali.uz/v1/check?id=${id}&amp;zone=${zone}`</span>, {
+        headers: { Authorization: <span class="s">`Bearer ${process.env.MLBB_API_TOKEN}`</span> },
+        signal: AbortSignal.timeout(<span class="n">10_000</span>),
+      });
+    } <span class="k">catch</span> {
+      res = <span class="k">null</span>; <span class="c">// tarmoq xatosi / timeout</span>
+    }
+
+    <span class="k">if</span> (res &amp;&amp; res.status &lt; <span class="n">500</span> &amp;&amp; res.status !== <span class="n">429</span>) <span class="k">return</span> res.json(); <span class="c">// 2xx/4xx — qayta yubormaymiz</span>
+    <span class="k">if</span> (attempt === <span class="n">3</span>) <span class="k">break</span>;
+
+    <span class="k">const</span> wait = res?.status === <span class="n">429</span>
+      ? Number(res.headers.get(<span class="s">"retry-after"</span>) || <span class="n">60</span>) * <span class="n">1000</span>
+      : <span class="n">1000</span> * <span class="n">2</span> ** attempt + Math.random() * <span class="n">500</span>;
+    <span class="k">await</span> <span class="k">new</span> Promise((r) =&gt; setTimeout(r, wait));
+  }
+  <span class="k">throw new</span> Error(<span class="s">"MLBB API vaqtincha ishlamayapti"</span>);
+}</pre>
+        </div>
+      </section>
+
+      <section id="cache">
+        <h2><span class="num">10</span>Kesh — nega tez</h2>
+        <p>API Cloudflare tarmog'ida, sizga eng yaqin serverda ishlaydi. Javob uch qavatdan qidiriladi:</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th><code>X-Cache</code></th><th>Manba</th><th>Odatiy vaqt</th></tr></thead>
+          <tbody>
+            <tr><td><code>HIT-MEM</code></td><td>Server xotirasi</td><td>~1 ms</td></tr>
+            <tr><td><code>HIT-EDGE</code></td><td>Cloudflare keshi (hududiy)</td><td>~5 ms</td></tr>
+            <tr><td><code>MISS</code></td><td>Manba servisdan yangi olindi</td><td>0.5–1.5 s</td></tr>
+            <tr><td><code>STALE</code></td><td>Manba ishlamayapti — oxirgi ma'lum javob</td><td>~5 ms</td></tr>
+          </tbody>
+        </table></div>
+        <ul>
+          <li>Topilgan nickname <b>30 daqiqa</b> keshda saqlanadi. O'yinchi nickname'ini o'zgartirsa, yangisi 30 daqiqagacha kechikib ko'rinadi.</li>
+          <li>"Topilmadi" (<code>404</code>) javobi <b>2 daqiqa</b> saqlanadi.</li>
+          <li>Manba servis ishlamay qolsa, <b>24 soatgacha</b> oxirgi ma'lum javob qaytariladi (<code>X-Cache: STALE</code>).</li>
+          <li>Bir vaqtda kelgan bir xil so'rovlar manbaga bitta murojaat sifatida boradi.</li>
+        </ul>
+      </section>
+
+      <section id="security">
+        <h2><span class="num">11</span>Xavfsizlik</h2>
+        <div class="note warn"><span class="ic">🔒</span><div><p><b>Tokenni brauzer yoki mobil ilova kodiga qo'ymang.</b> Uni ko'rgan har kim sizning limitingizni ishlatadi. So'rovni o'z serveringizdan yuboring va natijani foydalanuvchiga uzating.</p></div></div>
+        <ul>
+          <li>Tokenni muhit o'zgaruvchisida saqlang (<code>MLBB_API_TOKEN</code>), git'ga qo'shmang.</li>
+          <li>Faqat HTTPS orqali ishlaydi.</li>
+          <li>Token oshkor bo'lsa — darhol <b>@vafoyev_n</b> ga yozing; u bekor qilinadi (1 daqiqa ichida kuchga kiradi) va yangisi beriladi.</li>
+        </ul>
+      </section>
+
+      <section id="examples">
+        <h2><span class="num">12</span>Kod namunalari</h2>
+        <div class="code" data-tabs>
+          <div class="code-head">
+            <button class="tab active" data-tab="0">cURL</button>
+            <button class="tab" data-tab="1">Node.js</button>
+            <button class="tab" data-tab="2">Python</button>
+            <button class="tab" data-tab="3">PHP</button>
+            <button class="copy" data-copy-pre>Nusxa</button>
+          </div>
+<pre>curl -sS \
+  -H <span class="s">"Authorization: Bearer $MLBB_API_TOKEN"</span> \
+  <span class="s">"https://mlbb.nurali.uz/v1/check/1290132154/15246"</span></pre>
+<pre hidden><span class="k">const</span> res = <span class="k">await</span> fetch(<span class="s">"https://mlbb.nurali.uz/v1/check?id=1290132154&amp;zone=15246"</span>, {
+  headers: { Authorization: <span class="s">`Bearer ${process.env.MLBB_API_TOKEN}`</span> },
+});
+<span class="k">const</span> data = <span class="k">await</span> res.json();
+
+<span class="k">if</span> (data.ok) console.log(data.nickname, data.region);
+<span class="k">else</span> console.error(res.status, data.error);</pre>
+<pre hidden><span class="k">import</span> os, requests
+
+r = requests.get(
+    <span class="s">"https://mlbb.nurali.uz/v1/check"</span>,
+    params={<span class="s">"id"</span>: <span class="s">"1290132154"</span>, <span class="s">"zone"</span>: <span class="s">"15246"</span>},
+    headers={<span class="s">"Authorization"</span>: <span class="s">f"Bearer {os.environ['MLBB_API_TOKEN']}"</span>},
+    timeout=<span class="n">10</span>,
+)
+data = r.json()
+<span class="k">if</span> data[<span class="s">"ok"</span>]:
+    print(data[<span class="s">"nickname"</span>], data[<span class="s">"region"</span>])
+<span class="k">else</span>:
+    print(r.status_code, data[<span class="s">"error"</span>])</pre>
+<pre hidden>&lt;?php
+$ch = curl_init(<span class="s">"https://mlbb.nurali.uz/v1/check?id=1290132154&amp;zone=15246"</span>);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER =&gt; <span class="k">true</span>,
+    CURLOPT_TIMEOUT        =&gt; <span class="n">10</span>,
+    CURLOPT_HTTPHEADER     =&gt; [<span class="s">"Authorization: Bearer "</span> . getenv(<span class="s">"MLBB_API_TOKEN"</span>)],
+]);
+$data = json_decode(curl_exec($ch), <span class="k">true</span>);
+$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+<span class="k">if</span> ($data[<span class="s">"ok"</span>]) {
+    <span class="k">echo</span> $data[<span class="s">"nickname"</span>] . <span class="s">" — "</span> . $data[<span class="s">"region"</span>];
+} <span class="k">else</span> {
+    <span class="k">echo</span> $code . <span class="s">" "</span> . $data[<span class="s">"error"</span>];
+}</pre>
+        </div>
+      </section>
+
+      <section id="contact">
+        <h2><span class="num">13</span>Aloqa</h2>
+        <div class="contact">
+          <div class="tg-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M21.9 4.6 18.7 19.7c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.2-8.3c.4-.4-.1-.6-.6-.2L6.1 13.4 1.2 11.9c-1-.3-1.1-1 .2-1.5L20.6 3c.9-.3 1.6.2 1.3 1.6z"/></svg></div>
+          <div class="body">
+            <b>Token, limit oshirish va savollar</b>
+            <p class="muted" style="margin:4px 0 0">API'dan foydalanish uchun Telegram orqali <b>@vafoyev_n</b> ga murojaat qiling: token ochib beriladi yoki limit oshiriladi. Xato topsangiz — so'rov vaqti va javobdagi <code>error</code> kodini yuboring.</p>
+          </div>
+          <a class="icon-btn tg-btn big" href="https://t.me/vafoyev_n" target="_blank" rel="noopener">✈ @vafoyev_n</a>
+        </div>
+      </section>
+
+      <footer>
+        MLBB Check API v1 · Base URL <code>https://mlbb.nurali.uz/v1</code> · Mobile Legends: Bang Bang — Moonton'ning savdo belgisi; bu API Moonton bilan bog'liq emas.
+      </footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">Nusxalandi</div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      try {
+        var saved = localStorage.getItem("docs-theme");
+        if (saved) root.setAttribute("data-theme", saved);
+      } catch (e) { /* ignore */ }
+
+      document.getElementById("themeBtn").addEventListener("click", function () {
+        var dark = root.getAttribute("data-theme")
+          ? root.getAttribute("data-theme") === "dark"
+          : matchMedia("(prefers-color-scheme: dark)").matches;
+        var next = dark ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        try { localStorage.setItem("docs-theme", next); } catch (e) { /* ignore */ }
+      });
+
+      var side = document.getElementById("side");
+      document.getElementById("menuBtn").addEventListener("click", function () { side.classList.toggle("open"); });
+      side.addEventListener("click", function (e) { if (e.target.tagName === "A") side.classList.remove("open"); });
+
+      var toast = document.getElementById("toast");
+      var toastTimer;
+      function copy(text) {
+        function done() {
+          toast.classList.add("show");
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 1400);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, done);
+        } else {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+          document.body.removeChild(ta);
+          done();
+        }
+      }
+
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".copy");
+        if (btn) {
+          if (btn.hasAttribute("data-copy")) return copy(btn.getAttribute("data-copy"));
+          var block = btn.closest(".code");
+          var pre = block && Array.prototype.find.call(block.querySelectorAll("pre"), function (p) { return !p.hidden; });
+          if (pre) copy(pre.textContent);
+          return;
+        }
+        var tab = e.target.closest(".tab");
+        if (tab) {
+          var box = tab.closest("[data-tabs]");
+          var idx = Number(tab.getAttribute("data-tab"));
+          box.querySelectorAll(".tab").forEach(function (t, i) { t.classList.toggle("active", i === idx); });
+          box.querySelectorAll("pre").forEach(function (p, i) { p.hidden = i !== idx; });
+        }
+      });
+
+      // Yon menyuda joriy bo'limni belgilash
+      var links = Array.prototype.slice.call(side.querySelectorAll("a"));
+      var targets = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          var i = targets.indexOf(en.target);
+          links.forEach(function (a, j) { a.classList.toggle("active", j === i); });
+        });
+      }, { rootMargin: "-70px 0px -70% 0px" });
+      targets.forEach(function (t) { if (t) io.observe(t); });
+    })();
+  </script>
+</body>
+</html>

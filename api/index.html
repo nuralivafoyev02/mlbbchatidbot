@@ -1525,6 +1525,56 @@
 
     .cg-form .admin-add-row { margin-top: 0 }
 
+    /* Ommaviy API (Sozlamalar) */
+    .api-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text2);
+      margin: 12px 0 6px
+    }
+
+    .api-label:first-child { margin-top: 0 }
+
+    .api-new {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      font-size: 12px;
+      color: var(--text2);
+      line-height: 1.45
+    }
+
+    .api-new .pay-copy-row { margin: 6px 0 }
+    .api-new code { color: var(--green) }
+
+    .api-meta {
+      font-size: 11px;
+      color: var(--text2)
+    }
+
+    .api-meta .bad { color: var(--red) }
+
+    .api-try-out {
+      margin-top: 8px;
+      font-size: 11px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--card-border);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 220px;
+      overflow: auto
+    }
+
+    .api-row3 {
+      display: grid;
+      grid-template-columns: 1fr 90px auto;
+      gap: 8px
+    }
+
     .admin-add-row {
       display: flex;
       gap: 8px;
@@ -3503,6 +3553,40 @@
           </div>
           </div></div>
         </div>
+        <div class="card collapsible">
+          <button type="button" class="collapse-head" onclick="toggleSettingsCard(this)" aria-expanded="false">
+            <span class="collapse-title"><i class="bi bi-lightning-charge"></i>Ommaviy API (nickname + region)</span>
+            <i class="bi bi-chevron-down collapse-chevron"></i>
+          </button>
+          <div class="collapse-body"><div class="collapse-inner">
+          <div class="api-label">Base URL</div>
+          <div class="pay-copy-row"><code id="apiBaseUrl">—</code><button type="button" class="wl-btn" onclick="copyApiText('apiBaseUrl')" aria-label="Nusxalash"><i class="bi bi-clipboard"></i></button></div>
+          <div class="api-label">Namuna so'rov</div>
+          <div class="pay-copy-row"><code id="apiExample">—</code><button type="button" class="wl-btn" onclick="copyApiText('apiExample')" aria-label="Nusxalash"><i class="bi bi-clipboard"></i></button></div>
+          <div class="hint pay-hint" style="margin-top:6px">Cloudflare edge'da ishlaydi: javob RAM → Cloudflare kesh → manba tartibida olinadi (nickname 30 daqiqa keshda). Token <b>Authorization: Bearer</b>, <b>X-API-Token</b> yoki <b>?token=</b> orqali. Bekor qilingan token 1 daqiqada kuchga kiradi. Limit: token boshiga 60 so'rov/daqiqa. Hujjat: <a href="https://docs-mlbb.nurali.uz" target="_blank" rel="noopener" style="color:var(--accent3)">docs-mlbb.nurali.uz</a></div>
+
+          <div class="api-label">Yangi token</div>
+          <div class="api-row3">
+            <input class="settings-input" type="text" id="apiTokTitle" maxlength="80" placeholder="Kim uchun (masalan: shop.uz)">
+            <input class="settings-input" type="number" id="apiTokDays" min="1" max="3650" value="365" aria-label="Muddat (kun)">
+            <button class="wl-btn green" id="apiTokBtn" onclick="createApiToken()"><i class="bi bi-key"></i></button>
+          </div>
+          <div class="hint pay-hint" style="margin-top:4px">Ikkinchi maydon — amal qilish muddati (kun).</div>
+          <div id="apiTokNew"></div>
+
+          <div class="api-label">Tokenlar <span id="apiTokCount"></span></div>
+          <div id="apiTokList"><div style="color:var(--text2);font-size:13px">Yuklanmoqda…</div></div>
+
+          <div class="api-label">Sinab ko'rish</div>
+          <input class="settings-input" type="text" id="apiTryToken" autocomplete="off" spellcheck="false" placeholder="Token (mlbb_…)" style="margin-bottom:8px">
+          <div class="api-row3">
+            <input class="settings-input" type="text" id="apiTryId" inputmode="numeric" placeholder="Account ID">
+            <input class="settings-input" type="text" id="apiTryZone" inputmode="numeric" placeholder="Zone">
+            <button class="wl-btn" id="apiTryBtn" onclick="tryPublicApi()"><i class="bi bi-play-fill"></i></button>
+          </div>
+          <pre class="api-try-out" id="apiTryOut" hidden></pre>
+          </div></div>
+        </div>
       </div>
     </div>
 
@@ -4156,7 +4240,7 @@
         });
         moveNavIndicator(document.getElementById("bottomNav"), changed);
         if (name === "Users" && allUsers.length === 0) loadUsers();
-        if (name === "Settings") { loadSettings(); loadMandatorySettings(); loadCabinetGroups(); }
+        if (name === "Settings") { loadSettings(); loadMandatorySettings(); loadCabinetGroups(); loadApiTokens(); }
         if (name === "Shop") {
           if (fmView === "list") reloadFirstmailsKeepingPosition();
           else if (dnView !== "none") loadDonat();
@@ -5015,6 +5099,119 @@
       ----------------------------------------------------------------------- */
       var cgItems = [];
       var cgEditId = null;
+
+      /* -----------------------------------------------------------------------
+         Ommaviy API tokenlari
+      ----------------------------------------------------------------------- */
+      var apiBase = "";
+
+      function apiDate(v) {
+        return v ? new Date(v).toLocaleDateString("uz-UZ") : "—";
+      }
+
+      function setApiBase(base) {
+        if (!base) return;
+        apiBase = base;
+        document.getElementById("apiBaseUrl").textContent = base;
+        document.getElementById("apiExample").textContent =
+          'curl -H "Authorization: Bearer <token>" "' + base + '/check?id=1290132154&zone=15246"';
+      }
+
+      function loadApiTokens() {
+        api("api_tokens_list").then(function (result) {
+          var data = result.data || {};
+          setApiBase(data.baseUrl);
+          var box = document.getElementById("apiTokList");
+          if (!result.ok) {
+            box.innerHTML = '<div style="color:var(--red);font-size:13px">Tokenlarni yuklab bo\'lmadi</div>';
+            return;
+          }
+          var tokens = data.tokens || [];
+          var now = Date.now();
+          var active = tokens.filter(function (t) { return !t.is_revoked && new Date(t.expires_at).getTime() > now; });
+          document.getElementById("apiTokCount").textContent = "(" + active.length + " faol)";
+          if (!tokens.length) {
+            box.innerHTML = '<div style="color:var(--text2);font-size:13px">Hali token yo\'q</div>';
+            return;
+          }
+          box.innerHTML = tokens.map(function (t) {
+            var expired = new Date(t.expires_at).getTime() <= now;
+            var state = t.is_revoked ? '<span class="bad">bekor qilingan</span>' : (expired ? '<span class="bad">muddati o\'tgan</span>' : "gacha " + apiDate(t.expires_at));
+            return '<div class="cg-item"><i class="bi bi-key' + (t.is_revoked || expired ? "" : "-fill") + '"></i>' +
+              '<div class="cg-body"><div class="cg-name">' + esc(t.title || "—") + " · " + esc(t.token_prefix) + "</div>" +
+              '<div class="api-meta">' + state + " · " + formatNum(t.usage_count || 0) + " so'rov · oxirgi: " + apiDate(t.last_used_at) + "</div></div>" +
+              (t.is_revoked ? "" : '<button class="cg-act red" data-api-revoke="' + t.id + '" aria-label="Bekor qilish"><i class="bi bi-x-lg"></i></button>') +
+              "</div>";
+          }).join("");
+          box.querySelectorAll("[data-api-revoke]").forEach(function (el) {
+            el.addEventListener("click", function () {
+              if (!confirm("Bu tokenni bekor qilasizmi? Uni ishlatayotgan tizim 1 daqiqada to'xtaydi.")) return;
+              hapticLight();
+              api("api_token_revoke", { id: el.getAttribute("data-api-revoke") }).then(function (r) {
+                showToast(r.ok ? "✅ Token bekor qilindi" : "❌ Xatolik", r.ok ? "success" : "error");
+                loadApiTokens();
+              });
+            });
+          });
+        });
+      }
+      window.loadApiTokens = loadApiTokens;
+
+      function createApiToken() {
+        var title = document.getElementById("apiTokTitle").value.trim();
+        var days = parseInt(document.getElementById("apiTokDays").value, 10);
+        if (!title) { showToast("Token kim uchunligini yozing", "error"); return; }
+        if (!(days >= 1 && days <= 3650)) { showToast("Muddat 1–3650 kun", "error"); return; }
+        var btn = document.getElementById("apiTokBtn");
+        btn.disabled = true;
+        hapticLight();
+        api("api_token_create", { title: title, days: days }).then(function (r) {
+          btn.disabled = false;
+          if (!r.ok) { showToast("❌ Token yaratilmadi", "error"); return; }
+          setApiBase(r.data.baseUrl);
+          document.getElementById("apiTokTitle").value = "";
+          document.getElementById("apiTryToken").value = r.data.token;
+          document.getElementById("apiTokNew").innerHTML =
+            '<div class="api-new"><b style="color:var(--green)">✅ Token yaratildi</b> — faqat hozir ko\'rinadi, saqlab qo\'ying:' +
+            '<div class="pay-copy-row"><code id="apiTokRaw">' + esc(r.data.token) + '</code><button type="button" class="wl-btn" onclick="copyApiText(\'apiTokRaw\')" aria-label="Nusxalash"><i class="bi bi-clipboard"></i></button></div></div>';
+          loadApiTokens();
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Tarmoq xatosi", "error");
+        });
+      }
+      window.createApiToken = createApiToken;
+
+      function copyApiText(id) {
+        hapticLight();
+        copyText(document.getElementById(id).textContent);
+      }
+      window.copyApiText = copyApiText;
+
+      function tryPublicApi() {
+        var token = document.getElementById("apiTryToken").value.trim();
+        var id = document.getElementById("apiTryId").value.trim();
+        var zone = document.getElementById("apiTryZone").value.trim();
+        var out = document.getElementById("apiTryOut");
+        if (!apiBase || !token || !id || !zone) { showToast("Token, ID va zone kiriting", "error"); return; }
+        hapticLight();
+        out.hidden = false;
+        out.textContent = "…";
+        var started = performance.now();
+        fetch(apiBase + "/check?id=" + encodeURIComponent(id) + "&zone=" + encodeURIComponent(zone), {
+          headers: { Authorization: "Bearer " + token },
+          cache: "no-store"
+        }).then(function (resp) {
+          var head = "HTTP " + resp.status + " · " + Math.round(performance.now() - started) + " ms · kesh: " + (resp.headers.get("x-cache") || "—") + "\n\n";
+          return resp.text().then(function (text) {
+            try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* matn */ }
+            out.textContent = head + text;
+          });
+        }).catch(function (e) {
+          out.textContent = "Tarmoq xatosi: " + (e && e.message ? e.message : e);
+        });
+      }
+      window.tryPublicApi = tryPublicApi;
 
       function loadCabinetGroups() {
         api("cabinet_groups_list").then(function (result) {
