@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236366f1'/><path d='M18 4 9 18h6l-2 10 10-15h-6z' fill='white'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -111,7 +112,7 @@
       border-bottom: 1px solid var(--border);
     }
 
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.01em; color: var(--text) }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; min-width: 0 }
     .brand:hover { text-decoration: none }
     .logo {
       width: 30px; height: 30px; border-radius: 9px;
@@ -257,7 +258,12 @@
     }
     .note.warn { background: color-mix(in srgb, var(--yellow) 9%, var(--surface)); border-color: color-mix(in srgb, var(--yellow) 35%, transparent) }
     .note.ok { background: color-mix(in srgb, var(--green) 9%, var(--surface)); border-color: color-mix(in srgb, var(--green) 35%, transparent) }
-    .note .ic { font-size: 18px; line-height: 1.4 }
+    .note .ic { font-size: 18px; line-height: 1.4; color: var(--blue) }
+    .note.warn .ic { color: var(--yellow) }
+    .note.ok .ic { color: var(--green) }
+    .pill .bi { color: var(--accent3) }
+    .contact .tg-ic { font-size: 26px; color: #fff }
+    nav.side a .bi { width: 20px; display: inline-block; opacity: .8 }
     .note p:last-child { margin: 0 }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 14px 0 }
@@ -284,6 +290,63 @@
     .contact .body b { font-size: 17px }
     .contact .big { height: 44px; padding: 0 18px; font-size: 15px }
 
+    /* Playground */
+    .play {
+      margin-top: 14px; border-radius: 18px; overflow: hidden;
+      background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+    }
+    .play-form { padding: 18px; display: grid; gap: 12px }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px }
+    .input {
+      width: 100%; height: 42px; padding: 0 12px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      font: 500 14px "JetBrains Mono", monospace; outline: none;
+    }
+    .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent) }
+    .input-wrap { position: relative }
+    .input-wrap .input { padding-right: 42px }
+    .input-wrap button {
+      position: absolute; right: 4px; top: 4px; width: 34px; height: 34px; border: 0; border-radius: 8px;
+      background: transparent; color: var(--text2); cursor: pointer; font-size: 16px;
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
+    .seg { display: inline-flex; padding: 3px; border-radius: 11px; background: var(--bg); border: 1px solid var(--border); flex-wrap: wrap }
+    .seg button {
+      border: 0; background: transparent; color: var(--text2); cursor: pointer; height: 34px; padding: 0 12px;
+      border-radius: 8px; font: 600 13px Inter, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .seg button.active { background: var(--surface2); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.15) }
+    .seg .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text2) }
+    .seg .dot.up { background: var(--green) }
+    .seg .dot.down { background: var(--red) }
+    .play-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
+    .check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer }
+    .btn-primary {
+      height: 42px; padding: 0 20px; border: 0; border-radius: 10px; cursor: pointer; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); font: 700 14px Inter, system-ui, sans-serif;
+      display: inline-flex; align-items: center; gap: 8px; margin-left: auto;
+    }
+    .btn-primary:disabled { opacity: .6; cursor: progress }
+    .play-out { border-top: 1px solid var(--border); background: var(--code-bg) }
+    .play-meta {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 12.5px; color: #8b95ab;
+    }
+    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-weight: 700; font-size: 12px; background: rgba(255,255,255,.07); color: #dbe2f0 }
+    .chip.ok { background: rgba(16,185,129,.18); color: #6ee7b7 }
+    .chip.warn { background: rgba(251,191,36,.16); color: #fcd34d }
+    .chip.err { background: rgba(248,113,113,.16); color: #fca5a5 }
+    .play-empty { padding: 26px 18px; text-align: center; color: #8b95ab; font-size: 13.5px }
+    .play-empty .bi { font-size: 26px; display: block; margin-bottom: 6px; opacity: .7 }
+    .spin { animation: spin 0.8s linear infinite; display: inline-block }
+    @keyframes spin { to { transform: rotate(360deg) } }
+
+    /* OpenAPI */
+    .oa-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 }
+    .oa-actions .icon-btn { height: 38px; padding: 0 14px }
+    .json-view { max-height: 380px; overflow: auto }
+    .json-view.expanded { max-height: none }
+
     footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text2); font-size: 13px }
 
     .toast {
@@ -303,41 +366,45 @@
       }
       nav.side.open { transform: none }
       .topbar { padding: 0 16px }
-      .hide-sm { display: none }
+      .hide-sm, .brand .badge { display: none }
       .hero { padding: 26px 20px }
+      .row2 { grid-template-columns: 1fr }
+      .btn-primary { width: 100%; justify-content: center; margin-left: 0 }
       main { padding-top: 24px }
     }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menyu">☰</button>
-    <a class="brand" href="#"><span class="logo">⚡</span> MLBB Check API <span class="badge">v1</span></a>
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menyu"><i class="bi bi-list"></i></button>
+    <a class="brand" href="#"><span class="logo"><i class="bi bi-lightning-charge-fill"></i></span> MLBB Check API <span class="badge">v1</span></a>
     <div class="spacer"></div>
-    <button class="icon-btn" id="themeBtn" aria-label="Mavzuni almashtirish">◐</button>
-    <a class="icon-btn tg-btn" href="https://t.me/vafoyev_n" target="_blank" rel="noopener">✈ <span class="hide-sm">Token olish</span></a>
+    <button class="icon-btn" id="themeBtn" aria-label="Mavzuni almashtirish"><i class="bi bi-circle-half"></i></button>
+    <a class="icon-btn tg-btn" href="https://t.me/vafoyev_n" target="_blank" rel="noopener"><i class="bi bi-telegram"></i> <span class="hide-sm">Token olish</span></a>
   </header>
 
   <div class="layout">
     <nav class="side" id="side">
       <div class="group">Boshlash</div>
-      <a href="#intro">Umumiy</a>
-      <a href="#quickstart">Tezkor boshlash</a>
-      <a href="#token">Token olish</a>
+      <a href="#intro"><i class="bi bi-house"></i>Umumiy</a>
+      <a href="#quickstart"><i class="bi bi-rocket-takeoff"></i>Tezkor boshlash</a>
+      <a href="#token"><i class="bi bi-key"></i>Token olish</a>
+      <a href="#try"><i class="bi bi-play-circle"></i>Sinab ko'rish</a>
       <div class="group">Ma'lumotnoma</div>
-      <a href="#auth">Autentifikatsiya</a>
-      <a href="#check">GET /v1/check</a>
-      <a href="#response">Javob maydonlari</a>
-      <a href="#errors">Xato kodlari</a>
-      <a href="#headers">Javob sarlavhalari</a>
+      <a href="#auth"><i class="bi bi-shield-check"></i>Autentifikatsiya</a>
+      <a href="#check"><i class="bi bi-arrow-down-up"></i>GET /v1/check</a>
+      <a href="#response"><i class="bi bi-braces"></i>Javob maydonlari</a>
+      <a href="#errors"><i class="bi bi-exclamation-octagon"></i>Xato kodlari</a>
+      <a href="#headers"><i class="bi bi-list-columns"></i>Javob sarlavhalari</a>
       <div class="group">Qoidalar</div>
-      <a href="#limits">Limitlar</a>
-      <a href="#retry">Qayta yuborish</a>
-      <a href="#cache">Kesh</a>
-      <a href="#security">Xavfsizlik</a>
+      <a href="#limits"><i class="bi bi-speedometer2"></i>Limitlar</a>
+      <a href="#retry"><i class="bi bi-arrow-repeat"></i>Qayta yuborish</a>
+      <a href="#cache"><i class="bi bi-database"></i>Kesh</a>
+      <a href="#security"><i class="bi bi-lock"></i>Xavfsizlik</a>
       <div class="group">Boshqa</div>
-      <a href="#examples">Kod namunalari</a>
-      <a href="#contact">Aloqa</a>
+      <a href="#openapi"><i class="bi bi-filetype-json"></i>OpenAPI (JSON)</a>
+      <a href="#examples"><i class="bi bi-code-slash"></i>Kod namunalari</a>
+      <a href="#contact"><i class="bi bi-telegram"></i>Aloqa</a>
     </nav>
 
     <main>
@@ -345,19 +412,19 @@
         <h1>Nickname va regionni bir so'rovda oling</h1>
         <p>Mobile Legends: Bang Bang akkauntining <b>ID</b> va <b>server (zone) ID</b> si bo'yicha o'yinchi nickname'i, region (davlat) va server turini qaytaradigan tezkor API.</p>
         <div class="pills">
-          <span class="pill">⚡ Cloudflare edge</span>
-          <span class="pill">🗄 Kesh: <b>30 daqiqa</b></span>
-          <span class="pill">⏱ Limit: <b>60 so'rov / daqiqa</b></span>
-          <span class="pill">🔑 Token bilan</span>
+          <span class="pill"><i class="bi bi-globe2"></i> Cloudflare edge</span>
+          <span class="pill"><i class="bi bi-database-check"></i> Kesh: <b>30 daqiqa</b></span>
+          <span class="pill"><i class="bi bi-speedometer2"></i> Limit: <b>60 so'rov / daqiqa</b></span>
+          <span class="pill"><i class="bi bi-key"></i> Token bilan</span>
         </div>
       </div>
 
       <section id="quickstart">
         <h2><span class="num">1</span>Tezkor boshlash</h2>
-        <div class="endpoint"><span class="method">BASE</span><span class="path" id="baseUrl">https://mlbb.nurali.uz/v1</span><button class="copy" data-copy="https://mlbb.nurali.uz/v1">Nusxa</button></div>
+        <div class="endpoint"><span class="method">BASE</span><span class="path" id="baseUrl">https://mlbb.nurali.uz/v1</span><button class="copy" data-copy="https://mlbb.nurali.uz/v1"><i class="bi bi-clipboard"></i> Nusxa</button></div>
         <p style="margin-top:14px">Birinchi so'rov:</p>
         <div class="code">
-          <div class="code-head"><span class="code-title">bash</span><button class="copy" data-copy-pre>Nusxa</button></div>
+          <div class="code-head"><span class="code-title">bash</span><button class="copy" data-copy-pre><i class="bi bi-clipboard"></i> Nusxa</button></div>
 <pre>curl -H <span class="s">"Authorization: Bearer mlbb_SIZNING_TOKENINGIZ"</span> \
   <span class="s">"https://mlbb.nurali.uz/v1/check?id=1290132154&amp;zone=15246"</span></pre>
         </div>
@@ -382,11 +449,59 @@
           <li>Sizga <code>mlbb_</code> bilan boshlanadigan token beriladi. U <b>faqat bir marta</b> ko'rsatiladi — xavfsiz joyda saqlang.</li>
           <li>Har bir so'rovda tokenni <code>Authorization</code> sarlavhasida yuboring.</li>
         </ol>
-        <div class="note warn"><span class="ic">⚠️</span><div><p>Token muddatli (odatda 1 yil). Muddati tugasa yoki token oshkor bo'lsa — yangisini olish uchun <b>@vafoyev_n</b> ga yozing; eski token bekor qilinadi.</p></div></div>
+        <div class="note warn"><span class="ic"><i class="bi bi-exclamation-triangle-fill"></i></span><div><p>Token muddatli (odatda 1 yil). Muddati tugasa yoki token oshkor bo'lsa — yangisini olish uchun <b>@vafoyev_n</b> ga yozing; eski token bekor qilinadi.</p></div></div>
+      </section>
+
+      <section id="try">
+        <h2><span class="num">3</span>Sinab ko'rish</h2>
+        <p class="muted">So'rov to'g'ridan-to'g'ri brauzeringizdan API'ga yuboriladi. Token faqat shu sahifada qoladi (belgilasangiz — brauzer yopilguncha).</p>
+        <div class="play">
+          <div class="play-form">
+            <div class="field">
+              <label>Server</label>
+              <div class="seg" id="srvSeg" role="radiogroup" aria-label="Server">
+                <button type="button" role="radio" data-base="https://mlbb.nurali.uz/v1"><span class="dot"></span>Production</button>
+                <button type="button" role="radio" data-base="https://dev-mlbb.nurali.uz/v1"><span class="dot"></span>Beta (dev)</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="tryToken">Token</label>
+              <div class="input-wrap">
+                <input class="input" id="tryToken" type="password" autocomplete="off" spellcheck="false" placeholder="mlbb_…">
+                <button type="button" id="tryEye" aria-label="Tokenni ko'rsatish"><i class="bi bi-eye"></i></button>
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="tryId">Account ID</label>
+                <input class="input" id="tryId" inputmode="numeric" autocomplete="off" placeholder="1290132154" value="1290132154">
+              </div>
+              <div class="field">
+                <label for="tryZone">Zone ID</label>
+                <input class="input" id="tryZone" inputmode="numeric" autocomplete="off" placeholder="15246" value="15246">
+              </div>
+            </div>
+            <div class="play-actions">
+              <label class="check"><input type="checkbox" id="tryRemember"> Tokenni eslab qolish (sessiya)</label>
+              <button class="btn-primary" id="trySend" type="button"><i class="bi bi-send-fill"></i> So'rov yuborish</button>
+            </div>
+          </div>
+          <div class="play-out">
+            <div class="code-head" style="border-radius:0">
+              <span class="code-title"><i class="bi bi-terminal"></i> cURL</span>
+              <button class="copy" data-copy-pre><i class="bi bi-clipboard"></i> Nusxa</button>
+            </div>
+            <pre id="tryCurl"></pre>
+          </div>
+          <div class="play-out" id="tryResult">
+            <div class="play-empty"><i class="bi bi-braces-asterisk"></i>Javob shu yerda chiqadi</div>
+          </div>
+        </div>
+        <div class="note"><span class="ic"><i class="bi bi-info-circle-fill"></i></span><div><p>Tokeningiz yo'qmi? Telegram orqali <a href="https://t.me/vafoyev_n" target="_blank" rel="noopener"><b>@vafoyev_n</b></a> ga yozing. Ikkinchi marta yuborsangiz <code>X-Cache: HIT-*</code> va vaqt keskin qisqarganini ko'rasiz.</p></div></div>
       </section>
 
       <section id="auth">
-        <h2><span class="num">3</span>Autentifikatsiya</h2>
+        <h2><span class="num">4</span>Autentifikatsiya</h2>
         <p>Token uch usulda qabul qilinadi (birinchisi tavsiya etiladi):</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Usul</th><th>Misol</th><th>Izoh</th></tr></thead>
@@ -399,7 +514,7 @@
       </section>
 
       <section id="check">
-        <h2><span class="num">4</span>GET /v1/check</h2>
+        <h2><span class="num">5</span>GET /v1/check</h2>
         <p>Akkaunt nickname'i va regionini qaytaradi. Ikki xil yozilishi bor:</p>
         <div class="endpoint"><span class="method">GET</span><span class="path">/v1/check?id={account_id}&amp;zone={zone_id}</span></div>
         <div class="endpoint" style="margin-top:8px"><span class="method">GET</span><span class="path">/v1/check/{account_id}/{zone_id}</span></div>
@@ -412,13 +527,13 @@
             <tr><td><code>token</code></td><td>satr</td><td class="muted">yo'q</td><td>Sarlavha o'rniga (qarang: Autentifikatsiya)</td></tr>
           </tbody>
         </table></div>
-        <div class="note"><span class="ic">ℹ️</span><div><p>O'yinda ID odatda <code>1290132154 (15246)</code> ko'rinishida beriladi: birinchisi <code>id</code>, qavs ichidagisi <code>zone</code>.</p></div></div>
+        <div class="note"><span class="ic"><i class="bi bi-info-circle-fill"></i></span><div><p>O'yinda ID odatda <code>1290132154 (15246)</code> ko'rinishida beriladi: birinchisi <code>id</code>, qavs ichidagisi <code>zone</code>.</p></div></div>
         <h3>Holat so'rovi</h3>
         <p><code>GET /v1</code> — token talab qilmaydi; servis ishlayotganini va limitni qaytaradi. Monitoring uchun qulay.</p>
       </section>
 
       <section id="response">
-        <h2><span class="num">5</span>Javob maydonlari</h2>
+        <h2><span class="num">6</span>Javob maydonlari</h2>
         <div class="table-wrap"><table>
           <thead><tr><th>Maydon</th><th>Turi</th><th>Tavsif</th></tr></thead>
           <tbody>
@@ -434,7 +549,7 @@
       </section>
 
       <section id="errors">
-        <h2><span class="num">6</span>Xato kodlari</h2>
+        <h2><span class="num">7</span>Xato kodlari</h2>
         <div class="table-wrap"><table>
           <thead><tr><th>HTTP</th><th><code>error</code></th><th>Sababi</th><th>Qayta yuborish?</th></tr></thead>
           <tbody>
@@ -455,7 +570,7 @@
       </section>
 
       <section id="headers">
-        <h2><span class="num">7</span>Javob sarlavhalari</h2>
+        <h2><span class="num">8</span>Javob sarlavhalari</h2>
         <div class="table-wrap"><table>
           <thead><tr><th>Sarlavha</th><th>Qiymat</th><th>Ma'nosi</th></tr></thead>
           <tbody>
@@ -468,7 +583,7 @@
       </section>
 
       <section id="limits">
-        <h2><span class="num">8</span>Limitlar</h2>
+        <h2><span class="num">9</span>Limitlar</h2>
         <div class="grid">
           <div class="stat"><div class="v">60</div><div class="l">so'rov / daqiqa — har bir token uchun</div></div>
           <div class="stat"><div class="v">1</div><div class="l">so'rov = 1 akkaunt (batch yo'q)</div></div>
@@ -480,11 +595,11 @@
           <li>Limit Cloudflare tarmog'ining har bir hududida alohida hisoblanadi, shuning uchun chegara atrofida bir oz farq bo'lishi mumkin — 60 ga yaqin ishlamang, o'z tomoningizda navbat (queue) qiling.</li>
           <li>Ko'proq kerak bo'lsa (masalan, ommaviy tekshiruv) — Telegram orqali <a href="https://t.me/vafoyev_n" target="_blank" rel="noopener"><b>@vafoyev_n</b></a> ga yozing.</li>
         </ul>
-        <div class="note warn"><span class="ic">⚠️</span><div><p>Limitni chetlab o'tish uchun bir nechta tokendan navbat bilan foydalanish yoki suiiste'mol aniqlansa, token ogohlantirishsiz bekor qilinadi.</p></div></div>
+        <div class="note warn"><span class="ic"><i class="bi bi-exclamation-triangle-fill"></i></span><div><p>Limitni chetlab o'tish uchun bir nechta tokendan navbat bilan foydalanish yoki suiiste'mol aniqlansa, token ogohlantirishsiz bekor qilinadi.</p></div></div>
       </section>
 
       <section id="retry">
-        <h2><span class="num">9</span>Qayta yuborish (retry) qoidalari</h2>
+        <h2><span class="num">10</span>Qayta yuborish (retry) qoidalari</h2>
         <div class="table-wrap"><table>
           <thead><tr><th>Javob</th><th>Nima qilish kerak</th></tr></thead>
           <tbody>
@@ -500,7 +615,7 @@
           <li>Foydalanuvchi kiritayotgan har bir harf uchun emas, faqat "Tekshirish" bosilganda so'rov yuboring.</li>
         </ul>
         <div class="code">
-          <div class="code-head"><span class="code-title">JavaScript — to'g'ri retry</span><button class="copy" data-copy-pre>Nusxa</button></div>
+          <div class="code-head"><span class="code-title">JavaScript — to'g'ri retry</span><button class="copy" data-copy-pre><i class="bi bi-clipboard"></i> Nusxa</button></div>
 <pre><span class="k">async function</span> <span class="p">checkMlbb</span>(id, zone) {
   <span class="k">for</span> (<span class="k">let</span> attempt = <span class="n">0</span>; attempt &lt; <span class="n">4</span>; attempt++) {
     <span class="k">let</span> res;
@@ -527,7 +642,7 @@
       </section>
 
       <section id="cache">
-        <h2><span class="num">10</span>Kesh — nega tez</h2>
+        <h2><span class="num">11</span>Kesh — nega tez</h2>
         <p>API Cloudflare tarmog'ida, sizga eng yaqin serverda ishlaydi. Javob uch qavatdan qidiriladi:</p>
         <div class="table-wrap"><table>
           <thead><tr><th><code>X-Cache</code></th><th>Manba</th><th>Odatiy vaqt</th></tr></thead>
@@ -547,8 +662,8 @@
       </section>
 
       <section id="security">
-        <h2><span class="num">11</span>Xavfsizlik</h2>
-        <div class="note warn"><span class="ic">🔒</span><div><p><b>Tokenni brauzer yoki mobil ilova kodiga qo'ymang.</b> Uni ko'rgan har kim sizning limitingizni ishlatadi. So'rovni o'z serveringizdan yuboring va natijani foydalanuvchiga uzating.</p></div></div>
+        <h2><span class="num">12</span>Xavfsizlik</h2>
+        <div class="note warn"><span class="ic"><i class="bi bi-shield-lock-fill"></i></span><div><p><b>Tokenni brauzer yoki mobil ilova kodiga qo'ymang.</b> Uni ko'rgan har kim sizning limitingizni ishlatadi. So'rovni o'z serveringizdan yuboring va natijani foydalanuvchiga uzating.</p></div></div>
         <ul>
           <li>Tokenni muhit o'zgaruvchisida saqlang (<code>MLBB_API_TOKEN</code>), git'ga qo'shmang.</li>
           <li>Faqat HTTPS orqali ishlaydi.</li>
@@ -556,15 +671,34 @@
         </ul>
       </section>
 
+      <section id="openapi">
+        <h2><span class="num">13</span>OpenAPI (JSON)</h2>
+        <p>API'ning to'liq mashina o'qiy oladigan tavsifi — <b>OpenAPI 3.1</b>. Uni Postman, Insomnia, Swagger yoki kod generatorlariga (openapi-generator, orval) import qiling.</p>
+        <div class="endpoint"><span class="method">JSON</span><span class="path">https://docs-mlbb.nurali.uz/openapi.json</span><button class="copy" data-copy="https://docs-mlbb.nurali.uz/openapi.json"><i class="bi bi-clipboard"></i> Nusxa</button></div>
+        <div class="oa-actions">
+          <a class="icon-btn" href="/openapi.json" download="mlbb-check-openapi.json"><i class="bi bi-download"></i> Yuklab olish</a>
+          <a class="icon-btn" href="/openapi.json" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Xom JSON</a>
+          <a class="icon-btn" href="https://editor.swagger.io/?url=https://docs-mlbb.nurali.uz/openapi.json" target="_blank" rel="noopener"><i class="bi bi-window-sidebar"></i> Swagger Editor</a>
+        </div>
+        <div class="code">
+          <div class="code-head">
+            <span class="code-title"><i class="bi bi-filetype-json"></i> openapi.json</span>
+            <button class="copy" id="oaToggle" type="button" style="margin-left:auto"><i class="bi bi-arrows-expand"></i> Kengaytirish</button>
+            <button class="copy" data-copy-pre style="margin-left:0"><i class="bi bi-clipboard"></i> Nusxa</button>
+          </div>
+          <pre class="json-view" id="oaJson">Yuklanmoqda…</pre>
+        </div>
+      </section>
+
       <section id="examples">
-        <h2><span class="num">12</span>Kod namunalari</h2>
+        <h2><span class="num">14</span>Kod namunalari</h2>
         <div class="code" data-tabs>
           <div class="code-head">
             <button class="tab active" data-tab="0">cURL</button>
             <button class="tab" data-tab="1">Node.js</button>
             <button class="tab" data-tab="2">Python</button>
             <button class="tab" data-tab="3">PHP</button>
-            <button class="copy" data-copy-pre>Nusxa</button>
+            <button class="copy" data-copy-pre><i class="bi bi-clipboard"></i> Nusxa</button>
           </div>
 <pre>curl -sS \
   -H <span class="s">"Authorization: Bearer $MLBB_API_TOKEN"</span> \
@@ -609,14 +743,14 @@ curl_close($ch);
       </section>
 
       <section id="contact">
-        <h2><span class="num">13</span>Aloqa</h2>
+        <h2><span class="num">15</span>Aloqa</h2>
         <div class="contact">
-          <div class="tg-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M21.9 4.6 18.7 19.7c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.2-8.3c.4-.4-.1-.6-.6-.2L6.1 13.4 1.2 11.9c-1-.3-1.1-1 .2-1.5L20.6 3c.9-.3 1.6.2 1.3 1.6z"/></svg></div>
+          <div class="tg-ic"><i class="bi bi-telegram"></i></div>
           <div class="body">
             <b>Token, limit oshirish va savollar</b>
             <p class="muted" style="margin:4px 0 0">API'dan foydalanish uchun Telegram orqali <b>@vafoyev_n</b> ga murojaat qiling: token ochib beriladi yoki limit oshiriladi. Xato topsangiz — so'rov vaqti va javobdagi <code>error</code> kodini yuboring.</p>
           </div>
-          <a class="icon-btn tg-btn big" href="https://t.me/vafoyev_n" target="_blank" rel="noopener">✈ @vafoyev_n</a>
+          <a class="icon-btn tg-btn big" href="https://t.me/vafoyev_n" target="_blank" rel="noopener"><i class="bi bi-telegram"></i> @vafoyev_n</a>
         </div>
       </section>
 
@@ -671,10 +805,10 @@ curl_close($ch);
       }
 
       document.addEventListener("click", function (e) {
-        var btn = e.target.closest(".copy");
+        var btn = e.target.closest("[data-copy], [data-copy-pre]");
         if (btn) {
           if (btn.hasAttribute("data-copy")) return copy(btn.getAttribute("data-copy"));
-          var block = btn.closest(".code");
+          var block = btn.closest(".code, .play-out");
           var pre = block && Array.prototype.find.call(block.querySelectorAll("pre"), function (p) { return !p.hidden; });
           if (pre) copy(pre.textContent);
           return;
@@ -686,6 +820,138 @@ curl_close($ch);
           box.querySelectorAll(".tab").forEach(function (t, i) { t.classList.toggle("active", i === idx); });
           box.querySelectorAll("pre").forEach(function (p, i) { p.hidden = i !== idx; });
         }
+      });
+
+      // --- JSON rang berish ---
+      function esc(t) { return String(t).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+      function highlight(json) {
+        return esc(json).replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, function (m, str, colon, lit) {
+          if (str) return colon ? '<span class="p">' + str + "</span>" + colon : '<span class="s">' + str + "</span>";
+          if (lit) return '<span class="k">' + lit + "</span>";
+          return '<span class="n">' + m + "</span>";
+        });
+      }
+
+      // --- OpenAPI ko'rinishi ---
+      var oaPre = document.getElementById("oaJson");
+      fetch("/openapi.json").then(function (r) { return r.json(); }).then(function (spec) {
+        oaPre.innerHTML = highlight(JSON.stringify(spec, null, 2));
+      }).catch(function () { oaPre.textContent = "openapi.json yuklanmadi"; });
+      document.getElementById("oaToggle").addEventListener("click", function () {
+        var open = oaPre.classList.toggle("expanded");
+        this.innerHTML = open ? '<i class="bi bi-arrows-collapse"></i> Yig\'ish' : '<i class="bi bi-arrows-expand"></i> Kengaytirish';
+      });
+
+      // --- Sinab ko'rish ---
+      var seg = document.getElementById("srvSeg");
+      var srvBtns = Array.prototype.slice.call(seg.querySelectorAll("button"));
+      var tokenEl = document.getElementById("tryToken");
+      var idEl = document.getElementById("tryId");
+      var zoneEl = document.getElementById("tryZone");
+      var rememberEl = document.getElementById("tryRemember");
+      var sendBtn = document.getElementById("trySend");
+      var resultEl = document.getElementById("tryResult");
+      var curlEl = document.getElementById("tryCurl");
+      var base = srvBtns[0].getAttribute("data-base");
+
+      function selectServer(btn) {
+        base = btn.getAttribute("data-base");
+        srvBtns.forEach(function (b) {
+          var on = b === btn;
+          b.classList.toggle("active", on);
+          b.setAttribute("aria-checked", on ? "true" : "false");
+        });
+        renderCurl();
+      }
+      srvBtns.forEach(function (b) { b.addEventListener("click", function () { selectServer(b); }); });
+      selectServer(srvBtns[0]);
+
+      // Qaysi server ishlayotganini tekshiramiz; production hali ochilmagan bo'lsa beta tanlanadi.
+      Promise.all(srvBtns.map(function (b) {
+        return fetch(b.getAttribute("data-base"), { cache: "no-store" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { return Boolean(d && d.ok); })
+          .catch(function () { return false; })
+          .then(function (up) {
+            b.querySelector(".dot").className = "dot " + (up ? "up" : "down");
+            b.title = up ? "Ishlayapti" : "Javob bermayapti";
+            return up;
+          });
+      })).then(function (ups) {
+        if (!ups[0] && ups[1] && base === srvBtns[0].getAttribute("data-base")) selectServer(srvBtns[1]);
+      });
+
+      try {
+        var savedTok = sessionStorage.getItem("docs-try-token");
+        if (savedTok) { tokenEl.value = savedTok; rememberEl.checked = true; }
+      } catch (e) { /* ignore */ }
+
+      document.getElementById("tryEye").addEventListener("click", function () {
+        var show = tokenEl.type === "password";
+        tokenEl.type = show ? "text" : "password";
+        this.innerHTML = show ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+      });
+
+      // "1290132154 (15246)" ko'rinishida yopishtirilsa — ikkiga ajratamiz.
+      idEl.addEventListener("input", function () {
+        var m = idEl.value.match(/(\d{1,12})\s*[\(\[\s]\s*(\d{1,8})\s*[\)\]]?/);
+        if (m) { idEl.value = m[1]; zoneEl.value = m[2]; }
+        renderCurl();
+      });
+      zoneEl.addEventListener("input", renderCurl);
+      tokenEl.addEventListener("input", renderCurl);
+
+      function requestUrl() {
+        return base + "/check?id=" + encodeURIComponent(idEl.value.trim()) + "&zone=" + encodeURIComponent(zoneEl.value.trim());
+      }
+      function renderCurl() {
+        var tok = tokenEl.value.trim() ? "mlbb_••••••" : "mlbb_SIZNING_TOKENINGIZ";
+        curlEl.innerHTML = 'curl -H <span class="s">"Authorization: Bearer ' + tok + '"</span> \\\n  <span class="s">"' + esc(requestUrl()) + '"</span>';
+      }
+      renderCurl();
+
+      function chipClass(status) { return status < 300 ? "ok" : status < 500 && status !== 429 ? "warn" : "err"; }
+
+      function send() {
+        var token = tokenEl.value.trim();
+        if (!idEl.value.trim() || !zoneEl.value.trim()) { idEl.focus(); return; }
+        try {
+          if (rememberEl.checked && token) sessionStorage.setItem("docs-try-token", token);
+          else sessionStorage.removeItem("docs-try-token");
+        } catch (e) { /* ignore */ }
+
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Yuborilmoqda…';
+        var started = performance.now();
+        var headers = token ? { Authorization: "Bearer " + token } : {};
+
+        fetch(requestUrl(), { headers: headers, cache: "no-store" }).then(function (r) {
+          var ms = Math.round(performance.now() - started);
+          return r.text().then(function (text) {
+            var body;
+            try { body = highlight(JSON.stringify(JSON.parse(text), null, 2)); } catch (e) { body = esc(text); }
+            var cache = r.headers.get("x-cache");
+            var retry = r.headers.get("retry-after");
+            resultEl.innerHTML =
+              '<div class="play-meta">' +
+                '<span class="chip ' + chipClass(r.status) + '">' + r.status + " " + esc(r.statusText || "") + "</span>" +
+                '<span><i class="bi bi-stopwatch"></i> ' + ms + " ms</span>" +
+                (cache ? '<span><i class="bi bi-database"></i> X-Cache: <b style="color:#dbe2f0">' + esc(cache) + "</b></span>" : "") +
+                (retry ? '<span><i class="bi bi-hourglass-split"></i> Retry-After: ' + esc(retry) + " s</span>" : "") +
+                '<button class="copy" data-copy-pre><i class="bi bi-clipboard"></i> Nusxa</button>' +
+              "</div><pre>" + body + "</pre>";
+          });
+        }).catch(function (e) {
+          resultEl.innerHTML = '<div class="play-meta"><span class="chip err">Tarmoq xatosi</span></div><pre>' +
+            esc((e && e.message) || e) + "\n\nServer javob bermadi. Boshqa serverni tanlab ko'ring.</pre>";
+        }).then(function () {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = '<i class="bi bi-send-fill"></i> So\'rov yuborish';
+        });
+      }
+      sendBtn.addEventListener("click", send);
+      [tokenEl, idEl, zoneEl].forEach(function (el) {
+        el.addEventListener("keydown", function (e) { if (e.key === "Enter") send(); });
       });
 
       // Yon menyuda joriy bo'limni belgilash

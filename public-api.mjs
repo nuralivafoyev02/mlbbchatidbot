@@ -79,6 +79,7 @@ export async function handlePublicApi(request, env = {}, ctx) {
       auth: "Authorization: Bearer <token>",
       rate_limit: `${RATE_LIMIT} so'rov / daqiqa (token boshiga)`,
       docs: DOCS_URL,
+      openapi: `${DOCS_URL}/openapi.json`,
       contact: `Telegram: ${CONTACT}`,
     }, startedAt, { "cache-control": "public, max-age=300" });
   }

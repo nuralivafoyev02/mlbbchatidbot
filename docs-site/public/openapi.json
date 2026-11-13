@@ -1,0 +1,570 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MLBB Check API",
+    "version": "1.0.0",
+    "summary": "Mobile Legends: Bang Bang akkaunti bo'yicha nickname, region va server turi.",
+    "description": "Akkaunt ID va server (zone) ID bo'yicha o'yinchi nickname'i, region (davlat) va server turini qaytaradi. Cloudflare edge'da ishlaydi, javoblar 30 daqiqa keshlanadi. Rate limit: token boshiga daqiqasiga 60 so'rov.\n\nToken olish: Telegram orqali @vafoyev_n.",
+    "contact": {
+      "name": "@vafoyev_n (Telegram)",
+      "url": "https://t.me/vafoyev_n"
+    }
+  },
+  "externalDocs": {
+    "description": "To'liq hujjat",
+    "url": "https://docs-mlbb.nurali.uz"
+  },
+  "servers": [
+    {
+      "url": "https://mlbb.nurali.uz/v1",
+      "description": "Production"
+    },
+    {
+      "url": "https://dev-mlbb.nurali.uz/v1",
+      "description": "Beta (dev)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "check",
+      "description": "Akkaunt tekshiruvi"
+    },
+    {
+      "name": "meta",
+      "description": "Servis holati"
+    }
+  ],
+  "paths": {
+    "/check": {
+      "get": {
+        "tags": [
+          "check"
+        ],
+        "operationId": "checkAccount",
+        "summary": "Nickname va regionni olish (query)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "description": "O'yindagi akkaunt ID (profildagi birinchi raqam). `account_id` nomi ham qabul qilinadi.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,12}$",
+              "example": "1290132154"
+            }
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "required": true,
+            "description": "Server (zone) ID — profilda qavs ichidagi raqam. `zone_id` va `server` nomlari ham qabul qilinadi.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,8}$",
+              "example": "15246"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Akkaunt topildi",
+            "headers": {
+              "X-Cache": {
+                "$ref": "#/components/headers/X-Cache"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "Server-Timing": {
+                "$ref": "#/components/headers/Server-Timing"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                },
+                "example": {
+                  "ok": true,
+                  "account_id": "1290132154",
+                  "zone_id": "15246",
+                  "nickname": "Ｗａｄｅｒ〆",
+                  "region": "Uzbekistan",
+                  "server_type": "Original Server"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id yoki zone noto'g'ri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "invalid_params",
+                  "message": "id (1-12 raqam) va zone (1-8 raqam) talab qilinadi: /v1/check?id=1290132154&zone=15246"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token yo'q, noto'g'ri, bekor qilingan yoki muddati o'tgan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "token_not_found",
+                  "message": "Token olish uchun Telegram orqali @vafoyev_n ga yozing. Hujjat: https://docs-mlbb.nurali.uz"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bu ID + zone bo'yicha akkaunt topilmadi (2 daqiqa keshlanadi)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "account_not_found",
+                  "account_id": "1",
+                  "zone_id": "1"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit: token boshiga daqiqasiga 60 so'rov",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "rate_limited",
+                  "message": "Limit: daqiqasiga 60 ta so'rov. 60 soniyadan keyin qayta urining. Ko'proq kerak bo'lsa: Telegram @vafoyev_n"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Qayta yuborishdan oldin kutish (soniya)",
+                "schema": {
+                  "type": "integer",
+                  "example": 60
+                }
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              }
+            }
+          },
+          "502": {
+            "description": "Manba servis vaqtincha javob bermadi — backoff bilan qayta yuboring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "upstream_unavailable"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Token tekshiruvi vaqtincha ishlamadi — backoff bilan qayta yuboring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "auth_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/check/{id}/{zone}": {
+      "get": {
+        "tags": [
+          "check"
+        ],
+        "operationId": "checkAccountByPath",
+        "summary": "Nickname va regionni olish (path)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "O'yindagi akkaunt ID (profildagi birinchi raqam)",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,12}$",
+              "example": "1290132154"
+            }
+          },
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "Server (zone) ID — profilda qavs ichidagi raqam",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,8}$",
+              "example": "15246"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Akkaunt topildi",
+            "headers": {
+              "X-Cache": {
+                "$ref": "#/components/headers/X-Cache"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "Server-Timing": {
+                "$ref": "#/components/headers/Server-Timing"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                },
+                "example": {
+                  "ok": true,
+                  "account_id": "1290132154",
+                  "zone_id": "15246",
+                  "nickname": "Ｗａｄｅｒ〆",
+                  "region": "Uzbekistan",
+                  "server_type": "Original Server"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id yoki zone noto'g'ri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "invalid_params",
+                  "message": "id (1-12 raqam) va zone (1-8 raqam) talab qilinadi: /v1/check?id=1290132154&zone=15246"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token yo'q, noto'g'ri, bekor qilingan yoki muddati o'tgan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "token_not_found",
+                  "message": "Token olish uchun Telegram orqali @vafoyev_n ga yozing. Hujjat: https://docs-mlbb.nurali.uz"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bu ID + zone bo'yicha akkaunt topilmadi (2 daqiqa keshlanadi)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "account_not_found",
+                  "account_id": "1",
+                  "zone_id": "1"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit: token boshiga daqiqasiga 60 so'rov",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "rate_limited",
+                  "message": "Limit: daqiqasiga 60 ta so'rov. 60 soniyadan keyin qayta urining. Ko'proq kerak bo'lsa: Telegram @vafoyev_n"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Qayta yuborishdan oldin kutish (soniya)",
+                "schema": {
+                  "type": "integer",
+                  "example": 60
+                }
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              }
+            }
+          },
+          "502": {
+            "description": "Manba servis vaqtincha javob bermadi — backoff bilan qayta yuboring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "upstream_unavailable"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Token tekshiruvi vaqtincha ishlamadi — backoff bilan qayta yuboring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "auth_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "operationId": "serviceInfo",
+        "summary": "Servis holati (token shart emas)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Servis ishlayapti",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "mlbb_<40 hex>",
+        "description": "Tavsiya etiladi: `Authorization: Bearer mlbb_…`"
+      },
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Token"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "token",
+        "description": "Faqat test uchun — token loglarda qolishi mumkin"
+      }
+    },
+    "headers": {
+      "X-Cache": {
+        "description": "Javob manbasi: HIT-MEM (xotira), HIT-EDGE (Cloudflare keshi), MISS (manbadan yangi), STALE (manba ishlamayapti, oxirgi ma'lum javob)",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "HIT-MEM",
+            "HIT-EDGE",
+            "MISS",
+            "STALE"
+          ]
+        }
+      },
+      "X-RateLimit-Limit": {
+        "description": "Daqiqasiga ruxsat etilgan so'rovlar (token boshiga)",
+        "schema": {
+          "type": "integer",
+          "example": 60
+        }
+      },
+      "Server-Timing": {
+        "description": "Server ichida ketgan vaqt, ms",
+        "schema": {
+          "type": "string",
+          "example": "total;dur=3"
+        }
+      }
+    },
+    "schemas": {
+      "CheckResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "account_id",
+          "zone_id",
+          "nickname",
+          "region",
+          "server_type"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "account_id": {
+            "type": "string",
+            "example": "1290132154"
+          },
+          "zone_id": {
+            "type": "string",
+            "example": "15246"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "O'yinchi nickname'i (Unicode bo'lishi mumkin)",
+            "example": "Ｗａｄｅｒ〆"
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Akkaunt davlati",
+            "example": "Uzbekistan"
+          },
+          "server_type": {
+            "type": "string",
+            "enum": [
+              "Original Server",
+              "Advanced Server"
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "ok",
+          "error"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "string",
+            "enum": [
+              "invalid_params",
+              "token_required",
+              "token_invalid",
+              "token_not_found",
+              "token_revoked",
+              "token_expired",
+              "account_not_found",
+              "method_not_allowed",
+              "rate_limited",
+              "upstream_unavailable",
+              "auth_unavailable"
+            ],
+            "description": "Dasturda shu kodga tayaning"
+          },
+          "message": {
+            "type": "string",
+            "description": "Inson uchun izoh (o'zgarishi mumkin)"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "zone_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ServiceInfo": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "service": {
+            "type": "string",
+            "example": "mlbb-check"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "auth": {
+            "type": "string"
+          },
+          "rate_limit": {
+            "type": "string"
+          },
+          "docs": {
+            "type": "string",
+            "format": "uri"
+          },
+          "openapi": {
+            "type": "string",
+            "format": "uri"
+          },
+          "contact": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
