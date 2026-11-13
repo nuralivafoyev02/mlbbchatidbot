@@ -58,14 +58,17 @@ function verifyCabinetLaunchToken(token, botToken, { now = Date.now() } = {}) {
   return { ok: true, userId: match[1], exp: Number(match[2]) };
 }
 
-// Reply klaviaturadagi kabinet tugmalariga (web_app.url === cabinetUrl) chat
-// egasining kalitini qo'shadi. Inline tugmalarga tegilmaydi — ular initData oladi.
-function withCabinetLaunchTokens(markup, chatId, { botToken, cabinetUrl, now } = {}) {
-  if (!markup || !Array.isArray(markup.keyboard) || !cabinetUrl) {
+// Reply klaviaturadagi kabinet tugmalariga (web_app.url === cabinetUrl yoki
+// extraUrls'dan biri — masalan "Qurilmalardan chiqish") chat egasining kalitini
+// qo'shadi. Inline tugmalarga tegilmaydi — ular initData oladi.
+function withCabinetLaunchTokens(markup, chatId, { botToken, cabinetUrl, extraUrls = [], now } = {}) {
+  const urls = [cabinetUrl, ...extraUrls].filter(Boolean);
+
+  if (!markup || !Array.isArray(markup.keyboard) || !urls.length) {
     return markup;
   }
 
-  const isCabinet = (button) => Boolean(button && button.web_app && button.web_app.url === cabinetUrl);
+  const isCabinet = (button) => Boolean(button && button.web_app && urls.includes(button.web_app.url));
 
   if (!markup.keyboard.some((row) => Array.isArray(row) && row.some(isCabinet))) {
     return markup;
@@ -77,13 +80,14 @@ function withCabinetLaunchTokens(markup, chatId, { botToken, cabinetUrl, now } =
     return markup;
   }
 
-  const separator = cabinetUrl.includes("?") ? "&" : "?";
-  const url = `${cabinetUrl}${separator}${CABINET_LAUNCH_PARAM}=${encodeURIComponent(token)}`;
+  const withToken = (base) => `${base}${base.includes("?") ? "&" : "?"}${CABINET_LAUNCH_PARAM}=${encodeURIComponent(token)}`;
 
   return {
     ...markup,
     keyboard: markup.keyboard.map((row) =>
-      Array.isArray(row) ? row.map((button) => (isCabinet(button) ? { ...button, web_app: { ...button.web_app, url } } : button)) : row
+      Array.isArray(row)
+        ? row.map((button) => (isCabinet(button) ? { ...button, web_app: { ...button.web_app, url: withToken(button.web_app.url) } } : button))
+        : row
     ),
   };
 }

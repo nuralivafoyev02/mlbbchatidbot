@@ -62,7 +62,10 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "GET") {
-      return isCabinetRequest(req) ? serveCabinet(res) : serveApp(res);
+      const view = getView(req);
+      if (view === "cabinet") return serveCabinet(res);
+      if (view === "device_logout") return serveDeviceLogout(res);
+      return serveApp(res);
     }
 
     if (req.method !== "POST") {
@@ -111,6 +114,9 @@ module.exports = async function handler(req, res) {
         return await handleLogout(res, ctx);
       case "device_logout":
         return await handleDeviceLogout(res, ctx);
+      // Qurilmalardan chiqish sahifasi uchun yengil bootstrap (akkauntlar/Arena yo'q).
+      case "dl_bootstrap":
+        return await handleDeviceLogoutBootstrap(res, ctx);
       // Shaxsiy kabinet (?view=cabinet)
       case "cabinet":
         return await handleCabinet(res, ctx);
@@ -206,6 +212,29 @@ async function handleLogout(res, { config, user, body }) {
   return json(res, 200, { ok: Boolean(cleared && cleared.ok === true) });
 }
 
+async function handleDeviceLogoutBootstrap(res, { config, user }) {
+  const enabled = config.deviceLogoutEnabled && Boolean(config.resellerApiKey);
+  const wallet = enabled ? createWalletFor(config) : null;
+  const [lang, walletConfig, balance] = await Promise.all([
+    loadPreferredLanguage(config, user),
+    wallet ? wallet.getConfig() : null,
+    wallet ? wallet.getBalance(user.id) : null,
+  ]);
+  const price = walletConfig?.deviceLogoutPrice || walletLib.TOPUP_DEFAULTS.deviceLogoutPrice;
+
+  return json(res, 200, {
+    ok: true,
+    lang,
+    enabled,
+    price,
+    balance: Number.isFinite(Number(balance)) ? Number(balance) : null,
+    affordable: Number.isFinite(Number(balance)) && Number(balance) >= price,
+    botUsername: config.botUsername || null,
+  });
+}
+
+// Jebray faqat Moonton email + parol bilan ishlaydi — kabinetdagi akkaunt shart
+// emas. rowId kelsa (eski "Mening akkauntim" oqimi) — u shu userniki bo'lishi kerak.
 async function handleDeviceLogout(res, { config, user, body }) {
   if (!config.deviceLogoutEnabled) {
     return json(res, 404, { ok: false, error: "not_available" });
@@ -214,16 +243,14 @@ async function handleDeviceLogout(res, { config, user, body }) {
     return json(res, 503, { ok: false, error: "not_configured" });
   }
 
-  const rowId = parseRowId(body.rowId);
-  if (!rowId) {
-    return json(res, 400, { ok: false, error: "invalid_account" });
-  }
-  const account = await supabaseRpc(config, "get_user_account_ml_link", {
-    p_user_id: String(user.id),
-    p_row_id: rowId,
-  });
-  if (!account || account.ok !== true) {
-    return json(res, 404, { ok: false, error: "not_found" });
+  if (body.rowId !== undefined && body.rowId !== null && body.rowId !== "") {
+    const rowId = parseRowId(body.rowId);
+    const account = rowId
+      ? await supabaseRpc(config, "get_user_account_ml_link", { p_user_id: String(user.id), p_row_id: rowId })
+      : null;
+    if (!account || account.ok !== true) {
+      return json(res, 404, { ok: false, error: "not_found" });
+    }
   }
 
   let input;
@@ -1087,21 +1114,27 @@ function serveBackground(res) {
 }
 
 // /api/account?view=cabinet — shaxsiy kabinet; boshqasi — "Mening akkauntim".
-function isCabinetRequest(req) {
+function getView(req) {
   const fromQuery = req.query && req.query.view;
-  if (fromQuery) return String(fromQuery) === "cabinet";
+  if (fromQuery) return String(fromQuery);
 
   try {
-    return new URL(String(req.url || ""), "http://local").searchParams.get("view") === "cabinet";
+    return new URL(String(req.url || ""), "http://local").searchParams.get("view") || "";
   } catch {
-    return false;
+    return "";
   }
 }
 
-function serveHtml(res, filePath, color) {
+// "Qurilmalardan chiqish" — alohida yengil sahifa (Arena skripti kerak emas).
+function serveDeviceLogout(res) {
+  return serveHtml(res, path.join(__dirname, "device-logout.html"), "#0a0e1a", { arena: false });
+}
+
+function serveHtml(res, filePath, color, { arena = true } = {}) {
   const fileName = path.basename(filePath);
   try {
-    const html = injectArenaWeb(injectTelegramShell(fs.readFileSync(filePath, "utf8"), { color }));
+    const shell = injectTelegramShell(fs.readFileSync(filePath, "utf8"), { color });
+    const html = arena ? injectArenaWeb(shell) : shell;
     return res
       .status(200)
       .setHeader("Content-Type", "text/html; charset=utf-8")

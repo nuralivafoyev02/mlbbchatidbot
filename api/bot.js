@@ -109,6 +109,8 @@ const ACCOUNT_MINIAPP_URL = cleanEnv(process.env.ACCOUNT_MINIAPP_URL) || `https:
 const DEVICE_LOGOUT_ENABLED = process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true";
 // Shaxsiy kabinet — o'sha Vercel funksiyasi, ?view=cabinet bilan.
 const CABINET_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=cabinet`;
+// "Qurilmalardan chiqish" — alohida yengil Mini App (api/device-logout.html).
+const DEVICE_LOGOUT_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=device_logout`;
 // "Balansni to'ldirish" — kabinet ochilishi bilan to'ldirish oynasi chiqadi.
 const CABINET_TOPUP_URL = `${CABINET_MINIAPP_URL}&open=topup`;
 const BOT_LOGO_URL =
@@ -6310,10 +6312,7 @@ function buildBotCommands(lang) {
 
 function getDeviceLogoutMiniAppUrl() {
   try {
-    const url = new URL(ACCOUNT_MINIAPP_URL);
-    if (url.protocol !== "https:") return null;
-    url.searchParams.set("device_logout", "1");
-    return url.toString();
+    return new URL(DEVICE_LOGOUT_MINIAPP_URL).protocol === "https:" ? DEVICE_LOGOUT_MINIAPP_URL : null;
   } catch {
     return null;
   }
@@ -7089,6 +7088,10 @@ function mainKeyboard(user = {}) {
     );
   }
 
+  if (DEVICE_LOGOUT_ENABLED && getDeviceLogoutMiniAppUrl()) {
+    keyboard.push([{ text: t("btn_device_logout", lang), web_app: { url: DEVICE_LOGOUT_MINIAPP_URL } }]);
+  }
+
   keyboard.push([{ text: t("btn_cabinet", lang), style: "primary", web_app: { url: CABINET_MINIAPP_URL } }]);
 
   return {
@@ -7499,6 +7502,7 @@ async function telegram(method, payload) {
   const base = withCabinetLaunchTokens(markup, payload.chat_id, {
     botToken: TELEGRAM_BOT_TOKEN,
     cabinetUrl: CABINET_MINIAPP_URL,
+    extraUrls: [DEVICE_LOGOUT_MINIAPP_URL],
   });
   const plain = { ...payload, reply_markup: tgButtons.plainReplyMarkup(base) };
 

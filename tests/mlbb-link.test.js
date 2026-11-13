@@ -596,7 +596,7 @@ test("bot: device logout command opens the beta Mini App without collecting cred
     assert.ok(button);
     const target = new URL(button.web_app.url);
     assert.equal(target.origin, "https://mini.example.test");
-    assert.equal(target.searchParams.get("device_logout"), "1");
+    assert.equal(target.searchParams.get("view"), "device_logout");
     assert.ok(!message.payload.text.includes("password"));
     assert.equal(net.resellerCalls.length, 0);
   } finally {
@@ -649,23 +649,68 @@ test("account app: rejects requests without a valid Telegram signature", async (
   }
 });
 
-test("account Mini App opens device logout without requiring the Arena overview session", async () => {
+test("device logout: own lightweight page and bootstrap — no Arena, no accounts needed", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const page = createRes();
+    await app({ method: "GET", headers: {}, query: { view: "device_logout" } }, page);
+    assert.equal(page.statusCode, 200);
+    assert.match(page.body, /telegram-web-app\.js/);
+    assert.match(page.body, /dl_bootstrap/);
+    assert.match(page.body, /mlbb_dl_flow/);
+    assert.doesNotMatch(page.body, /ArenaWeb/, "Arena client must not be injected into the device logout page");
+
+    const userId = 8800111;
+    supabase.setBalance(userId, 30000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000 });
+    const boot = await callAccount(app, { action: "dl_bootstrap", initData: signInitData({ id: userId, language_code: "ru" }) });
+    assert.equal(boot.statusCode, 200);
+    assert.deepEqual(
+      [boot.body.enabled, boot.body.price, boot.body.balance, boot.body.affordable, boot.body.botUsername],
+      [true, 25000, 30000, true, "checkmlbbidBot"]
+    );
+    assert.ok(!JSON.stringify(boot.body).includes("test-jebray-reseller-key"));
+    assert.equal(net.arenaCalls.length, 0);
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("device logout: old ?device_logout=1 links hand off to the new page", async () => {
   const net = installFetch({ supabase: createFakeSupabase(), arenaHandler: defaultArenaHandler });
   try {
     const app = loadAccountApp({ deviceLogoutEnabled: true });
     const page = createRes();
     await app({ method: "GET", headers: {}, query: { device_logout: "1" } }, page);
+    assert.match(page.body, /location\.replace\(location\.pathname \+ "\?view=device_logout"\)/);
+    assert.doesNotMatch(page.body, /function renderDeviceLogout\b/);
+  } finally {
+    net.restore();
+  }
+});
 
-    const entry = page.body.indexOf("if (deviceLogoutRequested)");
-    const linkedAccountsCheck = page.body.indexOf("var linked = linkedAccounts();", entry);
-    assert.ok(entry >= 0);
-    assert.ok(linkedAccountsCheck > entry);
-    assert.match(page.body.slice(entry, linkedAccountsCheck), /state\.deviceLogoutStandalone = true/);
-    assert.match(page.body.slice(entry, linkedAccountsCheck), /!state\.deviceLogoutAffordable/);
-    assert.match(page.body, /function renderDeviceLogoutInsufficient/);
-    assert.match(page.body.slice(entry, linkedAccountsCheck), /renderDeviceLogout\(\)/);
-    assert.doesNotMatch(page.body.slice(entry, linkedAccountsCheck), /loadOverview\(|arenaSession\(/);
-    assert.equal(net.arenaCalls.length, 0);
+test("bot: main menu gets a one-tap device logout button with a launch key", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const bot = loadBot({ deviceLogoutEnabled: true });
+    const userId = 7700177;
+    await sendUpdate(bot, textUpdate(95, userId, "/start"));
+    const withKeyboard = [...net.telegram].reverse().find((c) => c.payload?.reply_markup?.keyboard);
+    const buttons = withKeyboard.payload.reply_markup.keyboard.flat();
+    const dl = buttons.find((b) => b.web_app && new URL(b.web_app.url).searchParams.get("view") === "device_logout");
+    assert.ok(dl, "device logout button missing");
+    const url = new URL(dl.web_app.url);
+    const { verifyCabinetLaunchToken } = require("../api/_cabinet-launch.js");
+    assert.equal(verifyCabinetLaunchToken(url.searchParams.get("lt"), BOT_TOKEN).userId, String(userId));
+
+    const disabledBot = loadBot();
+    await sendUpdate(disabledBot, textUpdate(96, userId, "/start"));
+    const plain = [...net.telegram].reverse().find((c) => c.payload?.reply_markup?.keyboard);
+    assert.equal(plain.payload.reply_markup.keyboard.flat().some((b) => /view=device_logout/.test(b.web_app?.url || "")), false);
   } finally {
     net.restore();
   }
@@ -841,15 +886,16 @@ test("account app: device logout runs only for an enabled beta and the linked ac
     assert.equal(invalid.body.error, "invalid_code");
     assert.equal(net.resellerCalls.length, callsBeforeIntruder);
 
-    const missingAccount = await callAccount(app, {
+    // Kabinetda akkaunt bo'lishi shart emas — Jebray faqat email + parol bilan ishlaydi.
+    const withoutAccount = await callAccount(app, {
       action: "device_logout",
-      initData,
+      initData: signInitData({ id: userId + 50 }),
       type: "cancel",
-      email: "owner@example.test",
+      email: "someone@example.test",
     });
-    assert.equal(missingAccount.statusCode, 400);
-    assert.equal(missingAccount.body.error, "invalid_account");
-    assert.equal(net.resellerCalls.length, callsBeforeIntruder);
+    assert.equal(withoutAccount.statusCode, 200);
+    assert.equal(withoutAccount.body.type, "cancel");
+    assert.equal(net.resellerCalls.length, callsBeforeIntruder + 1);
   } finally {
     net.restore();
   }

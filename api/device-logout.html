@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Qurilmalardan chiqish</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Fullscreen + safe area + MLBBBOT yorlig'i: api/_tg-shell.js server tomonda qo'yadi -->
+  <!-- tg-shell -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    /* "Qurilmalardan chiqish" — alohida yengil Mini App (api/account.js → ?view=device_logout).
+       Jebray 3 bosqich: send-code → verify-code1 → verify-code2 (pul faqat oxirgisida).
+       Oqim (email + bosqich, parol EMAS) localStorage'da 20 daqiqa saqlanadi — user
+       emailni o'qish yoki o'yinga kirish uchun Telegram'dan chiqqanda yo'qolmasin. */
+    :root {
+      --bg: #0a0e1a;
+      --surface: rgba(16, 21, 38, 0.9);
+      --surface2: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8ecf5;
+      --text2: #8b95ab;
+      --accent: #6366f1;
+      --accent2: #8b5cf6;
+      --pink: #ec4899;
+      --green: #10b981;
+      --red: #f43f5e;
+      --gold: #f59e0b;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      background: var(--bg); color: var(--text); min-height: 100%; overflow-x: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px;
+    }
+    body {
+      background: transparent;
+      padding: calc(14px + var(--top-space, 0px)) calc(16px + var(--safe-right, 0px))
+        calc(28px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px));
+    }
+    .bg-wrap {
+      position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(6, 9, 20, 0.66) 0%, rgba(6, 9, 20, 0.55) 45%, rgba(6, 9, 20, 0.82) 100%),
+        url("?asset=bg") center / cover no-repeat, var(--bg);
+    }
+    #app { max-width: 520px; margin: 0 auto; transition: opacity .25s; }
+    html.tg-shell-pending #app { opacity: 0; }
+    button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+    input { font: inherit; }
+    .muted { color: var(--text2); }
+
+    .hero { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .hero-ic {
+      width: 48px; height: 48px; border-radius: 15px; flex-shrink: 0; display: grid; place-items: center; font-size: 22px; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 8px 22px rgba(99, 102, 241, .35);
+    }
+    .hero h1 { font-size: 19px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+    .hero p { font-size: 12.5px; color: var(--text2); margin-top: 2px; }
+
+    .chips { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border);
+    }
+    .chip b { color: #fff; }
+    .chip.ok .bi { color: var(--green); }
+    .chip.low { border-color: rgba(245, 158, 11, .4); }
+    .chip.low .bi { color: var(--gold); }
+
+    .steps { display: flex; gap: 6px; margin-bottom: 14px; }
+    .step { flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--text2); }
+    .step .bar { height: 4px; border-radius: 4px; background: var(--surface2); margin-bottom: 6px; overflow: hidden; }
+    .step .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .35s; }
+    .step.done .bar i, .step.active .bar i { width: 100%; }
+    .step.active { color: var(--text); }
+    .step.done { color: var(--green); }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+    }
+    .card h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .card p { font-size: 13.5px; line-height: 1.5; color: var(--text2); }
+    .card p + p { margin-top: 6px; }
+
+    label.lbl { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin: 12px 0 6px; }
+    .field { position: relative; }
+    .field input {
+      width: 100%; height: 48px; padding: 0 14px; border-radius: 13px; outline: none;
+      background: rgba(0, 0, 0, .25); border: 1px solid var(--border); color: var(--text); font-size: 15px;
+    }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, .2); }
+    .field input.code { text-align: center; font-size: 24px; font-weight: 700; letter-spacing: .35em; font-variant-numeric: tabular-nums; }
+    .field .eye { position: absolute; right: 6px; top: 6px; width: 36px; height: 36px; border-radius: 10px; color: var(--text2); font-size: 17px; }
+    .field .eye + input, .field input.has-eye { padding-right: 46px; }
+    .rules { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: 12px; color: var(--text2); }
+    .rules span { display: inline-flex; align-items: center; gap: 4px; }
+    .rules span.ok { color: var(--green); }
+
+    .email-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 10px; border-radius: 999px; background: var(--surface2); margin-top: 8px; word-break: break-all; }
+
+    .notice { display: flex; gap: 10px; padding: 12px 13px; border-radius: 13px; font-size: 13px; line-height: 1.45; margin-bottom: 12px; }
+    .notice .bi { font-size: 17px; line-height: 1.2; flex-shrink: 0; }
+    .notice.info { background: rgba(99, 102, 241, .1); border: 1px solid rgba(99, 102, 241, .28); }
+    .notice.info .bi { color: #a5b4fc; }
+    .notice.warn { background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .32); }
+    .notice.warn .bi { color: var(--gold); }
+    .notice.err { background: rgba(244, 63, 94, .1); border: 1px solid rgba(244, 63, 94, .32); }
+    .notice.err .bi { color: var(--red); }
+    .notice.ok { background: rgba(16, 185, 129, .1); border: 1px solid rgba(16, 185, 129, .32); }
+    .notice.ok .bi { color: var(--green); }
+
+    .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; margin-top: 12px; cursor: pointer; }
+    .check input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--accent); flex-shrink: 0; }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 50px;
+      padding: 13px; border-radius: 14px; font-weight: 700; background: var(--surface2); border: 1px solid var(--border);
+    }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; color: #fff; }
+    .btn.green { background: linear-gradient(135deg, var(--green), #059669); border-color: transparent; color: #fff; }
+    .btn.ghost { background: transparent; border-color: transparent; color: var(--text2); font-weight: 600; min-height: 44px; }
+    .btn.danger { background: rgba(244, 63, 94, .12); border-color: rgba(244, 63, 94, .32); color: var(--red); }
+    .btn:disabled { opacity: .5; }
+    .btn + .btn { margin-top: 8px; }
+    .card .btn:first-of-type { margin-top: 14px; }
+    .btn.busy { position: relative; color: transparent !important; pointer-events: none; }
+    .btn.busy::after {
+      content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+      border: 2.5px solid rgba(255, 255, 255, .25); border-top-color: #fff; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg) } }
+
+    .state { text-align: center; padding: 26px 8px 6px; }
+    .state .big { width: 72px; height: 72px; border-radius: 22px; margin: 0 auto 14px; display: grid; place-items: center; font-size: 32px; }
+    .state .big.ok { background: rgba(16, 185, 129, .14); color: var(--green); }
+    .state .big.warn { background: rgba(245, 158, 11, .14); color: var(--gold); }
+    .state .big.err { background: rgba(244, 63, 94, .14); color: var(--red); }
+    .state h2 { font-size: 18px; margin-bottom: 8px; }
+    .state p { font-size: 13.5px; color: var(--text2); line-height: 1.5; margin-bottom: 18px; }
+
+    .skeleton { border-radius: 14px; height: 54px; margin-bottom: 10px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .fade-in { animation: fade .25s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .fade-in, .skeleton { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="bg-wrap" aria-hidden="true"></div>
+  <div id="app" aria-live="polite">
+    <div class="skeleton" style="height:64px"></div>
+    <div class="skeleton" style="height:40px;width:70%"></div>
+    <div class="skeleton" style="height:220px"></div>
+  </div>
+
+  <script>
+    (function () {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      var API_URL = location.pathname;
+      var FLOW_KEY = "mlbb_dl_flow";
+      var FLOW_TTL_MS = 20 * 60 * 1000;
+      var PASSWORD_RE = /^(?=.*[A-Z])(?=.*\d)[A-Za-z0-9]{8,128}$/;
+      var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      // Reply klaviaturadagi tugmadan ochilganda initData yo'q — bot URL'ga qo'ygan
+      // imzolangan kalit (?lt=, api/_cabinet-launch.js). Kabinet bilan umumiy kalit.
+      var launchToken = (function () {
+        try {
+          var params = new URLSearchParams(location.search);
+          var token = params.get("lt") || "";
+          if (token) {
+            sessionStorage.setItem("cabinet_lt", token);
+            params.delete("lt");
+            var qs = params.toString();
+            history.replaceState(history.state, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+            return token;
+          }
+          return sessionStorage.getItem("cabinet_lt") || "";
+        } catch (e) { return ""; }
+      })();
+
+      var I18N = {
+        uz: {
+          title: "Qurilmalardan chiqish",
+          subtitle: "Mobile Legends akkauntidagi barcha qurilmalarni chiqarish",
+          price: "Narx", balance: "Balans",
+          step1: "Email va parol", step2: "1-kod", step3: "2-kod",
+          s1_title: "Moonton akkaunti",
+          s1_text: "Akkauntga bog'langan Moonton email va parolni kiriting. Parol saqlanmaydi va botga yuborilmaydi.",
+          email: "Moonton email", password: "Moonton parol",
+          rule_len: "8+ belgi", rule_upper: "katta harf", rule_digit: "raqam", rule_plain: "belgisiz",
+          send: "Emailga kod yuborish",
+          s2_title: "1-kodni kiriting",
+          s2_text: "Emailingizga tasdiqlash kodi yuborildi. Pochtani oching va kodni shu yerga kiriting.",
+          s3_title: "2-kodni kiriting",
+          s3_warn: "Muhim: hozir Mobile Legends o'yiniga kiring va ilovani yopmang. Keyin emailga kelgan YANGI kodni kiriting.",
+          s3_check: "Mobile Legends'ga kirdim va o'yin ochiq turibdi",
+          code: "Tasdiqlash kodi",
+          verify1: "Tasdiqlash", verify2: "Chiqarish va {price} to'lash",
+          charged_note: "{price} faqat muvaffaqiyatli tugaganda yechiladi.",
+          cancel: "Bekor qilish", restart: "Boshidan boshlash", back_bot: "Botga qaytish",
+          open_mail: "Pochtani ochish",
+          resumed: "Oldingi jarayon davom ettirilmoqda ({email}).",
+          confirm_cancel: "Jarayonni bekor qilasizmi? Mablag' yechilmaydi.",
+          confirm_pay: "{price} yechiladi. Mobile Legends'ga kirganingiz va 2-kodni olganingizni tasdiqlaysizmi?",
+          ok_title: "Barcha qurilmalardan chiqildi",
+          ok_text: "Akkauntdan barcha qurilmalar chiqarildi. Balansdan yechildi: {cost}.",
+          unknown_title: "Natija tasdiqlanmadi",
+          unknown_text: "Oxirgi so'rov natijasi noma'lum. Takrorlamang — avval o'yinda akkaunt holatini tekshiring. Muammo bo'lsa, yordamga yozing.",
+          low_title: "Balans yetarli emas",
+          low_text: "Xizmat narxi {price}, balansingiz {balance}. Balansni to'ldirib, qayta oching.",
+          topup: "Balansni to'ldirish",
+          off_title: "Hozircha mavjud emas",
+          off_text: "Bu xizmat hozir yoqilmagan. Keyinroq qayta urinib ko'ring.",
+          auth_title: "Botdan qayta oching",
+          auth_text: "Sahifa Telegram'dan tashqarida yoki eskirgan havola bilan ochildi. Botga /start yuborib, tugmani qayta bosing.",
+          load_error: "Ma'lumotni yuklab bo'lmadi. Internetni tekshirib, qayta urining.",
+          retry: "Qayta urinish",
+          cancelled: "Jarayon bekor qilindi. Mablag' yechilmadi.",
+          remaining: "Yana {n} ta urinish qoldi.",
+          err: {
+            invalid_email: "Email manzilini tekshiring.",
+            invalid_password: "Parol kamida 8 ta belgi, bitta katta harf va bitta raqamdan iborat bo'lishi, belgi ishlatmasligi kerak.",
+            invalid_code: "Kod faqat 4–8 ta raqamdan iborat bo'ladi.",
+            wrong_code: "Kod noto'g'ri. Emaildagi eng so'nggi kodni kiriting.",
+            attempts_exceeded: "Urinishlar tugadi. Jarayonni boshidan boshlang.",
+            insufficient_balance: "Xizmat vaqtincha ishlamayapti (provayder balansi). Yordamga yozing — sizdan pul yechilmadi.",
+            charge_failed: "Balansdan to'lovni yechib bo'lmadi. Qayta urinib ko'ring.",
+            charge_refund_failed: "Provayder so'rovni rad etdi, ammo balans qaytarilmadi. Yordamga yozing.",
+            rate_limited: "Juda ko'p urinish. Bir necha daqiqadan keyin qayta urinib ko'ring.",
+            timeout: "Provayder javob bermadi. Qayta urinib ko'ring.",
+            network: "Tarmoq xatosi. Internetni tekshirib, qayta urinib ko'ring.",
+            not_configured: "Xizmat sozlanmagan. Yordamga xabar bering.",
+            not_available: "Xizmat hozircha mavjud emas.",
+            service_unavailable: "Xizmat vaqtincha ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
+            request_failed: "So'rov bajarilmadi. Ma'lumotlarni tekshirib qayta urinib ko'ring."
+          }
+        },
+        ru: {
+          title: "Выход со всех устройств",
+          subtitle: "Выйти из аккаунта Mobile Legends на всех устройствах",
+          price: "Цена", balance: "Баланс",
+          step1: "Email и пароль", step2: "Код 1", step3: "Код 2",
+          s1_title: "Аккаунт Moonton",
+          s1_text: "Введите email и пароль Moonton, привязанные к аккаунту. Пароль не сохраняется и не отправляется в бот.",
+          email: "Email Moonton", password: "Пароль Moonton",
+          rule_len: "8+ символов", rule_upper: "заглавная", rule_digit: "цифра", rule_plain: "без спецсимволов",
+          send: "Отправить код на email",
+          s2_title: "Введите код 1",
+          s2_text: "На ваш email отправлен код подтверждения. Откройте почту и введите код здесь.",
+          s3_title: "Введите код 2",
+          s3_warn: "Важно: сейчас войдите в Mobile Legends и не закрывайте игру. Затем введите НОВЫЙ код из письма.",
+          s3_check: "Я вошёл в Mobile Legends, игра открыта",
+          code: "Код подтверждения",
+          verify1: "Подтвердить", verify2: "Выйти и оплатить {price}",
+          charged_note: "{price} списываются только при успешном завершении.",
+          cancel: "Отменить", restart: "Начать заново", back_bot: "Вернуться в бот",
+          open_mail: "Открыть почту",
+          resumed: "Продолжаем начатый процесс ({email}).",
+          confirm_cancel: "Отменить процесс? Средства не спишутся.",
+          confirm_pay: "Будет списано {price}. Подтверждаете, что вошли в Mobile Legends и получили код 2?",
+          ok_title: "Выход выполнен на всех устройствах",
+          ok_text: "Все устройства отключены от аккаунта. Списано с баланса: {cost}.",
+          unknown_title: "Результат не подтверждён",
+          unknown_text: "Результат последнего запроса неизвестен. Не повторяйте — сначала проверьте аккаунт в игре. При проблеме напишите в поддержку.",
+          low_title: "Недостаточно средств",
+          low_text: "Цена услуги {price}, ваш баланс {balance}. Пополните баланс и откройте снова.",
+          topup: "Пополнить баланс",
+          off_title: "Пока недоступно",
+          off_text: "Сервис сейчас выключен. Попробуйте позже.",
+          auth_title: "Откройте из бота",
+          auth_text: "Страница открыта вне Telegram или по устаревшей ссылке. Отправьте боту /start и нажмите кнопку снова.",
+          load_error: "Не удалось загрузить данные. Проверьте интернет и попробуйте снова.",
+          retry: "Повторить",
+          cancelled: "Процесс отменён. Средства не списаны.",
+          remaining: "Осталось попыток: {n}.",
+          err: {
+            invalid_email: "Проверьте адрес email.",
+            invalid_password: "Пароль: не менее 8 символов, заглавная буква и цифра, без спецсимволов.",
+            invalid_code: "Код состоит из 4–8 цифр.",
+            wrong_code: "Неверный код. Введите последний код из письма.",
+            attempts_exceeded: "Попытки закончились. Начните заново.",
+            insufficient_balance: "Сервис временно недоступен (баланс провайдера). Напишите в поддержку — с вас ничего не списано.",
+            charge_failed: "Не удалось списать оплату. Попробуйте ещё раз.",
+            charge_refund_failed: "Провайдер отклонил запрос, но средства не вернулись. Напишите в поддержку.",
+            rate_limited: "Слишком много попыток. Повторите через несколько минут.",
+            timeout: "Провайдер не ответил. Попробуйте ещё раз.",
+            network: "Ошибка сети. Проверьте интернет и повторите.",
+            not_configured: "Сервис не настроен. Сообщите в поддержку.",
+            not_available: "Сервис пока недоступен.",
+            service_unavailable: "Сервис временно недоступен. Попробуйте позже.",
+            request_failed: "Запрос не выполнен. Проверьте данные и повторите."
+          }
+        },
+        en: {
+          title: "Log out all devices",
+          subtitle: "Sign your Mobile Legends account out everywhere",
+          price: "Price", balance: "Balance",
+          step1: "Email & password", step2: "Code 1", step3: "Code 2",
+          s1_title: "Moonton account",
+          s1_text: "Enter the Moonton email and password of the account. The password is not stored and never sent to the bot chat.",
+          email: "Moonton email", password: "Moonton password",
+          rule_len: "8+ chars", rule_upper: "uppercase", rule_digit: "digit", rule_plain: "no symbols",
+          send: "Send code to email",
+          s2_title: "Enter code 1",
+          s2_text: "A verification code was sent to your email. Open your inbox and enter it here.",
+          s3_title: "Enter code 2",
+          s3_warn: "Important: sign in to Mobile Legends now and keep the game open. Then enter the NEW code from your email.",
+          s3_check: "I'm signed in to Mobile Legends and the game is open",
+          code: "Verification code",
+          verify1: "Verify", verify2: "Log out and pay {price}",
+          charged_note: "{price} is charged only if it succeeds.",
+          cancel: "Cancel", restart: "Start over", back_bot: "Back to bot",
+          open_mail: "Open mail",
+          resumed: "Resuming your previous attempt ({email}).",
+          confirm_cancel: "Cancel the process? Nothing will be charged.",
+          confirm_pay: "{price} will be charged. Confirm you're signed in to Mobile Legends and received code 2?",
+          ok_title: "All devices logged out",
+          ok_text: "Every device was signed out of the account. Charged: {cost}.",
+          unknown_title: "Result not confirmed",
+          unknown_text: "The final request's result is unknown. Don't repeat it — check the account in the game first. Contact support if something is wrong.",
+          low_title: "Balance too low",
+          low_text: "The service costs {price}; your balance is {balance}. Top up and open this again.",
+          topup: "Top up balance",
+          off_title: "Not available yet",
+          off_text: "This service is currently turned off. Please try later.",
+          auth_title: "Open it from the bot",
+          auth_text: "This page was opened outside Telegram or with an expired link. Send /start to the bot and tap the button again.",
+          load_error: "Couldn't load data. Check your connection and retry.",
+          retry: "Retry",
+          cancelled: "Process cancelled. Nothing was charged.",
+          remaining: "{n} attempts left.",
+          err: {
+            invalid_email: "Check the email address.",
+            invalid_password: "Password: 8+ characters with an uppercase letter and a digit, no symbols.",
+            invalid_code: "The code has 4–8 digits.",
+            wrong_code: "Wrong code. Enter the latest code from the email.",
+            attempts_exceeded: "No attempts left. Start over.",
+            insufficient_balance: "The service is temporarily unavailable (provider balance). Contact support — you were not charged.",
+            charge_failed: "The charge couldn't be completed. Please retry.",
+            charge_refund_failed: "The provider rejected the request but the refund failed. Contact support.",
+            rate_limited: "Too many attempts. Try again in a few minutes.",
+            timeout: "The provider didn't respond. Please retry.",
+            network: "Network error. Check your connection and retry.",
+            not_configured: "The service isn't configured. Please tell support.",
+            not_available: "The service isn't available yet.",
+            service_unavailable: "The service is temporarily unavailable. Try later.",
+            request_failed: "The request failed. Check the details and retry."
+          }
+        }
+      };
+
+      var state = { lang: "uz", price: 25000, balance: null, affordable: false, botUsername: null, flow: null, error: "", notice: "" };
+      var app = document.getElementById("app");
+
+      function pickLang() {
+        var code = String((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code) || "").slice(0, 2);
+        return I18N[code] ? code : "uz";
+      }
+      state.lang = pickLang();
+
+      function L(key) { var d = I18N[state.lang] || I18N.uz; return d[key] != null ? d[key] : I18N.uz[key]; }
+      function errText(code) { var d = (I18N[state.lang] || I18N.uz).err; return d[code] || d.request_failed; }
+      function money(v) {
+        var n = Math.round(Number(v) || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+        return n + (state.lang === "ru" ? " сум" : state.lang === "en" ? " UZS" : " so'm");
+      }
+      function fill(text, vars) {
+        return String(text).replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] != null ? vars[k] : m; });
+      }
+      function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+      function haptic(kind) {
+        try {
+          if (!tg || !tg.HapticFeedback) return;
+          if (kind === "success" || kind === "error" || kind === "warning") tg.HapticFeedback.notificationOccurred(kind);
+          else tg.HapticFeedback.impactOccurred(kind || "light");
+        } catch (e) { /* eski mijozlar */ }
+      }
+      function setBusy(btn, on) { if (!btn) return; btn.disabled = on; btn.classList.toggle("busy", on); }
+
+      function confirmBox(text) {
+        return new Promise(function (resolve) {
+          if (tg && tg.showConfirm) {
+            try { tg.showConfirm(text, function (ok) { resolve(Boolean(ok)); }); return; } catch (e) { /* fallback */ }
+          }
+          resolve(window.confirm(text));
+        });
+      }
+      function toast(text) {
+        if (tg && tg.showAlert) { try { tg.showAlert(text); return; } catch (e) { /* noop */ } }
+        state.notice = text;
+      }
+
+      function api(action, payload) {
+        var body = Object.assign({ action: action, initData: tg ? tg.initData : "", launch: launchToken }, payload || {});
+        return fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+          .then(function (r) { return r.json().catch(function () { return { ok: false, error: "service_unavailable" }; }); })
+          .catch(function () { return { ok: false, error: "network" }; });
+      }
+
+      // ---- oqimni saqlash (parol hech qachon saqlanmaydi)
+      function saveFlow(flow) {
+        state.flow = flow;
+        try {
+          if (flow && flow.email) localStorage.setItem(FLOW_KEY, JSON.stringify({ email: flow.email, stage: flow.stage, at: Date.now() }));
+          else localStorage.removeItem(FLOW_KEY);
+        } catch (e) { /* noop */ }
+      }
+      function loadFlow() {
+        try {
+          var raw = JSON.parse(localStorage.getItem(FLOW_KEY) || "null");
+          if (raw && raw.email && (raw.stage === "code1" || raw.stage === "code2") && Date.now() - raw.at < FLOW_TTL_MS) return raw;
+          localStorage.removeItem(FLOW_KEY);
+        } catch (e) { /* noop */ }
+        return null;
+      }
+
+      function openBot() {
+        haptic("light");
+        var link = state.botUsername ? "https://t.me/" + state.botUsername : null;
+        if (tg && link) { try { tg.openTelegramLink(link); } catch (e) { /* noop */ } }
+        if (tg) tg.close();
+      }
+      function openWallet() {
+        haptic("light");
+        location.href = location.pathname + "?view=cabinet";
+      }
+      function openMail() {
+        haptic("light");
+        var domain = String(state.flow && state.flow.email || "").split("@")[1] || "";
+        var url = /gmail\.com$/i.test(domain) ? "https://mail.google.com/"
+          : /(mail\.ru|inbox\.ru|bk\.ru|list\.ru)$/i.test(domain) ? "https://e.mail.ru/"
+          : /(yandex\.|ya\.ru)/i.test(domain) ? "https://mail.yandex.com/"
+          : /(outlook|hotmail|live)\./i.test(domain) ? "https://outlook.live.com/mail/"
+          : /icloud\.com$/i.test(domain) ? "https://www.icloud.com/mail"
+          : null;
+        if (!url) return;
+        if (tg && tg.openLink) { try { tg.openLink(url); return; } catch (e) { /* noop */ } }
+        window.open(url, "_blank");
+      }
+
+      // ---- ko'rinishlar
+      function header() {
+        var low = state.balance !== null && !state.affordable;
+        return '<div class="hero"><div class="hero-ic"><i class="bi bi-shield-lock-fill"></i></div><div>' +
+          "<h1>" + esc(L("title")) + "</h1><p>" + esc(L("subtitle")) + "</p></div></div>" +
+          '<div class="chips"><span class="chip"><i class="bi bi-tag"></i>' + esc(L("price")) + ": <b>" + esc(money(state.price)) + "</b></span>" +
+          (state.balance !== null ? '<span class="chip ' + (low ? "low" : "ok") + '"><i class="bi bi-wallet2"></i>' + esc(L("balance")) + ": <b>" + esc(money(state.balance)) + "</b></span>" : "") +
+          "</div>";
+      }
+      function stepper(active) {
+        var names = [L("step1"), L("step2"), L("step3")];
+        return '<div class="steps">' + names.map(function (n, i) {
+          var cls = i + 1 < active ? "done" : i + 1 === active ? "active" : "";
+          return '<div class="step ' + cls + '"><div class="bar"><i></i></div>' + (i + 1 < active ? '<i class="bi bi-check2"></i> ' : "") + esc(n) + "</div>";
+        }).join("") + "</div>";
+      }
+      function notices() {
+        var html = "";
+        if (state.notice) html += '<div class="notice info fade-in"><i class="bi bi-info-circle-fill"></i><div>' + esc(state.notice) + "</div></div>";
+        if (state.error) html += '<div class="notice err fade-in"><i class="bi bi-exclamation-octagon-fill"></i><div>' + esc(state.error) + "</div></div>";
+        return html;
+      }
+      function stateView(kind, iconName, title, text, actions) {
+        app.innerHTML = header() + '<div class="state fade-in"><div class="big ' + kind + '"><i class="bi bi-' + iconName + '"></i></div><h2>' +
+          esc(title) + "</h2><p>" + esc(text) + "</p>" +
+          actions.map(function (a, i) { return '<button class="btn ' + (a.cls || "") + '" data-act="' + i + '">' + (a.icon ? '<i class="bi bi-' + a.icon + '"></i>' : "") + esc(a.label) + "</button>"; }).join("") +
+          "</div>";
+        actions.forEach(function (a, i) { app.querySelector('[data-act="' + i + '"]').addEventListener("click", function (e) { a.onClick(e.currentTarget); }); });
+        syncBack();
+      }
+
+      function render() {
+        var flow = state.flow;
+        if (!flow) return renderCredentials();
+        return renderCode(flow.stage === "code2" ? 2 : 1);
+      }
+
+      function renderCredentials() {
+        if (!state.affordable) {
+          return stateView("warn", "wallet2", L("low_title"), fill(L("low_text"), { price: money(state.price), balance: money(state.balance || 0) }), [
+            { label: L("topup"), cls: "primary", icon: "plus-circle", onClick: openWallet },
+            { label: L("back_bot"), cls: "ghost", onClick: openBot }
+          ]);
+        }
+        app.innerHTML = header() + stepper(1) + notices() +
+          '<div class="card fade-in"><h2><i class="bi bi-person-badge"></i>' + esc(L("s1_title")) + "</h2><p>" + esc(L("s1_text")) + "</p>" +
+          '<label class="lbl" for="dlEmail">' + esc(L("email")) + "</label>" +
+          '<div class="field"><input id="dlEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254" placeholder="name@gmail.com"></div>' +
+          '<label class="lbl" for="dlPass">' + esc(L("password")) + "</label>" +
+          '<div class="field"><input id="dlPass" class="has-eye" type="password" autocomplete="current-password" maxlength="128"><button class="eye" id="dlEye" type="button" aria-label="show"><i class="bi bi-eye"></i></button></div>' +
+          '<div class="rules" id="dlRules"></div>' +
+          '<button class="btn primary" id="dlSend" disabled><i class="bi bi-envelope-arrow-up"></i>' + esc(L("send")) + "</button>" +
+          '<p class="muted" style="margin-top:10px;font-size:12px;text-align:center">' + esc(fill(L("charged_note"), { price: money(state.price) })) + "</p>" +
+          "</div>";
+
+        var email = document.getElementById("dlEmail");
+        var pass = document.getElementById("dlPass");
+        var send = document.getElementById("dlSend");
+        var rules = document.getElementById("dlRules");
+        function check() {
+          var p = pass.value;
+          var items = [[p.length >= 8, L("rule_len")], [/[A-Z]/.test(p), L("rule_upper")], [/\d/.test(p), L("rule_digit")], [!p || /^[A-Za-z0-9]+$/.test(p), L("rule_plain")]];
+          rules.innerHTML = items.map(function (r) { return '<span class="' + (r[0] && p ? "ok" : "") + '"><i class="bi bi-' + (r[0] && p ? "check-circle-fill" : "circle") + '"></i>' + esc(r[1]) + "</span>"; }).join("");
+          send.disabled = !(EMAIL_RE.test(email.value.trim()) && PASSWORD_RE.test(p));
+        }
+        email.addEventListener("input", check);
+        pass.addEventListener("input", check);
+        pass.addEventListener("keydown", function (e) { if (e.key === "Enter" && !send.disabled) send.click(); });
+        document.getElementById("dlEye").addEventListener("click", function () {
+          var show = pass.type === "password";
+          pass.type = show ? "text" : "password";
+          this.innerHTML = '<i class="bi bi-eye' + (show ? "-slash" : "") + '"></i>';
+        });
+        check();
+
+        send.addEventListener("click", function () {
+          var mail = email.value.trim();
+          state.error = ""; state.notice = "";
+          setBusy(send, true);
+          haptic("light");
+          api("device_logout", { type: "send-code", email: mail, password: pass.value }).then(function (r) {
+            pass.value = "";
+            if (!r.ok) {
+              setBusy(send, false);
+              haptic("error");
+              if (r.error === "insufficient_funds") { state.balance = r.balance; state.affordable = false; return render(); }
+              state.error = errText(r.error);
+              return renderCredentials();
+            }
+            haptic("success");
+            saveFlow({ email: mail, stage: "code1" });
+            render();
+          });
+        });
+        syncBack();
+      }
+
+      function renderCode(stage) {
+        var flow = state.flow;
+        var isFinal = stage === 2;
+        app.innerHTML = header() + stepper(stage + 1) + notices() +
+          (isFinal ? '<div class="notice warn fade-in"><i class="bi bi-controller"></i><div>' + esc(L("s3_warn")) + "</div></div>" : "") +
+          '<div class="card fade-in"><h2><i class="bi bi-' + (isFinal ? "shield-check" : "envelope-open") + '"></i>' + esc(L(isFinal ? "s3_title" : "s2_title")) + "</h2>" +
+          (isFinal ? "" : "<p>" + esc(L("s2_text")) + "</p>") +
+          '<span class="email-pill"><i class="bi bi-envelope"></i>' + esc(flow.email) + "</span>" +
+          '<label class="lbl" for="dlCode">' + esc(L("code")) + "</label>" +
+          '<div class="field"><input id="dlCode" class="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="••••••"></div>' +
+          (isFinal ? '<label class="check"><input type="checkbox" id="dlInGame"><span>' + esc(L("s3_check")) + "</span></label>" : "") +
+          '<button class="btn ' + (isFinal ? "green" : "primary") + '" id="dlVerify" disabled><i class="bi bi-' + (isFinal ? "box-arrow-right" : "check2-circle") + '"></i>' +
+          esc(isFinal ? fill(L("verify2"), { price: money(state.price) }) : L("verify1")) + "</button>" +
+          (openMailAvailable() ? '<button class="btn" id="dlMail"><i class="bi bi-envelope-paper"></i>' + esc(L("open_mail")) + "</button>" : "") +
+          '<button class="btn ghost" id="dlCancel"><i class="bi bi-x-circle"></i>' + esc(L("cancel")) + "</button>" +
+          "</div>";
+
+        var code = document.getElementById("dlCode");
+        var verify = document.getElementById("dlVerify");
+        var inGame = document.getElementById("dlInGame");
+        function check() {
+          code.value = code.value.replace(/\D/g, "").slice(0, 8);
+          verify.disabled = !(/^\d{4,8}$/.test(code.value) && (!inGame || inGame.checked));
+        }
+        code.addEventListener("input", check);
+        if (inGame) inGame.addEventListener("change", check);
+        code.addEventListener("keydown", function (e) { if (e.key === "Enter" && !verify.disabled) verify.click(); });
+        var mailBtn = document.getElementById("dlMail");
+        if (mailBtn) mailBtn.addEventListener("click", openMail);
+        document.getElementById("dlCancel").addEventListener("click", function () { cancelFlow(this); });
+        setTimeout(function () { try { code.focus(); } catch (e) { /* noop */ } }, 50);
+
+        verify.addEventListener("click", function () {
+          var go = isFinal ? confirmBox(fill(L("confirm_pay"), { price: money(state.price) })) : Promise.resolve(true);
+          go.then(function (ok) {
+            if (!ok) return;
+            state.error = ""; state.notice = "";
+            setBusy(verify, true);
+            haptic("light");
+            api("device_logout", { type: isFinal ? "verify-code2" : "verify-code1", email: flow.email, code: code.value }).then(function (r) {
+              if (!r.ok) {
+                setBusy(verify, false);
+                haptic("error");
+                if (r.error === "insufficient_funds") { state.balance = r.balance; state.affordable = false; saveFlow(null); return render(); }
+                if (isFinal && ["result_unknown", "network", "service_unavailable", "timeout", "charge_refund_failed"].indexOf(r.error) >= 0) {
+                  saveFlow(null);
+                  return stateView("warn", "question-circle", L("unknown_title"), L("unknown_text"), [{ label: L("back_bot"), cls: "primary", onClick: openBot }]);
+                }
+                if (r.error === "attempts_exceeded") saveFlow(null);
+                state.error = errText(r.error) + (Number.isInteger(r.remaining) ? " " + fill(L("remaining"), { n: r.remaining }) : "");
+                return render();
+              }
+              haptic("success");
+              if (!isFinal) {
+                saveFlow({ email: flow.email, stage: "code2" });
+                return render();
+              }
+              saveFlow(null);
+              if (Number.isFinite(Number(r.balance))) state.balance = Number(r.balance);
+              stateView("ok", "patch-check-fill", L("ok_title"), fill(L("ok_text"), { cost: money(r.chargedAmount || state.price) }), [
+                { label: L("back_bot"), cls: "primary", icon: "chat-dots", onClick: openBot }
+              ]);
+            });
+          });
+        });
+        syncBack();
+      }
+
+      function openMailAvailable() {
+        var domain = String(state.flow && state.flow.email || "").split("@")[1] || "";
+        return /(gmail\.com|mail\.ru|inbox\.ru|bk\.ru|list\.ru|yandex\.|ya\.ru|outlook|hotmail|live\.|icloud\.com)/i.test(domain);
+      }
+
+      function cancelFlow(btn) {
+        var flow = state.flow;
+        if (!flow) return render();
+        confirmBox(L("confirm_cancel")).then(function (ok) {
+          if (!ok) return;
+          setBusy(btn, true);
+          api("device_logout", { type: "cancel", email: flow.email }).then(function () {
+            // Bekor qilish bepul — provayder xato bersa ham lokal oqimni tozalaymiz.
+            saveFlow(null);
+            state.error = "";
+            state.notice = L("cancelled");
+            haptic("success");
+            render();
+          });
+        });
+      }
+
+      // ---- Telegram orqaga tugmasi: oqim bo'lsa — bekor qilish, bo'lmasa — yopish
+      function onBack() {
+        if (state.flow) return cancelFlow(document.getElementById("dlCancel"));
+        if (tg) tg.close();
+      }
+      function syncBack() {
+        if (!tg || !tg.BackButton) return;
+        try { state.flow ? tg.BackButton.show() : tg.BackButton.hide(); } catch (e) { /* noop */ }
+      }
+      if (tg && tg.BackButton) { try { tg.BackButton.onClick(onBack); } catch (e) { /* noop */ } }
+
+      function boot() {
+        if (!tg || (!tg.initData && !launchToken)) {
+          return stateView("err", "phone", L("auth_title"), L("auth_text"), []);
+        }
+        api("dl_bootstrap").then(function (r) {
+          if (!r.ok) {
+            if (r.error === "unauthorized" || r.error === "launch_expired") {
+              return stateView("err", "shield-exclamation", L("auth_title"), L("auth_text"), []);
+            }
+            return stateView("err", "wifi-off", L("title"), L("load_error"), [{ label: L("retry"), cls: "primary", icon: "arrow-clockwise", onClick: boot }]);
+          }
+          if (I18N[r.lang]) state.lang = r.lang;
+          document.documentElement.lang = state.lang;
+          document.title = L("title");
+          state.price = Number(r.price) || state.price;
+          state.balance = r.balance;
+          state.affordable = Boolean(r.affordable);
+          state.botUsername = r.botUsername;
+          if (!r.enabled) {
+            return stateView("warn", "hourglass-split", L("off_title"), L("off_text"), [{ label: L("back_bot"), cls: "primary", onClick: openBot }]);
+          }
+          var resumed = loadFlow();
+          if (resumed) {
+            state.flow = resumed;
+            state.notice = fill(L("resumed"), { email: resumed.email });
+          }
+          render();
+        });
+      }
+
+      boot();
+    })();
+  </script>
+</body>
+</html>
