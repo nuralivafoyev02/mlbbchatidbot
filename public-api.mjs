@@ -46,10 +46,12 @@ const tokenMem = new Map();
 const inflight = new Map();
 const pendingUsage = new Map();
 const rateMem = new Map();
-// Suiiste'mol signallari — 30 s'da bir "monitor" DO'ga (api-guard.mjs).
+// Suiiste'mol signallari — birinchi signaldan ~5 s keyin bitta paket bo'lib
+// "monitor" DO'ga ketadi (api-guard.mjs). Kechiktirilgan flush waitUntil ichida
+// rejalashtiriladi — keyingi so'rovni kutmaydi, signal isolate'da qolib ketmaydi.
 const guard = createGuardCollector();
-const GUARD_FLUSH_MS = 30 * 1000;
-let lastGuardFlushAt = 0;
+const GUARD_FLUSH_DELAY_MS = 5000;
+let guardFlushPending = false;
 let lastUsageFlushAt = 0;
 
 const CORS_HEADERS = {
@@ -368,9 +370,13 @@ async function loadToken(hash, env) {
 }
 
 function scheduleGuardFlush(env, ctx) {
-  if (guard.isEmpty() || Date.now() - lastGuardFlushAt < GUARD_FLUSH_MS) return;
-  lastGuardFlushAt = Date.now();
-  waitUntil(ctx, flushGuard(env));
+  if (guard.isEmpty() || guardFlushPending) return;
+  guardFlushPending = true;
+  const delay = Number(env.API_GUARD_FLUSH_DELAY_MS ?? GUARD_FLUSH_DELAY_MS);
+  const run = new Promise((resolve) => setTimeout(resolve, delay))
+    .then(() => flushGuard(env))
+    .finally(() => { guardFlushPending = false; });
+  waitUntil(ctx, run);
 }
 
 export async function flushGuard(env) {
@@ -539,5 +545,5 @@ export function resetPublicApiState() {
   rateMem.clear();
   guard.drain();
   lastUsageFlushAt = 0;
-  lastGuardFlushAt = 0;
+  guardFlushPending = false;
 }

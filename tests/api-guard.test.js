@@ -139,6 +139,7 @@ test("public API forwards guard signals to the monitor Durable Object", async ()
   const env = {
     SUPABASE_URL: "https://db.test",
     SUPABASE_SERVICE_KEY: "k",
+    API_GUARD_FLUSH_DELAY_MS: 0,
     ASYNC_RUNNER: {
       idFromName: (name) => name,
       get: (id) => ({
@@ -158,6 +159,16 @@ test("public API forwards guard signals to the monitor Durable Object", async ()
 
   assert.equal(res.status, 401);
   assert.equal(posted.length, 1);
+
+  // Keyingi signallar ham (yangi so'rov kutilmasdan) bitta paketda yetib boradi.
+  for (let i = 0; i < 3; i += 1) {
+    await api.handlePublicApi(new Request("https://mlbb.nurali.uz/v1/check?id=1&zone=1", {
+      headers: { authorization: `Bearer ${TOKEN}`, "cf-connecting-ip": "8.8.8.8" },
+    }), env, ctx);
+  }
+  await Promise.all(waits);
+  const later = posted.slice(1).flatMap((p) => p.body.batch.dead);
+  assert.equal(later.reduce((sum, t) => sum + t.hits, 0), 3);
   assert.equal(posted[0].id, "monitor");
   assert.match(posted[0].url, /\/api-guard$/);
   assert.deepEqual(posted[0].body.batch.dead.map((t) => [t.id, t.kind, t.ips]), [[11, "token_revoked", ["8.8.8.8"]]]);
