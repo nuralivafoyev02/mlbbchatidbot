@@ -1593,9 +1593,11 @@ test("outgoing Telegram text strips malformed surrogate characters", async () =>
       createRes()
     );
 
-    assert.ok(calls[0]);
-    assert.match(calls[0].payload.text, /Ali/);
-    assert.equal(hasUnpairedSurrogate(calls[0].payload.text), false);
+    // Fon rejimidagi setMyCommands/deleteMyCommands chaqiruvlari ham shu fetch'ga tushishi mumkin.
+    const textCall = calls.find((call) => typeof call.payload.text === "string");
+    assert.ok(textCall);
+    assert.match(textCall.payload.text, /Ali/);
+    assert.equal(hasUnpairedSurrogate(textCall.payload.text), false);
   } finally {
     global.fetch = originalFetch;
   }

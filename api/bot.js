@@ -6318,6 +6318,8 @@ function getDeviceLogoutMiniAppUrl() {
   }
 }
 
+const FOREIGN_COMMAND_SCOPES = ["all_private_chats", "all_group_chats", "all_chat_administrators"];
+
 async function registerBotCommands() {
   try {
     await telegram("setMyCommands", {
@@ -6334,6 +6336,17 @@ async function registerBotCommands() {
         scope: { type: "chat", chat_id: MAIN_GROUP_ID },
       });
     }
+
+    // Tor scope'lar default ro'yxatni bosib ketadi. Bot ularga yozmaydi, shuning
+    // uchun u yerdagi har qanday yozuv begona (masalan, shu token bilan ishga
+    // tushirilgan boshqa dastur) — o'chiramiz, aks holda menyu noto'g'ri chiqadi.
+    await Promise.all(
+      FOREIGN_COMMAND_SCOPES.map((type) =>
+        telegram("deleteMyCommands", { scope: { type } }).catch((err) => {
+          console.error(`[BOT] deleteMyCommands(${type}) failed:`, err.message);
+        })
+      )
+    );
 
     stats.commandsRegistered = true;
     return true;
