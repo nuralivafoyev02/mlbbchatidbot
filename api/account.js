@@ -468,7 +468,7 @@ async function loadPreferredLanguage(config, user) {
 const CABINET_HISTORY_LIMIT = 50;
 const CABINET_FIRSTMAIL_PAGE = 30; // Do'kon: pastga aylantirganda 30 tadan
 const ACCOUNT_MAX_COUNT = 5;
-const DEFAULT_ADMIN_IDS = "5081175125,8500085987,7396686285";
+const DEFAULT_ADMIN_IDS = "7396686285,5081175125";
 
 function storeRequest(config) {
   return (urlPath, options) => supabaseRequest(config, urlPath, options);

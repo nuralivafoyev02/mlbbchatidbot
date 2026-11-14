@@ -76,7 +76,7 @@
   "vars": {
     "MAIN_GROUP_ID": "-1004434649076",
     "SUPPORT_USERNAME": "Ksava_org",
-    "ADMIN_IDS": "5081175125,7396686285",
+    "ADMIN_IDS": "7396686285,5081175125",
     "TELEGRAM_BOT_USERNAME": "checkmlbbidBot",
     // Kunlik holat hisoboti (health-report.mjs): Cloudflare statistikasi
     // shu Worker nomi bo'yicha; token — `wrangler secret put CF_ANALYTICS_TOKEN`.
@@ -144,7 +144,7 @@
       "vars": {
         "MAIN_GROUP_ID": "-1004434649076",
         "SUPPORT_USERNAME": "Ksava_org",
-        "ADMIN_IDS": "5081175125,7396686285",
+        "ADMIN_IDS": "7396686285,5081175125",
         "TELEGRAM_BOT_USERNAME": "devcheckmlbbidBot",
         "WORKER_NAME": "mlbbchatidbot-dev",
         "CF_ACCOUNT_ID": "47f7e844771fdf5c35456fd8337f940a",

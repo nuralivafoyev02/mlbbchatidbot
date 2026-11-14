@@ -5,7 +5,7 @@ const { pathToFileURL } = require("node:url");
 process.env.TELEGRAM_BOT_TOKEN = "123456:test-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
 process.env.SUPPORT_USERNAME = "@Ksava_org";
-process.env.ADMIN_IDS = "5081175125,8500085987,7396686285";
+process.env.ADMIN_IDS = "7396686285,5081175125";
 process.env.TELEGRAM_BOT_USERNAME = "mlbb_test_bot";
 delete process.env.SUPABASE_URL;
 delete process.env.SUPABASE_SERVICE_KEY;

@@ -80,7 +80,7 @@ const SUPPORT_USERNAME = sanitizeTelegramUsername(require("./_contact.js").ADMIN
 const TELEGRAM_BOT_USERNAME = sanitizeOptionalTelegramUsername(
   process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME
 );
-const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "5081175125,8500085987,7396686285");
+const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "7396686285,5081175125");
 const MAIN_GROUP_ID =
   process.env.MAIN_GROUP_ID === undefined || process.env.MAIN_GROUP_ID === null
     ? "-1004434649076"

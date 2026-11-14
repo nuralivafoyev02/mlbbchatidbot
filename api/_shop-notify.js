@@ -9,7 +9,7 @@
 
 const { ADMIN_CONTACT_USERNAME } = require("./_contact.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
-const DEFAULT_ADMIN_IDS = "5081175125,8500085987,7396686285";
+const DEFAULT_ADMIN_IDS = "7396686285,5081175125";
 // bot.js dagi MAIN_GROUP_ID bilan bir xil: env yo'q bo'lsa — shu guruh, bo'sh bo'lsa — o'chiq.
 const DEFAULT_MAIN_GROUP_ID = "-1003832186200";
 
