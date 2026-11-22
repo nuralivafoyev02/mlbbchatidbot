@@ -6,12 +6,13 @@ const CODE_RE = /^\d{4,8}$/;
 const PASSWORD_RE = /^(?=.*[A-Z])(?=.*\d)[A-Za-z0-9]{8,128}$/;
 
 class JebrayResellerError extends Error {
-  constructor(reason, status = null, remaining = null) {
+  constructor(reason, status = null, remaining = null, detail = null) {
     super(reason);
     this.name = "JebrayResellerError";
     this.reason = reason;
     this.status = status;
     this.remaining = remaining;
+    this.detail = detail;
   }
 }
 
@@ -134,7 +135,8 @@ async function requestDeviceLogout(input, options = {}) {
     throw new JebrayResellerError(
       classifyProviderError(response.status, payload, type),
       response.status,
-      remaining
+      remaining,
+      String(payload?.error || payload?.message || "").slice(0, 120)
     );
   }
 

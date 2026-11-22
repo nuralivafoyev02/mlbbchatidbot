@@ -356,7 +356,11 @@ async function handleDeviceLogout(res, { config, user, body }) {
           return json(res, 500, { ok: false, error: "charge_refund_failed" });
         }
       }
-      console.error("[DEVICE_LOGOUT_API_ERROR]", reason, error?.status || "");
+      console.error("[DEVICE_LOGOUT_API_ERROR]", reason, error?.status || "", error?.detail || "", {
+        keySource: process.env.JEBRAY_RESELLER_API_KEY ? "JEBRAY_RESELLER_API_KEY" : "FULL_INFO_API_KEY",
+        keyLen: config.resellerApiKey.length,
+        keySha: require("node:crypto").createHash("sha256").update(config.resellerApiKey).digest("hex").slice(0, 8),
+      });
 
       if (isFinal && reason === "result_unknown") {
         await alertDeviceLogout(config, user, "result_unknown", details);
