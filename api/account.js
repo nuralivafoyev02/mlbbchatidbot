@@ -50,7 +50,7 @@ function getConfig() {
     supabaseUrl: cleanEnv(process.env.SUPABASE_URL).replace(/\/+$/, ""),
     supabaseKey: resolveServiceKey(process.env),
     linkSecret: arena.resolveLinkSecret(process.env),
-    resellerApiKey: cleanEnv(process.env.JEBRAY_RESELLER_API_KEY || process.env.FULL_INFO_API_KEY),
+    resellerApiKey: cleanEnv(process.env.JEBRAY_RESELLER_API_KEY),
     deviceLogoutEnabled: process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true",
   };
 }
@@ -357,7 +357,7 @@ async function handleDeviceLogout(res, { config, user, body }) {
         }
       }
       console.error("[DEVICE_LOGOUT_API_ERROR]", input.type, reason, error?.status || "", error?.detail || "", {
-        keySource: process.env.JEBRAY_RESELLER_API_KEY ? "JEBRAY_RESELLER_API_KEY" : "FULL_INFO_API_KEY",
+        keySource: "JEBRAY_RESELLER_API_KEY",
         keyLen: config.resellerApiKey.length,
         keySha: require("node:crypto").createHash("sha256").update(config.resellerApiKey).digest("hex").slice(0, 8),
       });

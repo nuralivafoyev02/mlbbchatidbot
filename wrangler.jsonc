@@ -122,8 +122,8 @@
         "crons": ["*/10 * * * *"]
       },
       // Faqat beta: account Mini App'ining Vercel Preview muhitida ham
-      // JEBRAY_DEVICE_LOGOUT_ENABLED=true va beta'dagi FULL_INFO_API_KEY
-      // (yoki alohida JEBRAY_RESELLER_API_KEY) secret kerak.
+      // JEBRAY_DEVICE_LOGOUT_ENABLED=true va JEBRAY_RESELLER_API_KEY
+      // secret kerak (FULL_INFO_API_KEY ishlatilmaydi).
       "durable_objects": {
         "bindings": [
           {

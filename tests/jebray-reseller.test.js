@@ -90,3 +90,20 @@ test("Jebray final-step response exposes only documented cost, not arbitrary pro
 
   assert.deepEqual(result, { ok: true, type: "verify-code2", cost: 25000 });
 });
+
+test("Jebray device logout never falls back to FULL_INFO_API_KEY", async () => {
+  const saved = { r: process.env.JEBRAY_RESELLER_API_KEY, f: process.env.FULL_INFO_API_KEY };
+  delete process.env.JEBRAY_RESELLER_API_KEY;
+  process.env.FULL_INFO_API_KEY = "full-info-key";
+  let calls = 0;
+  try {
+    await assert.rejects(
+      requestDeviceLogout({ type: "cancel", email: "owner@example.test" }, { fetchImpl: async () => { calls += 1; return jsonResponse({ success: true }); } }),
+      (error) => error instanceof JebrayResellerError && error.reason === "not_configured"
+    );
+    assert.equal(calls, 0);
+  } finally {
+    if (saved.r === undefined) delete process.env.JEBRAY_RESELLER_API_KEY; else process.env.JEBRAY_RESELLER_API_KEY = saved.r;
+    if (saved.f === undefined) delete process.env.FULL_INFO_API_KEY; else process.env.FULL_INFO_API_KEY = saved.f;
+  }
+});

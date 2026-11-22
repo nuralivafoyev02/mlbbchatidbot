@@ -71,7 +71,7 @@ function classifyProviderError(status, payload, type) {
 async function requestDeviceLogout(input, options = {}) {
   const { type, email } = validateDeviceLogoutInput(input);
   const apiKey = String(
-    options.apiKey ?? process.env.JEBRAY_RESELLER_API_KEY ?? process.env.FULL_INFO_API_KEY ?? ""
+    options.apiKey ?? process.env.JEBRAY_RESELLER_API_KEY ?? ""
   ).trim();
   if (!apiKey) {
     throw new JebrayResellerError("not_configured");
