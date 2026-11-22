@@ -41,6 +41,11 @@ function validateDeviceLogoutInput(input) {
 
 function classifyProviderError(status, payload, type) {
   const error = String(payload?.error || payload?.message || "").toLowerCase();
+  // Kalit noto'g'ri / muddati tugagan / oylik to'lov qilinmagan — foydalanuvchi
+  // aybi emas, administrator darhol bilishi kerak.
+  if (status === 401 || status === 403 || /api key|unauthori[sz]ed|forbidden|subscription|expired/.test(error)) {
+    return "provider_auth";
+  }
   if (/wrong verification code/.test(error)) {
     return "wrong_code";
   }

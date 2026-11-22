@@ -233,6 +233,42 @@ async function handleDeviceLogoutBootstrap(res, { config, user }) {
   });
 }
 
+const deviceLogoutInFlight = new Set();
+const deviceLogoutAlertedAt = new Map();
+const DEVICE_LOGOUT_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
+
+// Administratorga best-effort xabar. Sozlama xatolari (kalit, provayder balansi)
+// har so'rovda takrorlanmasligi uchun 10 daqiqada bir marta.
+async function alertDeviceLogout(config, user, reason, details = {}) {
+  const throttled = reason === "provider_auth" || reason === "insufficient_balance" || reason === "not_configured";
+  if (throttled) {
+    const last = deviceLogoutAlertedAt.get(reason) || 0;
+    if (Date.now() - last < DEVICE_LOGOUT_ALERT_COOLDOWN_MS) return;
+    deviceLogoutAlertedAt.set(reason, Date.now());
+  }
+  const titles = {
+    provider_auth: "Jebray API kaliti qabul qilinmadi (401/403) — kalit noto'g'ri yoki oylik to'lov tugagan",
+    insufficient_balance: "Jebray hisobida mablag' yetarli emas",
+    not_configured: "Qurilmalardan chiqish: API kaliti sozlanmagan",
+    result_unknown: "Qurilmalardan chiqish: natija noma'lum, pul yechilgan va QAYTARILMAGAN",
+    charge_refund_failed: "Qurilmalardan chiqish: provayder rad etdi, lekin pul QAYTARILMADI",
+  };
+  const lines = [
+    `⚠️ <b>${escapeHtml(titles[reason] || reason)}</b>`,
+    "",
+    `Foydalanuvchi: <code>${escapeHtml(user.id)}</code>`,
+  ];
+  if (details.email) lines.push(`Email: <code>${escapeHtml(details.email)}</code>`);
+  if (details.price) lines.push(`Summa: ${escapeHtml(details.price)}`);
+  if (details.status) lines.push(`Provayder HTTP: ${escapeHtml(details.status)}`);
+  try {
+    const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+    await notifier.notify(lines.join("\n"), user.id);
+  } catch (error) {
+    console.error("[DEVICE_LOGOUT_ALERT]", error?.message);
+  }
+}
+
 // Jebray faqat Moonton email + parol bilan ishlaydi — kabinetdagi akkaunt shart
 // emas. rowId kelsa (eski "Mening akkauntim" oqimi) — u shu userniki bo'lishi kerak.
 async function handleDeviceLogout(res, { config, user, body }) {
@@ -240,6 +276,7 @@ async function handleDeviceLogout(res, { config, user, body }) {
     return json(res, 404, { ok: false, error: "not_available" });
   }
   if (!config.resellerApiKey) {
+    await alertDeviceLogout(config, user, "not_configured");
     return json(res, 503, { ok: false, error: "not_configured" });
   }
 
@@ -271,54 +308,85 @@ async function handleDeviceLogout(res, { config, user, body }) {
     }
   }
 
-  let chargedBalance = null;
-  if (input.type === "verify-code2") {
-    const debit = await wallet.adminAdjust(user.id, -price, "Device logout");
-    if (!debit || debit.ok !== true) {
-      return json(res, debit?.error === "insufficient_funds" ? 402 : 503, {
-        ok: false,
-        error: debit?.error === "insufficient_funds" ? "insufficient_funds" : "charge_failed",
-        price,
-        ...(Number.isFinite(Number(debit?.balance)) ? { balance: Number(debit.balance) } : {}),
-      });
+  // Yakuniy bosqich pul yechadi: bir vaqtda ikkita so'rov (ikki marta bosish,
+  // qayta yuborish) ikki marta yechmasligi uchun foydalanuvchi bo'yicha qulf.
+  const lockKey = String(user.id);
+  const isFinal = input.type === "verify-code2";
+  if (isFinal) {
+    if (deviceLogoutInFlight.has(lockKey)) {
+      return json(res, 429, { ok: false, error: "rate_limited" });
     }
-    chargedBalance = debit.balance;
+    deviceLogoutInFlight.add(lockKey);
   }
 
   try {
-    const result = await requestDeviceLogout(body, { apiKey: config.resellerApiKey });
-    if (input.type === "verify-code2") {
-      return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance });
-    }
-    return json(res, 200, result);
-  } catch (error) {
-    const reason = error instanceof JebrayResellerError ? error.reason : "service_unavailable";
-    if (input.type === "verify-code2" && reason !== "result_unknown") {
-      const refund = await wallet.adminAdjust(user.id, price, "Device logout refund");
-      if (!refund || refund.ok !== true) {
-        console.error("[DEVICE_LOGOUT_REFUND_FAILED]", user.id, price, refund?.error || "unknown");
-        return json(res, 500, { ok: false, error: "charge_refund_failed" });
+    let chargedBalance = null;
+    if (isFinal) {
+      const debit = await wallet.adminAdjust(user.id, -price, "Device logout");
+      if (!debit || debit.ok !== true) {
+        return json(res, debit?.error === "insufficient_funds" ? 402 : 503, {
+          ok: false,
+          error: debit?.error === "insufficient_funds" ? "insufficient_funds" : "charge_failed",
+          price,
+          ...(Number.isFinite(Number(debit?.balance)) ? { balance: Number(debit.balance) } : {}),
+        });
       }
+      chargedBalance = debit.balance;
     }
-    console.error("[DEVICE_LOGOUT_API_ERROR]", reason, error?.status || "");
 
-    const status = {
-      invalid_input: 400,
-      invalid_email: 400,
-      invalid_password: 400,
-      invalid_code: 400,
-      rate_limited: 429,
-      not_configured: 503,
-      timeout: 504,
-      network: 502,
-      result_unknown: 502,
-      service_unavailable: 502,
-    }[reason] || 422;
-    return json(res, status, {
-      ok: false,
-      error: reason,
-      ...(Number.isInteger(error?.remaining) ? { remaining: error.remaining } : {}),
-    });
+    try {
+      const result = await requestDeviceLogout(body, { apiKey: config.resellerApiKey });
+      if (isFinal) {
+        return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance });
+      }
+      return json(res, 200, result);
+    } catch (error) {
+      const reason = error instanceof JebrayResellerError ? error.reason : "service_unavailable";
+      const details = { email: input.email, price, status: error?.status || "" };
+      if (isFinal && reason !== "result_unknown") {
+        let refund = null;
+        try {
+          refund = await wallet.adminAdjust(user.id, price, "Device logout refund");
+        } catch (refundError) {
+          console.error("[DEVICE_LOGOUT_REFUND_ERROR]", refundError?.message);
+        }
+        if (!refund || refund.ok !== true) {
+          console.error("[DEVICE_LOGOUT_REFUND_FAILED]", user.id, price, refund?.error || "unknown");
+          await alertDeviceLogout(config, user, "charge_refund_failed", details);
+          return json(res, 500, { ok: false, error: "charge_refund_failed" });
+        }
+      }
+      console.error("[DEVICE_LOGOUT_API_ERROR]", reason, error?.status || "");
+
+      if (isFinal && reason === "result_unknown") {
+        await alertDeviceLogout(config, user, "result_unknown", details);
+      } else if (reason === "provider_auth" || reason === "insufficient_balance") {
+        await alertDeviceLogout(config, user, reason, details);
+      }
+
+      // Provayder kaliti/hisobi muammosi foydalanuvchiga "xizmat vaqtincha ishlamayapti".
+      const publicReason = reason === "provider_auth" ? "service_unavailable" : reason;
+      const status = {
+        invalid_input: 400,
+        invalid_email: 400,
+        invalid_password: 400,
+        invalid_code: 400,
+        rate_limited: 429,
+        not_configured: 503,
+        provider_auth: 502,
+        timeout: 504,
+        network: 502,
+        result_unknown: 502,
+        service_unavailable: 502,
+      }[reason] || 422;
+      return json(res, status, {
+        ok: false,
+        error: publicReason,
+        ...(Number.isInteger(error?.remaining) ? { remaining: error.remaining } : {}),
+      });
+    }
+  } finally {
+    if (isFinal) deviceLogoutInFlight.delete(lockKey);
   }
 }
 

@@ -1137,3 +1137,76 @@ test("arena/account app: Moonton-disabled endpoints (code 10407 接口下线) ar
     net.restore();
   }
 });
+
+test("account app: rejected reseller key hides the cause from the user, refunds the charge and alerts the admin", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: () => jsonResponse({ success: false, error: "Invalid API key" }, 401),
+  });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const userId = 552211;
+    supabase.setBalance(userId, 60000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000 });
+
+    const sent = await callAccount(app, {
+      action: "device_logout",
+      initData: signInitData({ id: userId }),
+      type: "send-code",
+      email: "owner@example.test",
+      password: "Pass1234",
+    });
+    assert.equal(sent.statusCode, 502);
+    assert.equal(sent.body.error, "service_unavailable");
+    assert.equal(supabase.walletAdjustments.length, 0);
+
+    const final = await callAccount(app, {
+      action: "device_logout",
+      initData: signInitData({ id: userId }),
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "123456",
+    });
+    assert.equal(final.statusCode, 502);
+    assert.equal(final.body.error, "service_unavailable");
+    assert.equal(supabase.getBalance(userId), 60000);
+    assert.deepEqual(supabase.walletAdjustments.map(({ delta }) => delta), [-25000, 25000]);
+
+    const alerts = net.telegram.filter((c) => c.method === "sendMessage" && /Jebray API kaliti/.test(c.payload.text || ""));
+    assert.equal(alerts.length, 1, "admin alert is sent once per cooldown window");
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: unknown final outcome alerts the admin because the charge is kept", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: () => jsonResponse({ error: "temporary provider error" }, 503),
+  });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true });
+    const userId = 552212;
+    supabase.setBalance(userId, 60000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000 });
+
+    const result = await callAccount(app, {
+      action: "device_logout",
+      initData: signInitData({ id: userId }),
+      type: "verify-code2",
+      email: "owner@example.test",
+      code: "123456",
+    });
+    assert.equal(result.body.error, "result_unknown");
+    assert.equal(supabase.getBalance(userId), 35000);
+    const alert = net.telegram.find((c) => c.method === "sendMessage" && /QAYTARILMAGAN/.test(c.payload.text || ""));
+    assert.ok(alert, "admin must be told about a kept charge");
+    assert.match(alert.payload.text, new RegExp(String(userId)));
+  } finally {
+    net.restore();
+  }
+});
