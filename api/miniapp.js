@@ -1950,9 +1950,20 @@ function buildApiTokenExtendedText(title, fromIso, toIso) {
 async function handleApiTokenExtend(req, res, body) {
   if (!(await requireAuth(req, res))) return;
   const id = toPgBigint(body.id);
+  // Ikki usul: N kunga (days) yoki aniq sanagacha (until = YYYY-MM-DD, Toshkent
+  // vaqti bo'yicha o'sha kunning oxirigacha).
+  const untilRaw = String(body.until || "").trim();
   const days = parseInt(body.days, 10);
   if (!id) return json(res, 400, { ok: false, error: "invalid_id" });
-  if (!Number.isFinite(days) || days < 1 || days > 3650) return json(res, 400, { ok: false, error: "invalid_days", message: "Muddat 1–3650 kun" });
+  let untilIso = null;
+  if (untilRaw) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(untilRaw) || !Number.isFinite(Date.parse(`${untilRaw}T23:59:59+05:00`))) {
+      return json(res, 400, { ok: false, error: "invalid_until", message: "Sana noto'g'ri" });
+    }
+    untilIso = new Date(`${untilRaw}T23:59:59+05:00`).toISOString();
+  } else if (!Number.isFinite(days) || days < 1 || days > 3650) {
+    return json(res, 400, { ok: false, error: "invalid_days", message: "Muddat 1–3650 kun" });
+  }
   const ownerRaw = String(body.owner_user_id ?? "").trim();
   if (ownerRaw && !/^\d{3,20}$/.test(ownerRaw)) return json(res, 400, { ok: false, error: "invalid_owner", message: "Telegram ID faqat raqamlardan iborat" });
 
@@ -1964,7 +1975,15 @@ async function handleApiTokenExtend(req, res, body) {
 
     const current = Date.parse(token.expires_at);
     const from = new Date(Math.max(Date.now(), Number.isFinite(current) ? current : 0)).toISOString();
-    const to = new Date(Date.parse(from) + days * 86400000).toISOString();
+    const to = untilIso || new Date(Date.parse(from) + days * 86400000).toISOString();
+    if (untilIso) {
+      if (Date.parse(untilIso) <= Date.parse(from)) {
+        return json(res, 400, { ok: false, error: "until_too_early", message: `Sana hozirgi muddatdan (${formatTashkentDate(from)}) keyin bo'lishi kerak` });
+      }
+      if (Date.parse(untilIso) - Date.now() > 3660 * 86400000) {
+        return json(res, 400, { ok: false, error: "invalid_until", message: "Ko'pi bilan 10 yil oldinga" });
+      }
+    }
 
     const patch = { expires_at: to };
     if (ownerRaw) patch.owner_user_id = ownerRaw;

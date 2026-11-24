@@ -3934,6 +3934,11 @@
         <input type="number" id="apiExtDays" min="1" max="3650" placeholder="Kun soni (1–3650)">
       </div>
       <div class="modal-field">
+        <label>yoki qaysi sanagacha</label>
+        <input type="date" id="apiExtUntil">
+        <div class="hint">Sana tanlansa — kun soni hisobga olinmaydi (o'sha kun oxirigacha amal qiladi).</div>
+      </div>
+      <div class="modal-field">
         <label>Egasining Telegram ID'si (xabar shu odamga boradi)</label>
         <input type="text" id="apiExtOwner" inputmode="numeric" maxlength="20" placeholder="Masalan: 7396686285">
         <div class="hint">Saqlanadi — keyingi safar o'zi to'ladi. Bo'sh qoldirilsa xabar yuborilmaydi.</div>
@@ -5398,15 +5403,43 @@
         var p = function (n) { return String(n).padStart(2, "0"); };
         return p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear();
       }
-      function updateApiExtPreview() {
-        var days = parseInt(document.getElementById("apiExtDays").value, 10);
-        document.querySelectorAll("#apiExtChips .ext-chip").forEach(function (c) { c.classList.toggle("active", Number(c.getAttribute("data-days")) === days); });
-        var box = document.getElementById("apiExtPreview");
-        if (!apiExtToken || !(days >= 1 && days <= 3650)) { box.style.display = "none"; return; }
+      function apiIsoDay(d) {
+        var p = function (n) { return String(n).padStart(2, "0"); };
+        return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+      }
+      // Tanlangan muddat: { to: Date } yoki xato matni.
+      function apiExtTarget() {
         var from = apiExtFrom(apiExtToken);
-        var to = new Date(from.getTime() + days * 86400000);
+        var until = document.getElementById("apiExtUntil").value;
+        if (until) {
+          var to = new Date(until + "T23:59:59+05:00");
+          if (!isFinite(to.getTime())) return { error: "Sana noto'g'ri" };
+          if (to.getTime() <= from.getTime()) return { error: "Sana " + apiFmt(from) + " dan keyin bo'lishi kerak" };
+          return { from: from, to: to, until: until };
+        }
+        var days = parseInt(document.getElementById("apiExtDays").value, 10);
+        if (!(days >= 1 && days <= 3650)) return { error: "Kun soni yoki sanani tanlang" };
+        return { from: from, to: new Date(from.getTime() + days * 86400000), days: days };
+      }
+      function updateApiExtPreview() {
+        var until = document.getElementById("apiExtUntil").value;
+        var days = parseInt(document.getElementById("apiExtDays").value, 10);
+        document.querySelectorAll("#apiExtChips .ext-chip").forEach(function (c) { c.classList.toggle("active", !until && Number(c.getAttribute("data-days")) === days); });
+        document.getElementById("apiExtDays").style.opacity = until ? ".45" : "1";
+        var box = document.getElementById("apiExtPreview");
+        if (!apiExtToken) { box.style.display = "none"; return; }
+        var target = apiExtTarget();
         box.style.display = "block";
-        box.innerHTML = "<b>" + esc(apiFmt(from)) + "</b> dan <b>" + esc(apiFmt(to)) + "</b> gacha" +
+        if (target.error) {
+          box.style.background = "rgba(245, 158, 11, .1)"; box.style.borderColor = "rgba(245, 158, 11, .35)";
+          box.textContent = target.error;
+          return;
+        }
+        box.style.background = ""; box.style.borderColor = "";
+        var from = target.from;
+        var to = target.to;
+        var span = Math.round((to.getTime() - from.getTime()) / 86400000);
+        box.innerHTML = "<b>" + esc(apiFmt(from)) + "</b> dan <b>" + esc(apiFmt(to)) + "</b> gacha" + (target.until ? " (~" + span + " kun)" : "") +
           (document.getElementById("apiExtOwner").value.trim() ? "<br>Egasiga bot orqali xabar yuboriladi." : "<br><span style=\"color:var(--text2)\">Telegram ID kiritilmagan — xabar yuborilmaydi.</span>");
       }
       function openApiExtend(t) {
@@ -5418,6 +5451,8 @@
           (expired ? '<span style="color:var(--red, #f43f5e)">muddati o\'tgan (' + esc(apiDate(t.expires_at)) + ")</span> — bugundan boshlab uzaytiriladi"
                    : "hozirgi muddat: <b>" + esc(apiDate(t.expires_at)) + "</b> gacha");
         document.getElementById("apiExtDays").value = "30";
+        document.getElementById("apiExtUntil").value = "";
+        document.getElementById("apiExtUntil").min = apiIsoDay(new Date(apiExtFrom(t).getTime() + 86400000));
         document.getElementById("apiExtOwner").value = t.owner_user_id ? String(t.owner_user_id) : "";
         updateApiExtPreview();
         document.getElementById("apiExtendModal").classList.add("open");
@@ -5429,14 +5464,16 @@
       window.closeApiExtend = closeApiExtend;
       function saveApiExtend() {
         if (!apiExtToken) return;
-        var days = parseInt(document.getElementById("apiExtDays").value, 10);
+        var target = apiExtTarget();
         var owner = document.getElementById("apiExtOwner").value.trim();
-        if (!(days >= 1 && days <= 3650)) { showToast("Muddat 1–3650 kun", "error"); return; }
+        if (target.error) { showToast(target.error, "error"); return; }
         if (owner && !/^\d{3,20}$/.test(owner)) { showToast("Telegram ID faqat raqamlardan iborat", "error"); return; }
         var btn = document.getElementById("apiExtSave");
         btn.disabled = true;
         hapticLight();
-        api("api_token_extend", { id: apiExtToken.id, days: days, owner_user_id: owner }).then(function (r) {
+        var payload = { id: apiExtToken.id, owner_user_id: owner };
+        if (target.until) payload.until = target.until; else payload.days = target.days;
+        api("api_token_extend", payload).then(function (r) {
           btn.disabled = false;
           if (!r.ok) { showToast("❌ " + (r.message || r.error || "Xatolik"), "error"); return; }
           closeApiExtend();
@@ -5449,7 +5486,12 @@
         });
       }
       window.saveApiExtend = saveApiExtend;
-      document.getElementById("apiExtDays").addEventListener("input", updateApiExtPreview);
+      document.getElementById("apiExtDays").addEventListener("input", function () {
+        document.getElementById("apiExtUntil").value = "";
+        updateApiExtPreview();
+      });
+      document.getElementById("apiExtUntil").addEventListener("input", updateApiExtPreview);
+      document.getElementById("apiExtUntil").addEventListener("change", updateApiExtPreview);
       document.getElementById("apiExtOwner").addEventListener("input", function (e) {
         e.target.value = e.target.value.replace(/\D/g, "").slice(0, 20);
         updateApiExtPreview();
@@ -5458,6 +5500,7 @@
         c.addEventListener("click", function () {
           hapticLight();
           document.getElementById("apiExtDays").value = c.getAttribute("data-days");
+          document.getElementById("apiExtUntil").value = "";
           updateApiExtPreview();
         });
       });
