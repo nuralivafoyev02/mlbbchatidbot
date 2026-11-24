@@ -899,3 +899,12 @@ test("shop: device logout texts — masked email in group, full email only to th
   assert.match(dm, /25 000 сум/);
   assert.match(dm, /1 500 сум/);
 });
+
+test("mandatory channel key is per bot (beta and prod share one database)", () => {
+  const { mandatoryChannelKey, LEGACY_MANDATORY_CHANNEL_KEY } = require("../api/_mandatory-channel-key.js");
+  assert.equal(mandatoryChannelKey("8606040417:AAAA"), "mandatory_channel:8606040417");
+  assert.equal(mandatoryChannelKey(" 8868870476:BBBB "), "mandatory_channel:8868870476");
+  assert.notEqual(mandatoryChannelKey("8606040417:x"), mandatoryChannelKey("8868870476:y"));
+  assert.equal(mandatoryChannelKey(""), LEGACY_MANDATORY_CHANNEL_KEY);
+  assert.equal(mandatoryChannelKey("not-a-token"), LEGACY_MANDATORY_CHANNEL_KEY);
+});
