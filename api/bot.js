@@ -419,6 +419,11 @@ async function processUpdate(update, options = {}) {
     return;
   }
 
+  // Admin panelda bloklangan foydalanuvchi — bot faqat bitta matn bilan javob beradi.
+  if (await handleBlockedUserUpdate(update, options)) {
+    return;
+  }
+
   const messageEntry = [
     ["message", update.message],
     ["edited_message", update.edited_message],
@@ -466,6 +471,81 @@ async function processUpdate(update, options = {}) {
     return;
   }
 }
+// ---------------------------------------------------------------------------
+// Bloklangan foydalanuvchilar (admin panel → Foydalanuvchilar → Bloklash).
+// bot_users.is_blocked (supabase/028). Beta va prod bitta bazani ishlatadi —
+// blok ikkala botda ham amal qiladi. Ro'yxat 60 soniya xotirada turadi:
+// eskirganda eski ro'yxat darhol ishlatiladi, yangisi fonda olinadi.
+// ---------------------------------------------------------------------------
+const BLOCKED_USER_TEXT =
+  "Botdan foydalanish huquqidan maxrum bo'lgan siz. Cheklovni olib tashlash uchun @ksava_org ga murojaat qiling.";
+const BLOCKED_USERS_TTL_MS = 60 * 1000;
+const BLOCKED_USERS_RETRY_MS = 30 * 1000;
+stats.blockedUsers ||= { ids: new Set(), fetchedAt: 0, failedAt: 0, refresh: null };
+
+function refreshBlockedUsers() {
+  const store = stats.blockedUsers;
+  if (store.refresh) return store.refresh;
+  const task = (async () => {
+    try {
+      const rows = await supabaseRequest("/bot_users?is_blocked=eq.true&select=user_id&limit=10000");
+      store.ids = new Set((Array.isArray(rows) ? rows : []).map((row) => String(row.user_id)));
+      store.fetchedAt = Date.now();
+    } catch (error) {
+      // 028 migratsiyasi hali qo'llanmagan yoki Supabase xatosi — hech kim bloklanmaydi.
+      store.failedAt = Date.now();
+      console.error("[BLOCKED_USERS_FETCH]", error.message);
+    }
+  })();
+  store.refresh = task;
+  task.finally(() => {
+    if (store.refresh === task) store.refresh = null;
+  });
+  return task;
+}
+
+async function isUserBlocked(userId, options = {}) {
+  const id = String(userId || "");
+  if (!id || isAdmin(id) || !isSupabaseConfigured() || isSupabaseAuthTemporarilyDisabled()) return false;
+  const store = stats.blockedUsers;
+  const now = Date.now();
+  if (now - store.fetchedAt >= BLOCKED_USERS_TTL_MS && now - store.failedAt >= BLOCKED_USERS_RETRY_MS) {
+    const refresh = refreshBlockedUsers();
+    const ctx = options.ctx;
+    if (store.fetchedAt > 0 && ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(refresh);
+    else await refresh;
+  }
+  return store.ids.has(id);
+}
+
+// true — update bloklangan foydalanuvchidan va javob berildi (boshqa ish qilinmaydi).
+async function handleBlockedUserUpdate(update, options = {}) {
+  const message = update.message || update.edited_message;
+  const from = message?.from || update.callback_query?.from || update.inline_query?.from || null;
+  if (!from?.id || from.is_bot) return false;
+  if (!(await isUserBlocked(from.id, options))) return false;
+
+  try {
+    if (message) {
+      // Guruhlarda jim turadi — faqat shaxsiy chatda javob.
+      if (!isGroupChat(message.chat) && update.message) {
+        await sendMessage(message.chat.id, BLOCKED_USER_TEXT, { remove_keyboard: true }, { plain: true });
+      }
+    } else if (update.callback_query) {
+      await telegram("answerCallbackQuery", {
+        callback_query_id: update.callback_query.id,
+        text: BLOCKED_USER_TEXT,
+        show_alert: true,
+      });
+    } else if (update.inline_query) {
+      await answerInlineQuery(update.inline_query.id, []);
+    }
+  } catch (error) {
+    console.error("[BLOCKED_USER_REPLY]", error.message);
+  }
+  return true;
+}
+
 const MEMBERSHIP_STATUS_OK = new Set(["creator", "administrator", "member"]);
 
 async function checkUserMembership(chatId, userId) {
