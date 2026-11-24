@@ -141,6 +141,14 @@ test("admin: block/unblock a user and extend an API key with a bot message to it
     const dm = state.telegram.find((c) => c.method === "sendMessage" && c.payload.chat_id === "7396686285");
     assert.equal(dm.payload.text, "Xaridingiz uchun raxmat!\nSizning kalitingiz muddati <b>shop.uz</b> 11.01.2027 dan 10.02.2027 gacha uzaytirildi.\nAloqa va yordam uchun: @vafoyev_n");
 
+    // Aniq sanagacha (Toshkent vaqti bo'yicha kun oxiri).
+    const until = await adminCall("api_token_extend", { id: 9, until: "2027-06-30", owner_user_id: "7396686285" }, cookie);
+    assert.equal(until.payload.data.expires_at, "2027-06-30T18:59:59.000Z");
+    const dm2 = state.telegram.filter((c) => c.method === "sendMessage" && c.payload.chat_id === "7396686285").at(-1);
+    assert.match(dm2.payload.text, /10\.02\.2027 dan 30\.06\.2027 gacha/);
+    assert.equal((await adminCall("api_token_extend", { id: 9, until: "2027-03-01" }, cookie)).payload.error, "until_too_early");
+    assert.equal((await adminCall("api_token_extend", { id: 9, until: "30.06.2027" }, cookie)).payload.error, "invalid_until");
+
     // Muddati o'tgan kalit bugundan boshlab uzaytiriladi.
     state.token.expires_at = "2020-01-01T00:00:00.000Z";
     const late = await adminCall("api_token_extend", { id: 9, days: 10 }, cookie);
