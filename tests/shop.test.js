@@ -908,3 +908,40 @@ test("mandatory channel key is per bot (beta and prod share one database)", () =
   assert.equal(mandatoryChannelKey(""), LEGACY_MANDATORY_CHANNEL_KEY);
   assert.equal(mandatoryChannelKey("not-a-token"), LEGACY_MANDATORY_CHANNEL_KEY);
 });
+
+test("027: new bot users get the admin panel default quotas; existing users untouched", async () => {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const db = new PGlite();
+  await db.exec(`
+    create role anon; create role authenticated; create role service_role bypassrls;
+    create table public.bot_users (user_id bigint primary key, updated_at timestamptz default now());
+    create table public.admin_settings (key text primary key, value jsonb, updated_at timestamptz default now());
+  `);
+  for (const file of ["012_full_info_quota.sql", "014_reset_pw_quota.sql"]) {
+    await db.exec(fs.readFileSync(path.join(__dirname, "..", "supabase", file), "utf8"));
+  }
+  await db.exec("insert into public.bot_users (user_id) values (1)"); // eski foydalanuvchi: 3 / 3
+  await db.exec(fs.readFileSync(path.join(__dirname, "..", "supabase", "027_default_quotas_from_settings.sql"), "utf8"));
+  // Qayta ishga tushirish xavfsiz.
+  await db.exec(fs.readFileSync(path.join(__dirname, "..", "supabase", "027_default_quotas_from_settings.sql"), "utf8"));
+
+  const quotas = async (id) => (await db.query("select full_info_quota f, reset_pw_quota r from public.bot_users where user_id = $1", [id])).rows[0];
+
+  await db.exec("insert into public.bot_users (user_id) values (2)");
+  assert.deepEqual(await quotas(2), { f: 1, r: 1 }, "no setting → 1 / 1");
+
+  await db.exec(`insert into public.admin_settings (key, value) values ('miniapp_settings', '{"defaultFullinfoQuota": 2, "defaultResetPwQuota": 0}')`);
+  await db.exec("insert into public.bot_users (user_id) values (3)");
+  assert.deepEqual(await quotas(3), { f: 2, r: 0 });
+
+  await db.exec(`update public.admin_settings set value = '{"defaultFullinfoQuota": "x"}'`);
+  await db.exec("insert into public.bot_users (user_id) values (4)");
+  assert.deepEqual(await quotas(4), { f: 1, r: 1 }, "bad value → 1");
+
+  assert.deepEqual(await quotas(1), { f: 3, r: 3 }, "existing rows untouched");
+  await db.exec("update public.bot_users set full_info_quota = 9 where user_id = 2");
+  assert.deepEqual(await quotas(2), { f: 9, r: 1 }, "updates are not affected");
+  await db.close();
+});
