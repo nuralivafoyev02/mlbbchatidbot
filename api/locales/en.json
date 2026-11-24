@@ -399,5 +399,19 @@
   "ml_hl_mtd": "💥 Most damage: {hero} — <b>{value}</b>",
   "ml_hl_mdt": "🛡 Most damage taken: {hero} — <b>{value}</b>",
   "ml_hl_mg": "💰 Most gold: {hero} — <b>{value}</b>",
-  "ml_summary_footer": "📱 Match history, heroes, friends and more — in <b>🎮 My account</b>."
+  "ml_summary_footer": "📱 Match history, heroes, friends and more — in <b>🎮 My account</b>.",
+  "cmd_change_email": "<code>/change_email</code> — change the account email (through the secure Mini App)",
+  "btn_change_email": "✉️ Change email",
+  "change_email_unavailable": "This feature isn't available right now. Send /change_email in a private chat with the bot.",
+  "label_change_email": "✉️ Email change",
+  "svc_dl_intro": "🔐 <b>Log out of all devices</b>\n\nEvery device signed in to your account (including strangers') will be logged out.\n\n<b>How it works:</b>\n1. Open the Mini App with the button below.\n2. Enter the Moonton email and password of the account — code 1 arrives by email.\n3. Enter code 1.\n4. Open Mobile Legends and keep the game open — code 2 arrives by email.\n5. Enter code 2 — all devices are logged out.\n\n🔒 Email and password are entered only in the Mini App — never send them in the chat.",
+  "svc_ce_intro": "✉️ <b>Change the account email</b>\n\nThe email linked to your Mobile Legends account will be replaced with a new one.\n\n<b>How it works:</b>\n1. Open the Mini App with the button below and enter the current Moonton email — a login code is sent to it (no password needed).\n2. Enter the login code.\n3. Enter code 1 from the current email.\n4. Enter the new email — code 2 is sent to it.\n5. Enter code 2 — the account email is changed.\n\n🔒 Enter codes only in the Mini App — never send them in the chat.",
+  "svc_price_line": "💰 Price: <b>{price}</b> — from your bot balance, charged only on success.",
+  "svc_balance_line": "💳 Your balance: <b>{balance}</b>",
+  "svc_ready": "✅ Your balance is enough — tap the button below to start.",
+  "svc_low": "⚠️ Not enough balance. Top up <b>{need}</b> first, then try again.",
+  "svc_balance_needed": "ℹ️ This service is paid from your bot balance — it needs at least {price}.",
+  "svc_open_dl": "🔐 Log out devices",
+  "svc_open_ce": "✉️ Change email",
+  "svc_topup": "💰 Top up {need}"
 }

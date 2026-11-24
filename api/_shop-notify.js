@@ -207,6 +207,61 @@ function buildMainGroupAdminCreditText(user, amount) {
   ].join("\n");
 }
 
+// Asosiy guruhga — kim "Email almashtirish" xizmatidan foydalangani. Email yozilmaydi.
+function buildMainGroupChangeEmailText(user, price) {
+  const mention = user.username
+    ? `@${escapeHtml(user.username)}`
+    : `<a href="tg://user?id=${escapeHtml(user.id)}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+  return [
+    "#sotuv #change_email",
+    `✉️ ${mention} akkaunt emailini almashtirdi — <b>${escapeHtml(formatSom(price))}</b>.`,
+  ].join("\n");
+}
+
+const CHANGE_EMAIL_DONE_TEXT = {
+  uz: (d) => [
+    "✅ <b>Akkaunt emaili almashtirildi</b>",
+    "",
+    `📤 Eski email: <code>${d.oldEmail}</code>`,
+    `📥 Yangi email: <code>${d.newEmail}</code>`,
+    `💳 Balansdan yechildi: <b>${d.price}</b>`,
+    `💰 Qoldiq: <b>${d.balance}</b>`,
+    "",
+    "Endi akkauntga yangi email orqali kiriladi. Yangi emailga kirish ma'lumotlarini hech kimga bermang.",
+  ],
+  ru: (d) => [
+    "✅ <b>Email аккаунта изменён</b>",
+    "",
+    `📤 Старый email: <code>${d.oldEmail}</code>`,
+    `📥 Новый email: <code>${d.newEmail}</code>`,
+    `💳 Списано с баланса: <b>${d.price}</b>`,
+    `💰 Остаток: <b>${d.balance}</b>`,
+    "",
+    "Теперь вход в аккаунт — через новый email. Никому не передавайте доступ к нему.",
+  ],
+  en: (d) => [
+    "✅ <b>Account email changed</b>",
+    "",
+    `📤 Old email: <code>${d.oldEmail}</code>`,
+    `📥 New email: <code>${d.newEmail}</code>`,
+    `💳 Charged from balance: <b>${d.price}</b>`,
+    `💰 Balance left: <b>${d.balance}</b>`,
+    "",
+    "Sign in with the new email from now on. Never share access to it.",
+  ],
+};
+
+function buildChangeEmailDoneText(lang, { oldEmail, newEmail, price, balance }) {
+  const unit = lang === "ru" ? "сум" : lang === "en" ? "UZS" : "so'm";
+  const fmt = (v) => `${String(Math.max(0, Math.round(Number(v) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ${unit}`;
+  return (CHANGE_EMAIL_DONE_TEXT[lang] || CHANGE_EMAIL_DONE_TEXT.uz)({
+    oldEmail: escapeHtml(oldEmail || "—"),
+    newEmail: escapeHtml(newEmail || "—"),
+    price: fmt(price),
+    balance: fmt(balance),
+  }).join("\n");
+}
+
 function buildTopupCreditedText(amount, balance) {
   return [
     "✅ <b>Balans to'ldirildi</b>",
@@ -322,7 +377,9 @@ module.exports = {
   buildFirstmailBuyText,
   buildLimitBuyText,
   buildMainGroupSaleText,
+  buildChangeEmailDoneText,
   buildDeviceLogoutDoneText,
+  buildMainGroupChangeEmailText,
   buildMainGroupDeviceLogoutText,
   buildMainGroupAdminCreditText,
   buildMainGroupTopupText,

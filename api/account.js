@@ -32,11 +32,19 @@ const {
   buildMainGroupTopupText,
   buildDeviceLogoutDoneText,
   buildMainGroupDeviceLogoutText,
+  buildChangeEmailDoneText,
+  buildMainGroupChangeEmailText,
   maskEmail,
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
-const { JebrayResellerError, requestDeviceLogout, validateDeviceLogoutInput } = require("./_jebray-reseller.js");
+const {
+  JebrayResellerError,
+  requestChangeEmail,
+  requestDeviceLogout,
+  validateChangeEmailInput,
+  validateDeviceLogoutInput,
+} = require("./_jebray-reseller.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 const { verifyCabinetLaunchToken } = require("./_cabinet-launch.js");
 
@@ -56,6 +64,8 @@ function getConfig() {
     linkSecret: arena.resolveLinkSecret(process.env),
     resellerApiKey: cleanEnv(process.env.JEBRAY_RESELLER_API_KEY),
     deviceLogoutEnabled: process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true",
+    // Email almashtirish — hozircha faqat beta (dev) muhitida yoqiladi.
+    changeEmailEnabled: process.env.JEBRAY_CHANGE_EMAIL_ENABLED === "true",
   };
 }
 
@@ -69,6 +79,7 @@ module.exports = async function handler(req, res) {
       const view = getView(req);
       if (view === "cabinet") return serveCabinet(res);
       if (view === "device_logout") return serveDeviceLogout(res);
+      if (view === "change_email") return serveChangeEmail(res);
       return serveApp(res);
     }
 
@@ -121,6 +132,11 @@ module.exports = async function handler(req, res) {
       // Qurilmalardan chiqish sahifasi uchun yengil bootstrap (akkauntlar/Arena yo'q).
       case "dl_bootstrap":
         return await handleDeviceLogoutBootstrap(res, ctx);
+      // Email almashtirish sahifasi (?view=change_email).
+      case "ce_bootstrap":
+        return await handleChangeEmailBootstrap(res, ctx);
+      case "change_email":
+        return await handleChangeEmail(res, ctx);
       // Shaxsiy kabinet (?view=cabinet)
       case "cabinet":
         return await handleCabinet(res, ctx);
@@ -244,7 +260,7 @@ const DEVICE_LOGOUT_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 // Administratorga best-effort xabar. Sozlama xatolari (kalit, provayder balansi)
 // har so'rovda takrorlanmasligi uchun 10 daqiqada bir marta.
 async function alertDeviceLogout(config, user, reason, details = {}) {
-  const throttled = reason === "provider_auth" || reason === "insufficient_balance" || reason === "not_configured";
+  const throttled = ["provider_auth", "insufficient_balance", "not_configured", "ce_not_configured"].includes(reason);
   if (throttled) {
     const last = deviceLogoutAlertedAt.get(reason) || 0;
     if (Date.now() - last < DEVICE_LOGOUT_ALERT_COOLDOWN_MS) return;
@@ -256,6 +272,9 @@ async function alertDeviceLogout(config, user, reason, details = {}) {
     not_configured: "Qurilmalardan chiqish: API kaliti sozlanmagan",
     result_unknown: "Qurilmalardan chiqish: natija noma'lum, pul yechilgan va QAYTARILMAGAN",
     charge_refund_failed: "Qurilmalardan chiqish: provayder rad etdi, lekin pul QAYTARILMADI",
+    ce_not_configured: "Email almashtirish: API kaliti sozlanmagan",
+    ce_result_unknown: "Email almashtirish: natija noma'lum, pul yechilgan va QAYTARILMAGAN",
+    ce_charge_refund_failed: "Email almashtirish: provayder rad etdi, lekin pul QAYTARILMADI",
   };
   const lines = [
     `⚠️ <b>${escapeHtml(titles[reason] || reason)}</b>`,
@@ -263,6 +282,7 @@ async function alertDeviceLogout(config, user, reason, details = {}) {
     `Foydalanuvchi: <code>${escapeHtml(user.id)}</code>`,
   ];
   if (details.email) lines.push(`Email: <code>${escapeHtml(details.email)}</code>`);
+  if (details.emailNew) lines.push(`Yangi email: <code>${escapeHtml(details.emailNew)}</code>`);
   if (details.price) lines.push(`Summa: ${escapeHtml(details.price)}`);
   if (details.status) lines.push(`Provayder HTTP: ${escapeHtml(details.status)}`);
   try {
@@ -282,15 +302,15 @@ function deviceLogoutNote(base, email) {
 
 // Admin panel → "Bugun jami tekshirishlar" va kunlik hisobot bot_usage_events
 // dan sanaydi — muvaffaqiyatli chiqish action=device_logout bo'lib yoziladi.
-async function logDeviceLogoutUsage(config, user) {
+async function logResellerUsage(config, user, action) {
   try {
     await supabaseRequest(config, "/bot_usage_events", {
       method: "POST",
       prefer: "return=minimal",
-      body: { user_id: String(user.id), chat_id: String(user.id), update_type: "miniapp", action: "device_logout" },
+      body: { user_id: String(user.id), chat_id: String(user.id), update_type: "miniapp", action },
     });
   } catch (error) {
-    console.error("[DEVICE_LOGOUT_USAGE]", error?.message);
+    console.error("[RESELLER_USAGE]", action, error?.message);
   }
 }
 
@@ -393,7 +413,7 @@ async function handleDeviceLogout(res, { config, user, body }) {
       if (isFinal) {
         await Promise.allSettled([
           notifyDeviceLogoutDone(config, user, { email: input.email, price, balance: chargedBalance }),
-          logDeviceLogoutUsage(config, user),
+          logResellerUsage(config, user, "device_logout"),
         ]);
         return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance, email: maskEmail(input.email) });
       }
@@ -450,6 +470,224 @@ async function handleDeviceLogout(res, { config, user, body }) {
   } finally {
     if (isFinal) deviceLogoutInFlight.delete(lockKey);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Email almashtirish (Jebray /reseller/v1/changeemail) — device logout bilan bir
+// xil qoida: balans boshida tekshiriladi, pul FAQAT confirm bosqichida yechiladi,
+// provayder rad etsa qaytariladi, natija noma'lum bo'lsa admin ogohlantiriladi.
+// Jebray session_id foydalanuvchiga HMAC bilan bog'lanadi — boshqa user
+// birovning sessiyasini o'z nomidan davom ettira olmaydi.
+// ---------------------------------------------------------------------------
+const changeEmailInFlight = new Set();
+
+function changeEmailSecret(config) {
+  return `${config.botToken}:change-email`;
+}
+
+function sealChangeEmailSession(config, userId, sessionId) {
+  const sig = require("node:crypto").createHmac("sha256", changeEmailSecret(config)).update(`${userId}:${sessionId}`).digest("base64url").slice(0, 22);
+  return `${sessionId}.${sig}`;
+}
+
+function openChangeEmailSession(config, userId, token) {
+  const text = String(token || "");
+  const dot = text.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const sessionId = text.slice(0, dot);
+  const expected = sealChangeEmailSession(config, userId, sessionId);
+  const a = Buffer.from(expected);
+  const b = Buffer.from(text);
+  return a.length === b.length && require("node:crypto").timingSafeEqual(a, b) ? sessionId : null;
+}
+
+function changeEmailNote(base, oldEmail, newEmail) {
+  const from = maskEmail(oldEmail);
+  const to = maskEmail(newEmail);
+  return from || to ? `${base} · ${from || "?"} → ${to || "?"}` : base;
+}
+
+async function handleChangeEmailBootstrap(res, { config, user }) {
+  const enabled = config.changeEmailEnabled && Boolean(config.resellerApiKey);
+  const wallet = enabled ? createWalletFor(config) : null;
+  const [lang, walletConfig, balance] = await Promise.all([
+    loadPreferredLanguage(config, user),
+    wallet ? wallet.getConfig() : null,
+    wallet ? wallet.getBalance(user.id) : null,
+  ]);
+  const price = walletConfig?.changeEmailPrice || walletLib.TOPUP_DEFAULTS.changeEmailPrice;
+  return json(res, 200, {
+    ok: true,
+    lang,
+    enabled,
+    price,
+    balance: Number.isFinite(Number(balance)) ? Number(balance) : null,
+    affordable: Number.isFinite(Number(balance)) && Number(balance) >= price,
+    botUsername: config.botUsername || null,
+  });
+}
+
+const CHANGE_EMAIL_STATUS = {
+  invalid_input: 400,
+  invalid_email: 400,
+  invalid_new_email: 400,
+  invalid_code: 400,
+  wrong_code: 400,
+  email_taken: 409,
+  session_expired: 410,
+  account_banned: 403,
+  rate_limited: 429,
+  not_configured: 503,
+  maintenance: 503,
+  provider_auth: 502,
+  insufficient_balance: 502,
+  timeout: 504,
+  network: 502,
+  result_unknown: 502,
+  service_unavailable: 502,
+};
+
+async function handleChangeEmail(res, { config, user, body }) {
+  if (!config.changeEmailEnabled) {
+    return json(res, 404, { ok: false, error: "not_available" });
+  }
+  if (!config.resellerApiKey) {
+    await alertDeviceLogout(config, user, "ce_not_configured");
+    return json(res, 503, { ok: false, error: "not_configured" });
+  }
+
+  const step = String(body.step || "");
+  let sessionId = null;
+  if (step && step !== "start") {
+    sessionId = openChangeEmailSession(config, String(user.id), body.session);
+    if (!sessionId) return json(res, 410, { ok: false, error: "session_expired" });
+  }
+
+  let input;
+  try {
+    input = validateChangeEmailInput({ ...body, sessionId });
+  } catch (error) {
+    const reason = error instanceof JebrayResellerError ? error.reason : "invalid_input";
+    return json(res, CHANGE_EMAIL_STATUS[reason] || 400, { ok: false, error: reason });
+  }
+
+  const wallet = createWalletFor(config);
+  const walletConfig = await wallet.getConfig();
+  const price = walletConfig.changeEmailPrice;
+  if (step === "start") {
+    const balance = await wallet.getBalance(user.id);
+    if (balance < price) return json(res, 402, { ok: false, error: "insufficient_funds", price, balance });
+  }
+
+  // Ko'rsatish uchun (yozuv va xabar): eski/yangi email mijozdan keladi,
+  // formati tekshiriladi; provayder javobidagisi ustun.
+  const shownOld = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.email || "").trim()) ? String(body.email).trim().slice(0, 254) : "";
+  const shownNew = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.emailNew || "").trim()) ? String(body.emailNew).trim().slice(0, 254) : "";
+
+  const isFinal = step === "confirm";
+  const lockKey = String(user.id);
+  if (isFinal) {
+    if (changeEmailInFlight.has(lockKey)) return json(res, 429, { ok: false, error: "rate_limited" });
+    changeEmailInFlight.add(lockKey);
+  }
+
+  try {
+    let chargedBalance = null;
+    if (isFinal) {
+      const debit = await wallet.adminAdjust(user.id, -price, changeEmailNote("Change email", shownOld, shownNew));
+      if (!debit || debit.ok !== true) {
+        return json(res, debit?.error === "insufficient_funds" ? 402 : 503, {
+          ok: false,
+          error: debit?.error === "insufficient_funds" ? "insufficient_funds" : "charge_failed",
+          price,
+          ...(Number.isFinite(Number(debit?.balance)) ? { balance: Number(debit.balance) } : {}),
+        });
+      }
+      chargedBalance = debit.balance;
+    }
+
+    try {
+      const result = await requestChangeEmail(input, { apiKey: config.resellerApiKey });
+      if (step === "start") {
+        return json(res, 200, { ok: true, step, session: sealChangeEmailSession(config, String(user.id), result.sessionId) });
+      }
+      if (!isFinal) return json(res, 200, { ok: true, step });
+
+      const oldEmail = result.oldEmail || shownOld;
+      const newEmail = result.newEmail || shownNew;
+      await Promise.allSettled([
+        notifyChangeEmailDone(config, user, { oldEmail, newEmail, price, balance: chargedBalance }),
+        logResellerUsage(config, user, "change_email"),
+      ]);
+      return json(res, 200, {
+        ok: true,
+        step,
+        chargedAmount: price,
+        balance: chargedBalance,
+        oldEmail: maskEmail(oldEmail),
+        newEmail,
+      });
+    } catch (error) {
+      const reason = error instanceof JebrayResellerError ? error.reason : "service_unavailable";
+      const details = { email: shownOld, emailNew: shownNew, price, status: error?.status || "" };
+      if (isFinal && reason !== "result_unknown") {
+        let refund = null;
+        try {
+          refund = await wallet.adminAdjust(user.id, price, changeEmailNote("Change email refund", shownOld, shownNew));
+        } catch (refundError) {
+          console.error("[CHANGE_EMAIL_REFUND_ERROR]", refundError?.message);
+        }
+        if (!refund || refund.ok !== true) {
+          console.error("[CHANGE_EMAIL_REFUND_FAILED]", user.id, price, refund?.error || "unknown");
+          await alertDeviceLogout(config, user, "ce_charge_refund_failed", details);
+          return json(res, 500, { ok: false, error: "charge_refund_failed" });
+        }
+      }
+      console.error("[CHANGE_EMAIL_API_ERROR]", step, reason, error?.status || "", error?.detail || "");
+
+      if (isFinal && reason === "result_unknown") {
+        await alertDeviceLogout(config, user, "ce_result_unknown", details);
+      } else if (reason === "provider_auth" || reason === "insufficient_balance") {
+        await alertDeviceLogout(config, user, reason, details);
+      }
+
+      const publicReason = reason === "provider_auth" || reason === "insufficient_balance" ? "service_unavailable" : reason;
+      return json(res, CHANGE_EMAIL_STATUS[reason] || 422, {
+        ok: false,
+        error: publicReason,
+        ...(Number.isInteger(error?.remaining) ? { remaining: error.remaining } : {}),
+      });
+    }
+  } finally {
+    if (isFinal) changeEmailInFlight.delete(lockKey);
+  }
+}
+
+async function notifyChangeEmailDone(config, user, { oldEmail, newEmail, price, balance }) {
+  if (!config.botToken) return;
+  const sendUser = async () => {
+    const lang = await loadPreferredLanguage(config, user);
+    const response = await telegramFetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: String(user.id),
+        text: enrichPremiumEmojis(buildChangeEmailDoneText(lang, { oldEmail, newEmail, price, balance })),
+        parse_mode: "HTML",
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!data || !data.ok) console.error("[CHANGE_EMAIL_NOTIFY_USER]", response.status, String(data?.description || "").slice(0, 200));
+  };
+  const sendGroup = async () => {
+    const who = user.username || user.first_name ? user : await loadLaunchUser(config, String(user.id));
+    const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+    await notifier.notifyMainGroup(buildMainGroupChangeEmailText(who, price), user.id);
+  };
+  const results = await Promise.allSettled([sendUser(), sendGroup()]);
+  results.forEach((r) => {
+    if (r.status === "rejected") console.error("[CHANGE_EMAIL_NOTIFY]", r.reason?.message || r.reason);
+  });
 }
 
 // "Mening akkauntim": egasiga uning Arena JWT'si (Mini App Arena'ga o'zi boradi).
@@ -1269,6 +1507,10 @@ function getView(req) {
 }
 
 // "Qurilmalardan chiqish" — alohida yengil sahifa (Arena skripti kerak emas).
+function serveChangeEmail(res) {
+  return serveHtml(res, path.join(__dirname, "change-email.html"), "#0a0e1a", { arena: false });
+}
+
 function serveDeviceLogout(res) {
   return serveHtml(res, path.join(__dirname, "device-logout.html"), "#0a0e1a", { arena: false });
 }

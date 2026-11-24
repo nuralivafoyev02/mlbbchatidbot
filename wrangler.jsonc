@@ -156,6 +156,8 @@
         "FULL_INFO_TIMEOUT_MS": "30000",
         "FULL_INFO_RETRIES": "2",
         "JEBRAY_DEVICE_LOGOUT_ENABLED": "true",
+        // Email almashtirish — hozircha faqat beta (dev).
+        "JEBRAY_CHANGE_EMAIL_ENABLED": "true",
         "TELEGRAM_TIMEOUT_MS": "5000",
         "BROADCAST_RATE_PER_SEC": "25",
         "BROADCAST_BATCH_SIZE": "25",

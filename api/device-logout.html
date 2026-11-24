@@ -264,7 +264,7 @@
           unknown_title: "Natija tasdiqlanmadi",
           unknown_text: "Oxirgi so'rov natijasi noma'lum. Takrorlamang — avval o'yinda akkaunt holatini tekshiring. Muammo bo'lsa, yordamga yozing.",
           low_title: "Balans yetarli emas",
-          low_text: "Xizmat narxi {price}, balansingiz {balance}. Balansni to'ldirib, qayta oching.",
+          low_text: "Xizmat narxi {price}, balansingiz {balance}. Avval balansingizni kamida {need} ga to'ldiring.",
           topup: "Balansni to'ldirish",
           off_title: "Hozircha mavjud emas",
           off_text: "Bu xizmat hozir yoqilmagan. Keyinroq qayta urinib ko'ring.",
@@ -321,7 +321,7 @@
           unknown_title: "Результат не подтверждён",
           unknown_text: "Результат последнего запроса неизвестен. Не повторяйте — сначала проверьте аккаунт в игре. При проблеме напишите в поддержку.",
           low_title: "Недостаточно средств",
-          low_text: "Цена услуги {price}, ваш баланс {balance}. Пополните баланс и откройте снова.",
+          low_text: "Цена услуги {price}, ваш баланс {balance}. Сначала пополните баланс минимум на {need}.",
           topup: "Пополнить баланс",
           off_title: "Пока недоступно",
           off_text: "Сервис сейчас выключен. Попробуйте позже.",
@@ -378,7 +378,7 @@
           unknown_title: "Result not confirmed",
           unknown_text: "The final request's result is unknown. Don't repeat it — check the account in the game first. Contact support if something is wrong.",
           low_title: "Balance too low",
-          low_text: "The service costs {price}; your balance is {balance}. Top up and open this again.",
+          low_text: "The service costs {price}; your balance is {balance}. Top up at least {need} first.",
           topup: "Top up balance",
           off_title: "Not available yet",
           off_text: "This service is currently turned off. Please try later.",
@@ -481,7 +481,8 @@
       }
       function openWallet() {
         haptic("light");
-        location.href = location.pathname + "?view=cabinet";
+        var need = Math.max(0, Number(state.price) - Number(state.balance || 0));
+        location.href = location.pathname + "?view=cabinet&open=topup" + (need ? "&need=" + need : "");
       }
       function openMail() {
         haptic("light");
@@ -536,7 +537,7 @@
 
       function renderCredentials() {
         if (!state.affordable) {
-          return stateView("warn", "wallet2", L("low_title"), fill(L("low_text"), { price: money(state.price), balance: money(state.balance || 0) }), [
+          return stateView("warn", "wallet2", L("low_title"), fill(L("low_text"), { price: money(state.price), balance: money(state.balance || 0), need: money(Math.max(0, Number(state.price) - Number(state.balance || 0))) }), [
             { label: L("topup"), cls: "primary", icon: "plus-circle", onClick: openWallet },
             { label: L("back_bot"), cls: "ghost", onClick: openBot }
           ]);

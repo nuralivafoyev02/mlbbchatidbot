@@ -440,7 +440,11 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     );
     const dlGet = await call("shop_dl_get", {}, cookie);
     assert.equal(dlGet.payload.data.price, 31000);
-    assert.equal(dlGet.payload.data.service.enabled, false);
+    assert.equal(dlGet.payload.data.state.enabled, false);
+    const ceSaved = await call("shop_dl_save", { service: "change_email", price: "33000" }, cookie);
+    assert.equal(ceSaved.payload.data.price, 33000);
+    assert.deepEqual([settings.get("wallet_config").changeEmailPrice, settings.get("wallet_config").deviceLogoutPrice], [33000, 31000]);
+    assert.equal((await call("shop_dl_get", { service: "nope" }, cookie)).payload.error, "not_found");
     assert.equal((await call("shop_dl_save", { price: "1000" })).status, 401);
   } finally {
     global.fetch = originalFetch;

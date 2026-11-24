@@ -3219,6 +3219,14 @@
               </div>
               <div class="action-name">Qurilmalardan chiqish</div>
             </div>
+            <div class="action-card pink">
+              <div class="action-icon"><i class="bi bi-envelope-arrow-up"></i></div>
+              <div class="action-count" id="actChangeEmail">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
+              <div class="action-name">Email almashtirish</div>
+            </div>
           </div>
         </div>
         <div class="card">
@@ -3408,6 +3416,14 @@
             </div>
             <i class="bi bi-chevron-right shop-cat-arrow"></i>
           </div>
+          <div class="shop-cat devlogout" onclick="openChangeEmail()">
+            <div class="shop-cat-icon"><i class="bi bi-envelope-arrow-up"></i></div>
+            <div class="shop-cat-body">
+              <div class="shop-cat-title">Email almashtirish <span class="dn-admin-tag">BETA</span></div>
+              <div class="shop-cat-meta" id="shopCeMeta">Yuklanmoqda...</div>
+            </div>
+            <i class="bi bi-chevron-right shop-cat-arrow"></i>
+          </div>
           <div class="hint" style="font-size:11px;color:var(--text2);margin-top:6px;padding:0 4px">
             <b>Limit narxlari</b> botdagi <b>🛒 Do'kon → 📦 Limitlar</b> bo'limida va <b>💼 Shaxsiy kabinet</b>dagi <b>$</b> tugmasida ko'rinadi.
             Firstmail'ga qo'shilgan pochtalar botdagi <b>🛒 Do'kon → 📧 Firstmail</b> bo'limida ko'rinadi.
@@ -3465,7 +3481,7 @@
         <div id="shopDeviceLogout" style="display:none">
           <div class="shop-title-row">
             <button class="shop-back" onclick="closeDeviceLogout()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
-            <h2><i class="bi bi-phone-flip"></i> Qurilmalardan chiqish</h2>
+            <h2 id="dlScreenTitle"><i class="bi bi-phone-flip"></i> Qurilmalardan chiqish</h2>
             <button class="refresh-btn" style="margin:0" onclick="loadDeviceLogout()"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div class="dl-card">
@@ -4521,7 +4537,8 @@
         reset_pw: "🔐 Parolni tiklash",
         start: "🚀 /start",
         feedback: "💬 Fikrlar",
-        device_logout: "📱 Qurilmalardan chiqish"
+        device_logout: "📱 Qurilmalardan chiqish",
+        change_email: "✉️ Email almashtirish"
       };
 
       var ACTIVE_PERIOD_LABELS = {
@@ -4594,6 +4611,7 @@
           animateNumber("actStart", b.start || 0);
           animateNumber("actFeedback", b.feedback || 0);
           animateNumber("actDeviceLogout", b.device_logout || 0);
+          animateNumber("actChangeEmail", b.change_email || 0);
           animateNumber("statDaily", d.dailyUsers || 0);
           animateNumber("statMonthly", d.monthlyUsers || 0);
           animateNumber("statTotalUsers", d.totalUsers || 0);
@@ -6724,10 +6742,11 @@
       function wlTxHtml(t) {
         var plus = t.delta > 0;
         // "Device logout[ refund][ · ab***@mail.com]" — kabinetdagi bilan bir xil format.
-        var dev = t.kind === "admin" ? /^Device logout( refund)?(?:\s*·\s*(.+))?$/.exec(t.note || "") : null;
-        var title = dev ? (dev[1] ? "Qurilmalardan chiqish — qaytarildi" : "Qurilmalardan chiqish") : (WL_TX[t.kind] || t.kind);
-        var note = dev ? dev[2] || "" : t.note;
-        var ico = dev ? (dev[1] ? "arrow-counterclockwise" : "phone-flip") : plus ? "plus-lg" : "dash-lg";
+        var dev = t.kind === "admin" ? /^(Device logout|Change email)( refund)?(?:\s*·\s*(.+))?$/.exec(t.note || "") : null;
+        var svcName = dev ? (dev[1] === "Change email" ? "Email almashtirish" : "Qurilmalardan chiqish") : "";
+        var title = dev ? (dev[2] ? svcName + " — qaytarildi" : svcName) : (WL_TX[t.kind] || t.kind);
+        var note = dev ? dev[3] || "" : t.note;
+        var ico = dev ? (dev[2] ? "arrow-counterclockwise" : dev[1] === "Change email" ? "envelope-arrow-up" : "phone-flip") : plus ? "plus-lg" : "dash-lg";
         return '<div class="fm-item" style="cursor:default"><div class="fm-avatar"><i class="bi bi-' + ico + '"></i></div>' +
           '<div class="fm-body"><div class="fm-email">' + esc(title) + (note ? ' <span style="color:var(--text2);font-weight:500">· ' + esc(note) + "</span>" : "") + "</div>" +
           '<div class="fm-meta">' + esc(wlTime(t.created_at)) + " · qoldiq " + esc(formatSom(t.balance_after)) + "</div></div>" +
@@ -6880,10 +6899,17 @@
       window.saveWalletConfig = saveWalletConfig;
 
       /* -----------------------------------------------------------------------
-         Do'kon → Qurilmalardan chiqish: narx (wallet_config.deviceLogoutPrice)
+         Do'kon → pullik Jebray xizmatlari (Qurilmalardan chiqish, Email
+         almashtirish): narx (wallet_config) va statistika. Bitta ekran, xizmat
+         dlService bo'yicha almashadi.
       ----------------------------------------------------------------------- */
-      var dlData = null;
-      var dlSeq = 0;
+      var DL_SERVICES = {
+        device_logout: { title: "Qurilmalardan chiqish", icon: "phone-flip", meta: "shopDlMeta", button: "«Qurilmalardan chiqish»" },
+        change_email: { title: "Email almashtirish", icon: "envelope-arrow-up", meta: "shopCeMeta", button: "«Emailni almashtirish»" }
+      };
+      var dlService = "device_logout";
+      var dlCache = {};
+      var dlSeq = {};
 
       function dlDigits(v) { return String(v || "").replace(/\D/g, "").slice(0, 10); }
       function dlFormatInput(el) {
@@ -6899,19 +6925,27 @@
       }
       window.dlSetPrice = dlSetPrice;
 
+      function renderDlMeta(service) {
+        var data = dlCache[service];
+        var meta = document.getElementById(DL_SERVICES[service].meta);
+        if (!data || !meta) return;
+        var st = data.stats;
+        meta.textContent = formatSom(data.price) + (data.state && data.state.enabled ? " · yoqilgan" : " · o'chiq") + (st ? " · bugun " + Math.max(0, st.today) + " ta" : "");
+      }
+
       function renderDeviceLogout() {
-        var meta = document.getElementById("shopDlMeta");
-        if (!dlData) return;
-        var svc = dlData.service || {};
-        var st = dlData.stats;
-        if (meta) meta.textContent = formatSom(dlData.price) + (svc.enabled ? " · yoqilgan" : " · o'chiq") + (st ? " · bugun " + Math.max(0, st.today) + " ta" : "");
-        if (!dlView) return;
+        renderDlMeta(dlService);
+        var data = dlCache[dlService];
+        if (!dlView || !data) return;
+        var svcInfo = DL_SERVICES[dlService];
+        var state = data.state || {};
+        var st = data.stats;
         var input = document.getElementById("dlPrice");
-        if (document.activeElement !== input) { input.value = String(dlData.price || ""); dlFormatInput(input); }
-        document.getElementById("dlDot").classList.toggle("on", Boolean(svc.enabled));
-        document.getElementById("dlStatus").textContent = svc.enabled
-          ? "Xizmat yoqilgan — botda «Qurilmalardan chiqish» tugmasi ko'rinadi"
-          : !svc.flagOn ? "Xizmat o'chiq (JEBRAY_DEVICE_LOGOUT_ENABLED yoqilmagan)" : "Xizmat o'chiq — JEBRAY_RESELLER_API_KEY sozlanmagan";
+        if (document.activeElement !== input) { input.value = String(data.price || ""); dlFormatInput(input); }
+        document.getElementById("dlDot").classList.toggle("on", Boolean(state.enabled));
+        document.getElementById("dlStatus").textContent = state.enabled
+          ? "Xizmat yoqilgan — botda " + svcInfo.button + " tugmasi ko'rinadi"
+          : !state.flagOn ? "Xizmat o'chiq (" + (state.flag || "flag") + " yoqilmagan)" : "Xizmat o'chiq — JEBRAY_RESELLER_API_KEY sozlanmagan";
         var statHtml = function (n, sum) {
           return esc(Math.max(0, n) + " ta") + '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-top:2px">' + esc(formatSom(Math.max(0, sum))) + "</div>";
         };
@@ -6922,48 +6956,67 @@
           : "";
       }
 
-      function loadDeviceLogout() {
-        var seq = ++dlSeq;
-        api("shop_dl_get", {}).then(function (result) {
-          if (seq !== dlSeq) return;
+      function loadDlService(service) {
+        var seq = dlSeq[service] = (dlSeq[service] || 0) + 1;
+        return api("shop_dl_get", { service: service }).then(function (result) {
+          if (seq !== dlSeq[service]) return;
           if (!result.ok || !result.data) {
-            var meta = document.getElementById("shopDlMeta");
+            var meta = document.getElementById(DL_SERVICES[service].meta);
             if (meta) meta.textContent = "Ma'lumotni yuklab bo'lmadi";
-            if (dlView) showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
+            if (dlView && service === dlService) showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
             return;
           }
-          dlData = result.data;
-          renderDeviceLogout();
+          dlCache[service] = result.data;
+          if (service === dlService) renderDeviceLogout(); else renderDlMeta(service);
         }).catch(function () {
-          if (seq !== dlSeq) return;
-          if (dlView) showToast("❌ Server bilan bog'lanishda xatolik", "error");
+          if (dlView && service === dlService) showToast("❌ Server bilan bog'lanishda xatolik", "error");
         });
+      }
+
+      // Do'kon bosh sahifasi (ikkala karta) yoki ochiq ekran yangilanadi.
+      function loadDeviceLogout() {
+        if (dlView) return loadDlService(dlService);
+        loadDlService("device_logout");
+        loadDlService("change_email");
       }
       window.loadDeviceLogout = loadDeviceLogout;
 
-      function showDlView(open) {
+      function showDlView(open, service) {
+        if (service) dlService = service;
         dlView = open;
+        var info = DL_SERVICES[dlService];
+        document.getElementById("dlScreenTitle").innerHTML = '<i class="bi bi-' + info.icon + '"></i> ' + esc(info.title);
         document.getElementById("shopHome").style.display = open ? "none" : "block";
         document.getElementById("shopDeviceLogout").style.display = open ? "block" : "none";
+        if (open) {
+          document.getElementById("dlPrice").value = "";
+          ["dlToday", "dlTotal"].forEach(function (id) { document.getElementById(id).textContent = "—"; });
+          document.getElementById("dlStatsHint").textContent = "";
+          document.getElementById("dlStatus").textContent = "Yuklanmoqda...";
+        }
         updateShopFab();
         if (open) renderDeviceLogout();
       }
-      function openDeviceLogout() { hapticLight(); showDlView(true); loadDeviceLogout(); }
+      function openDeviceLogout() { hapticLight(); showDlView(true, "device_logout"); loadDlService("device_logout"); }
+      function openChangeEmail() { hapticLight(); showDlView(true, "change_email"); loadDlService("change_email"); }
       function closeDeviceLogout() { hapticLight(); showDlView(false); }
       window.openDeviceLogout = openDeviceLogout;
+      window.openChangeEmail = openChangeEmail;
       window.closeDeviceLogout = closeDeviceLogout;
 
       function saveDeviceLogoutPrice() {
         var btn = document.getElementById("dlSaveBtn");
+        var service = dlService;
+        var data = dlCache[service];
         var price = Number(dlDigits(document.getElementById("dlPrice").value));
         if (!price || price < 1 || price > 1000000000) { showToast("❌ Narx 1 dan 1 000 000 000 so'mgacha bo'lsin", "error"); return; }
-        if (dlData && price === Number(dlData.price)) { showToast("Narx o'zgarmadi", "info"); return; }
+        if (data && price === Number(data.price)) { showToast("Narx o'zgarmadi", "info"); return; }
         btn.disabled = true;
-        api("shop_dl_save", { price: price }).then(function (result) {
+        api("shop_dl_save", { service: service, price: price }).then(function (result) {
           btn.disabled = false;
           if (!result.ok || !result.data) { showToast("❌ " + (result.message || "Xatolik"), "error"); return; }
-          if (dlData) dlData.price = result.data.price;
-          if (wlData && wlData.config) wlData.config.deviceLogoutPrice = result.data.price;
+          if (data) data.price = result.data.price;
+          if (wlData && wlData.config) wlData.config[service === "change_email" ? "changeEmailPrice" : "deviceLogoutPrice"] = result.data.price;
           renderDeviceLogout();
           showToast("✅ Narx saqlandi: " + formatSom(result.data.price), "success");
         }).catch(function () {
