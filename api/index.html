@@ -3703,6 +3703,7 @@
             <input class="settings-input" type="number" id="apiTokDays" min="1" max="3650" value="365" aria-label="Muddat (kun)">
             <button class="wl-btn green" id="apiTokBtn" onclick="createApiToken()"><i class="bi bi-key"></i></button>
           </div>
+          <input class="settings-input" type="text" id="apiTokOwner" inputmode="numeric" maxlength="20" placeholder="Egasining Telegram ID'si (ixtiyoriy — muddat tugashidan 7 kun oldin xabar oladi)" style="margin-top:8px;width:100%">
           <div class="hint pay-hint" style="margin-top:4px">Ikkinchi maydon — amal qilish muddati (kun).</div>
           <div id="apiTokNew"></div>
 
@@ -3941,7 +3942,8 @@
       <div class="modal-field">
         <label>Egasining Telegram ID'si (xabar shu odamga boradi)</label>
         <input type="text" id="apiExtOwner" inputmode="numeric" maxlength="20" placeholder="Masalan: 7396686285">
-        <div class="hint">Saqlanadi — keyingi safar o'zi to'ladi. Bo'sh qoldirilsa xabar yuborilmaydi.</div>
+        <div class="hint">Bir marta kiritiladi va kalitga bog'lanadi: uzaytirilganda va muddat tugashiga 7 kun qolganda shu odamga xabar boradi (adminlarga ham).</div>
+        <button type="button" class="ext-chip" id="apiExtOwnerSave" style="margin-top:8px"><i class="bi bi-person-check"></i> Faqat ID'ni saqlash (uzaytirmasdan)</button>
       </div>
       <div class="ext-preview" id="apiExtPreview" style="display:none"></div>
       <div class="modal-actions">
@@ -5486,6 +5488,21 @@
         });
       }
       window.saveApiExtend = saveApiExtend;
+      document.getElementById("apiExtOwnerSave").addEventListener("click", function () {
+        if (!apiExtToken) return;
+        var owner = document.getElementById("apiExtOwner").value.trim();
+        if (owner && !/^\d{3,20}$/.test(owner)) { showToast("Telegram ID faqat raqamlardan iborat", "error"); return; }
+        var btn = this;
+        btn.disabled = true;
+        hapticLight();
+        api("api_token_owner", { id: apiExtToken.id, owner_user_id: owner }).then(function (r) {
+          btn.disabled = false;
+          if (!r.ok) { showToast("❌ " + (r.message || r.error || "Xatolik"), "error"); return; }
+          apiExtToken.owner_user_id = r.data.owner_user_id;
+          showToast(owner ? "✅ Egasi saqlandi" : "✅ Egasi olib tashlandi", "success");
+          loadApiTokens();
+        }).catch(function () { btn.disabled = false; showToast("❌ Tarmoq xatosi", "error"); });
+      });
       document.getElementById("apiExtDays").addEventListener("input", function () {
         document.getElementById("apiExtUntil").value = "";
         updateApiExtPreview();
@@ -5516,11 +5533,13 @@
         var btn = document.getElementById("apiTokBtn");
         btn.disabled = true;
         hapticLight();
-        api("api_token_create", { title: title, days: days }).then(function (r) {
+        var owner = document.getElementById("apiTokOwner").value.replace(/\D/g, "");
+        api("api_token_create", { title: title, days: days, owner_user_id: owner }).then(function (r) {
           btn.disabled = false;
           if (!r.ok) { showToast("❌ Token yaratilmadi", "error"); return; }
           setApiBase(r.data.baseUrl);
           document.getElementById("apiTokTitle").value = "";
+          document.getElementById("apiTokOwner").value = "";
           document.getElementById("apiTryToken").value = r.data.token;
           document.getElementById("apiTokNew").innerHTML =
             '<div class="api-new"><b style="color:var(--green)">✅ Token yaratildi</b> — faqat hozir ko\'rinadi, saqlab qo\'ying:' +
