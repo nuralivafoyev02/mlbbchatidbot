@@ -111,6 +111,8 @@ module.exports = async function handler(req, res) {
           return handleGetUser(req, res, body);
         case "update_user":
           return handleUpdateUser(req, res, body);
+        case "user_block":
+          return handleUserBlock(req, res, body);
         case "get_settings":
           return handleGetSettings(req, res);
         case "update_settings":
@@ -189,6 +191,8 @@ module.exports = async function handler(req, res) {
           return handleApiTokenCreate(req, res, body);
         case "api_token_revoke":
           return handleApiTokenRevoke(req, res, body);
+        case "api_token_extend":
+          return handleApiTokenExtend(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -352,10 +356,14 @@ async function handleGetUsers(req, res, body) {
     params.set("limit", String(USERS_PAGE_SIZE));
     params.set("offset", String(offset));
 
-    const result = await supabaseRequest(`/bot_users?${params.toString()}`, { prefer: "count=exact", returnMeta: true });
+    const [result, blockedIds] = await Promise.all([
+      supabaseRequest(`/bot_users?${params.toString()}`, { prefer: "count=exact", returnMeta: true }),
+      loadBlockedUserIds(),
+    ]);
     return json(res, 200, {
       ok: true,
       data: {
+        blockedIds,
         users: Array.isArray(result.data) ? result.data : [],
         total: Number(result.count) || 0,
         page,
@@ -389,10 +397,14 @@ async function handleSearchUsers(req, res, body) {
       params.set("or", `(username.ilike.*${encodeURIComponent(query)}*,first_name.ilike.*${encodeURIComponent(query)}*)`);
     }
 
-    const result = await supabaseRequest(`/bot_users?${params.toString()}`, { returnMeta: true });
+    const [result, blockedIds] = await Promise.all([
+      supabaseRequest(`/bot_users?${params.toString()}`, { returnMeta: true }),
+      loadBlockedUserIds(),
+    ]);
     return json(res, 200, {
       ok: true,
       data: {
+        blockedIds,
         users: Array.isArray(result.data) ? result.data : [],
         total: Array.isArray(result.data) ? result.data.length : 0,
         query,
@@ -433,10 +445,65 @@ async function handleGetUser(req, res, body) {
       console.error("[GET_USER_ACTIONS]", e.message);
     }
 
-    return json(res, 200, { ok: true, data: { ...data[0], todayActions } });
+    // Blok holati alohida so'raladi — 028 migratsiyasi bo'lmasa ham modal ochilaversin.
+    let block = { is_blocked: false, blocked_at: null, blockAvailable: true };
+    try {
+      const rows = await supabaseRequest(`/bot_users?user_id=eq.${encodeURIComponent(userId)}&select=is_blocked,blocked_at&limit=1`);
+      if (Array.isArray(rows) && rows[0]) block = { is_blocked: rows[0].is_blocked === true, blocked_at: rows[0].blocked_at || null, blockAvailable: true };
+    } catch (e) {
+      block.blockAvailable = false;
+      console.error("[GET_USER_BLOCK]", e.message);
+    }
+
+    return json(res, 200, { ok: true, data: { ...data[0], ...block, isAdmin: ADMIN_IDS.includes(String(data[0].user_id)), todayActions } });
   } catch (e) {
     console.error("[GET_USER]", e.message);
     return json(res, 500, { ok: false, error: "server_error" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Foydalanuvchini bloklash (bot_users.is_blocked — supabase/028). Bot ro'yxatni
+// 60 soniyada yangilaydi, shuning uchun blok ko'pi bilan 1 daqiqada amal qiladi.
+// ---------------------------------------------------------------------------
+async function loadBlockedUserIds() {
+  try {
+    const rows = await supabaseRequest("/bot_users?is_blocked=eq.true&select=user_id&limit=10000");
+    return (Array.isArray(rows) ? rows : []).map((row) => String(row.user_id));
+  } catch {
+    return [];
+  }
+}
+
+async function handleUserBlock(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const userId = toPgBigint(body.user_id);
+  if (!userId) return json(res, 400, { ok: false, error: "user_id_required" });
+  const blocked = body.blocked === true || body.blocked === "true";
+  if (blocked && ADMIN_IDS.includes(String(userId))) {
+    return json(res, 400, { ok: false, error: "cannot_block_admin", message: "Adminni bloklab bo'lmaydi" });
+  }
+  try {
+    const rows = await supabaseRequest(`/bot_users?user_id=eq.${userId}&select=user_id,is_blocked,blocked_at`, {
+      method: "PATCH",
+      prefer: "return=representation",
+      body: {
+        is_blocked: blocked,
+        blocked_at: blocked ? new Date().toISOString() : null,
+        blocked_by: blocked ? adminAuth.getAdminSessionSubject() || "admin" : null,
+      },
+    });
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) return json(res, 404, { ok: false, error: "user_not_found" });
+    return json(res, 200, { ok: true, data: { user_id: String(row.user_id), is_blocked: row.is_blocked === true, blocked_at: row.blocked_at || null } });
+  } catch (e) {
+    console.error("[USER_BLOCK]", e.message);
+    const missing = /is_blocked|blocked_at|blocked_by|PGRST204|42703/.test(String(e.message));
+    return json(res, missing ? 503 : 500, {
+      ok: false,
+      error: missing ? "migration_required" : "server_error",
+      message: missing ? "Avval supabase/028_user_block_api_owner.sql ni Supabase SQL Editor'da ishga tushiring" : "Xatolik",
+    });
   }
 }
 
@@ -1811,7 +1878,9 @@ function publicApiBaseUrl(req) {
 async function handleApiTokensList(req, res) {
   if (!(await requireAuth(req, res))) return;
   try {
-    const tokens = await supabaseRequest(`/api_tokens?select=${API_TOKEN_FIELDS}&order=created_at.desc&limit=200`);
+    // owner_user_id — 028 migratsiyasidan keyin; bo'lmasa eski maydonlar bilan.
+    const tokens = await supabaseRequest(`/api_tokens?select=${API_TOKEN_FIELDS},owner_user_id&order=created_at.desc&limit=200`)
+      .catch(() => supabaseRequest(`/api_tokens?select=${API_TOKEN_FIELDS}&order=created_at.desc&limit=200`));
     return json(res, 200, { ok: true, data: { baseUrl: publicApiBaseUrl(req), tokens: Array.isArray(tokens) ? tokens : [] } });
   } catch (e) {
     console.error("[API_TOKENS_LIST]", e.message);
@@ -1859,6 +1928,75 @@ async function handleApiTokenRevoke(req, res, body) {
   } catch (e) {
     console.error("[API_TOKEN_REVOKE]", e.message);
     return json(res, 500, { ok: false, error: "revoke_failed" });
+  }
+}
+
+// "Muddatni uzaytirish": yangi muddat = max(hozir, joriy muddat) + N kun.
+// Egasining Telegram ID'si (owner_user_id) saqlanadi va bot orqali xabar boradi.
+function formatTashkentDate(iso) {
+  const d = new Date(new Date(iso).getTime() + 5 * 3600 * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}`;
+}
+
+function buildApiTokenExtendedText(title, fromIso, toIso) {
+  return [
+    "Xaridingiz uchun raxmat!",
+    `Sizning kalitingiz muddati <b>${escapeHtml(title || "API")}</b> ${formatTashkentDate(fromIso)} dan ${formatTashkentDate(toIso)} gacha uzaytirildi.`,
+    "Aloqa va yordam uchun: @vafoyev_n",
+  ].join("\n");
+}
+
+async function handleApiTokenExtend(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const id = toPgBigint(body.id);
+  const days = parseInt(body.days, 10);
+  if (!id) return json(res, 400, { ok: false, error: "invalid_id" });
+  if (!Number.isFinite(days) || days < 1 || days > 3650) return json(res, 400, { ok: false, error: "invalid_days", message: "Muddat 1–3650 kun" });
+  const ownerRaw = String(body.owner_user_id ?? "").trim();
+  if (ownerRaw && !/^\d{3,20}$/.test(ownerRaw)) return json(res, 400, { ok: false, error: "invalid_owner", message: "Telegram ID faqat raqamlardan iborat" });
+
+  try {
+    const rows = await supabaseRequest(`/api_tokens?id=eq.${id}&select=id,title,expires_at,is_revoked&limit=1`);
+    const token = Array.isArray(rows) ? rows[0] : null;
+    if (!token) return json(res, 404, { ok: false, error: "not_found", message: "Token topilmadi" });
+    if (token.is_revoked) return json(res, 400, { ok: false, error: "revoked", message: "Bekor qilingan tokenni uzaytirib bo'lmaydi" });
+
+    const current = Date.parse(token.expires_at);
+    const from = new Date(Math.max(Date.now(), Number.isFinite(current) ? current : 0)).toISOString();
+    const to = new Date(Date.parse(from) + days * 86400000).toISOString();
+
+    const patch = { expires_at: to };
+    if (ownerRaw) patch.owner_user_id = ownerRaw;
+    try {
+      await supabaseRequest(`/api_tokens?id=eq.${id}`, { method: "PATCH", body: patch });
+    } catch (e) {
+      // owner_user_id ustuni yo'q (028 qo'llanmagan) — muddat baribir saqlansin.
+      if (!ownerRaw || !/owner_user_id|PGRST204|42703/.test(String(e.message))) throw e;
+      await supabaseRequest(`/api_tokens?id=eq.${id}`, { method: "PATCH", body: { expires_at: to } });
+      return json(res, 200, { ok: true, data: { expires_at: to, from, notified: false, ownerSaved: false } });
+    }
+
+    let notified = false;
+    if (ownerRaw && TELEGRAM_BOT_TOKEN) {
+      try {
+        const response = await fetchWithTimeout(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: ownerRaw, text: buildApiTokenExtendedText(token.title, from, to), parse_mode: "HTML", disable_web_page_preview: true }),
+          timeoutMs: 5000,
+        });
+        const data = await response.json().catch(() => null);
+        notified = Boolean(data && data.ok);
+        if (!notified) console.error("[API_TOKEN_EXTEND_NOTIFY]", response.status, String(data?.description || "").slice(0, 200));
+      } catch (e) {
+        console.error("[API_TOKEN_EXTEND_NOTIFY]", e.message);
+      }
+    }
+    return json(res, 200, { ok: true, data: { expires_at: to, from, notified, ownerSaved: Boolean(ownerRaw) } });
+  } catch (e) {
+    console.error("[API_TOKEN_EXTEND]", e.message);
+    return json(res, 500, { ok: false, error: "extend_failed", message: "Muddatni saqlab bo'lmadi" });
   }
 }
 

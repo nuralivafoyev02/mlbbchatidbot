@@ -1225,6 +1225,36 @@
       color: #22c55e
     }
 
+    .user-badge.blocked {
+      background: rgba(244, 63, 94, 0.16);
+      color: var(--red, #f43f5e);
+      font-weight: 700
+    }
+
+    .user-item.is-blocked { border-color: rgba(244, 63, 94, 0.35) }
+
+    .block-box {
+      display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; margin-bottom: 14px;
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border)
+    }
+    .block-box.on { background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.35) }
+    .block-box .bb-text { flex: 1; font-size: 12.5px; color: var(--text2); line-height: 1.4 }
+    .block-box .bb-text b { color: var(--text) }
+    .block-btn {
+      border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #fff;
+      background: linear-gradient(135deg, #f43f5e, #e11d48)
+    }
+    .block-btn.unblock { background: linear-gradient(135deg, #10b981, #059669) }
+    .block-btn:disabled { opacity: .6 }
+
+    .api-tok-item { cursor: pointer }
+    .api-tok-item:active { transform: scale(.99) }
+    .ext-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px }
+    .ext-chip { padding: 7px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 600; background: rgba(255,255,255,.06); border: 1px solid var(--card-border); color: var(--text); cursor: pointer; font-family: inherit }
+    .ext-chip.active { background: rgba(99, 102, 241, .2); border-color: rgba(99, 102, 241, .5) }
+    .ext-preview { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(16, 185, 129, .1); border: 1px solid rgba(16, 185, 129, .3); font-size: 13px; line-height: 1.5 }
+
     .pagination {
       display: flex;
       align-items: center;
@@ -3869,6 +3899,7 @@
         <div id="modalUserInfo" style="font-size:13px;color:var(--text2)"></div>
         <div id="modalLimitBadges" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>
       </div>
+      <div id="modalBlockBox"></div>
       <div class="modal-field">
         <label>To'liq malumot qo'shish</label>
         <input type="number" id="modalFullInfoQuota" min="1" placeholder="Qo'shish miqdori">
@@ -3882,6 +3913,35 @@
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeModal()">Bekor qilish</button>
         <button class="btn-save" id="modalSaveBtn" onclick="saveUser()"><i class="bi bi-floppy"></i> Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- API kaliti: muddatni uzaytirish -->
+  <div class="modal-overlay" id="apiExtendModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <h2 id="apiExtTitle">Muddatni uzaytirish</h2>
+      <div id="apiExtInfo" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+      <div class="modal-field">
+        <label>Necha kunga uzaytiriladi</label>
+        <div class="ext-chips" id="apiExtChips">
+          <button type="button" class="ext-chip" data-days="30">30 kun</button>
+          <button type="button" class="ext-chip" data-days="90">90 kun</button>
+          <button type="button" class="ext-chip" data-days="180">180 kun</button>
+          <button type="button" class="ext-chip" data-days="365">1 yil</button>
+        </div>
+        <input type="number" id="apiExtDays" min="1" max="3650" placeholder="Kun soni (1–3650)">
+      </div>
+      <div class="modal-field">
+        <label>Egasining Telegram ID'si (xabar shu odamga boradi)</label>
+        <input type="text" id="apiExtOwner" inputmode="numeric" maxlength="20" placeholder="Masalan: 7396686285">
+        <div class="hint">Saqlanadi — keyingi safar o'zi to'ladi. Bo'sh qoldirilsa xabar yuborilmaydi.</div>
+      </div>
+      <div class="ext-preview" id="apiExtPreview" style="display:none"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeApiExtend()">Bekor qilish</button>
+        <button class="btn-save" id="apiExtSave" onclick="saveApiExtend()"><i class="bi bi-calendar-plus"></i> Uzaytirish</button>
       </div>
     </div>
   </div>
@@ -4102,6 +4162,7 @@
       var searchTimeout = null;
       var adminIds = [];
       var allUsers = [];
+      var blockedUserIds = new Set();
       var isLoadingMore = false;
       var hasMoreUsers = true;
       var currentSearchQuery = "";
@@ -4707,6 +4768,7 @@
           }
 
           var newUsers = result.data.users;
+          if (Array.isArray(result.data.blockedIds)) blockedUserIds = new Set(result.data.blockedIds.map(String));
           totalUserPages = Math.ceil((result.data.total || 0) / 20);
 
           if (currentUserPage === 0) {
@@ -4747,12 +4809,14 @@
           var meta = metaParts.join(" \u00b7 ");
           var fi = (u.full_info_quota !== null && u.full_info_quota !== undefined) ? u.full_info_quota : "-";
           var rp = (u.reset_pw_quota !== null && u.reset_pw_quota !== undefined) ? u.reset_pw_quota : "-";
-          html += '<div class="user-item" data-uid="' + esc(u.user_id) + '">';
+          var isBlocked = blockedUserIds.has(String(u.user_id));
+          html += '<div class="user-item' + (isBlocked ? " is-blocked" : "") + '" data-uid="' + esc(u.user_id) + '">';
           html += '<div class="user-name">' + esc(name) + "</div>";
           html += '<div class="user-meta">' + esc(meta) + "</div>";
           html += '<div class="user-limits">';
           html += '<span class="user-badge fi"><i class="bi bi-file-earmark-text"></i> ' + fi + "</span>";
           html += '<span class="user-badge rp"><i class="bi bi-unlock"></i> ' + rp + "</span>";
+          if (isBlocked) html += '<span class="user-badge blocked"><i class="bi bi-slash-circle"></i> Bloklangan</span>';
           html += "</div></div>";
         });
         return html;
@@ -4846,6 +4910,7 @@
         document.getElementById("modalUserInfo").innerHTML = buildModalInfoSkeleton();
         document.getElementById("modalLimitBadges").innerHTML =
           '<div style="display:flex;gap:8px;flex-wrap:wrap"><div class="skeleton skeleton-line" style="width:130px;height:24px;margin:0"></div><div class="skeleton skeleton-line" style="width:120px;height:24px;margin:0"></div></div>';
+        document.getElementById("modalBlockBox").innerHTML = "";
         document.getElementById("modalFullInfoQuota").value = "";
         document.getElementById("modalResetPwQuota").value = "";
         document.getElementById("modalFullInfoHint").innerHTML =
@@ -4885,6 +4950,7 @@
           badgesHtml += '<span class="limit-badge fi"><i class="bi bi-file-earmark-text"></i> To\u02BBliq malumot qoldig\u02BBi: ' + fiCurrent + '</span>';
           badgesHtml += '<span class="limit-badge rp"><i class="bi bi-unlock"></i> Parolni tiklash: ' + rpCurrent + '</span>';
           document.getElementById("modalLimitBadges").innerHTML = badgesHtml;
+          renderBlockBox(u);
 
           // Hints
           document.getElementById("modalFullInfoHint").textContent = "Hozirgi qoldiq: " + fiCurrent + " | Kiritilgan qiymat ustiga qo'shiladi";
@@ -4898,6 +4964,53 @@
         });
       }
       window.openUser = openUser;
+
+      // ---- Bloklash / blokdan ochish (bot_users.is_blocked)
+      function renderBlockBox(u) {
+        var box = document.getElementById("modalBlockBox");
+        if (!box) return;
+        if (u.isAdmin) { box.innerHTML = ""; return; }
+        if (u.blockAvailable === false) {
+          box.innerHTML = '<div class="block-box"><i class="bi bi-database-exclamation" style="color:var(--yellow)"></i><div class="bb-text">Bloklash uchun avval <b>supabase/028_user_block_api_owner.sql</b> ni Supabase SQL Editor\'da ishga tushiring.</div></div>';
+          return;
+        }
+        var on = u.is_blocked === true;
+        box.innerHTML = '<div class="block-box' + (on ? " on" : "") + '">' +
+          '<i class="bi bi-' + (on ? "slash-circle-fill" : "shield-check") + '" style="font-size:20px;color:' + (on ? "var(--red, #f43f5e)" : "var(--green)") + '"></i>' +
+          '<div class="bb-text">' + (on
+            ? "<b>Bloklangan</b>" + (u.blocked_at ? " · " + esc(formatDate(u.blocked_at)) : "") + "<br>Bot unga faqat cheklov haqidagi xabar bilan javob beradi."
+            : "<b>Faol</b><br>Bloklansa, bot faqat cheklov haqidagi xabar bilan javob beradi.") + "</div>" +
+          '<button class="block-btn' + (on ? " unblock" : "") + '" id="modalBlockBtn"><i class="bi bi-' + (on ? "unlock" : "slash-circle") + '"></i>' + (on ? "Blokdan ochish" : "Bloklash") + "</button></div>";
+        document.getElementById("modalBlockBtn").addEventListener("click", function () { toggleUserBlock(u, !on); });
+      }
+
+      function toggleUserBlock(u, block) {
+        var name = u.first_name || u.username || String(u.user_id);
+        if (block && !confirm(name + " bloklansinmi? Bot unga faqat cheklov haqidagi xabar bilan javob beradi.")) return;
+        var btn = document.getElementById("modalBlockBtn");
+        if (btn) btn.disabled = true;
+        hapticLight();
+        api("user_block", { user_id: u.user_id, blocked: block }).then(function (r) {
+          if (btn) btn.disabled = false;
+          if (!r.ok) { showToast("❌ " + (r.message || r.error || "Xatolik"), "error"); return; }
+          u.is_blocked = r.data.is_blocked;
+          u.blocked_at = r.data.blocked_at;
+          if (u.is_blocked) blockedUserIds.add(String(u.user_id)); else blockedUserIds.delete(String(u.user_id));
+          renderBlockBox(u);
+          var item = document.querySelector('.user-item[data-uid="' + String(u.user_id) + '"]');
+          if (item) {
+            item.classList.toggle("is-blocked", u.is_blocked);
+            var limits = item.querySelector(".user-limits");
+            var badge = limits && limits.querySelector(".user-badge.blocked");
+            if (u.is_blocked && limits && !badge) limits.insertAdjacentHTML("beforeend", '<span class="user-badge blocked"><i class="bi bi-slash-circle"></i> Bloklangan</span>');
+            if (!u.is_blocked && badge) badge.remove();
+          }
+          showToast(u.is_blocked ? "🚫 Bloklandi — 1 daqiqa ichida amal qiladi" : "✅ Blokdan ochildi", "success");
+        }).catch(function () {
+          if (btn) btn.disabled = false;
+          showToast("❌ Tarmoq xatosi", "error");
+        });
+      }
 
       function closeModal() {
         document.getElementById("userModal").classList.remove("open");
@@ -5242,14 +5355,25 @@
           box.innerHTML = tokens.map(function (t) {
             var expired = new Date(t.expires_at).getTime() <= now;
             var state = t.is_revoked ? '<span class="bad">bekor qilingan</span>' : (expired ? '<span class="bad">muddati o\'tgan</span>' : "gacha " + apiDate(t.expires_at));
-            return '<div class="cg-item"><i class="bi bi-key' + (t.is_revoked || expired ? "" : "-fill") + '"></i>' +
+            return '<div class="cg-item' + (t.is_revoked ? "" : " api-tok-item") + '" data-api-ext="' + t.id + '"><i class="bi bi-key' + (t.is_revoked || expired ? "" : "-fill") + '"></i>' +
               '<div class="cg-body"><div class="cg-name">' + esc(t.title || "—") + " · " + esc(t.token_prefix) + "</div>" +
-              '<div class="api-meta">' + state + " · " + formatNum(t.usage_count || 0) + " so'rov · oxirgi: " + apiDate(t.last_used_at) + "</div></div>" +
+              '<div class="api-meta">' + state + " · " + formatNum(t.usage_count || 0) + " so'rov · oxirgi: " + apiDate(t.last_used_at) +
+              (t.owner_user_id ? ' · <i class="bi bi-person"></i> ' + esc(String(t.owner_user_id)) : "") + "</div></div>" +
               (t.is_revoked ? "" : '<button class="cg-act red" data-api-revoke="' + t.id + '" aria-label="Bekor qilish"><i class="bi bi-x-lg"></i></button>') +
               "</div>";
           }).join("");
+          apiTokensById = {};
+          tokens.forEach(function (t) { apiTokensById[String(t.id)] = t; });
+          box.querySelectorAll("[data-api-ext]").forEach(function (el) {
+            el.addEventListener("click", function (e) {
+              if (e.target.closest("[data-api-revoke]")) return;
+              var t = apiTokensById[el.getAttribute("data-api-ext")];
+              if (t && !t.is_revoked) openApiExtend(t);
+            });
+          });
           box.querySelectorAll("[data-api-revoke]").forEach(function (el) {
-            el.addEventListener("click", function () {
+            el.addEventListener("click", function (e) {
+              e.stopPropagation();
               if (!confirm("Bu tokenni bekor qilasizmi? Uni ishlatayotgan tizim 1 daqiqada to'xtaydi.")) return;
               hapticLight();
               api("api_token_revoke", { id: el.getAttribute("data-api-revoke") }).then(function (r) {
@@ -5261,6 +5385,85 @@
         });
       }
       window.loadApiTokens = loadApiTokens;
+
+      // ---- Kalit muddatini uzaytirish
+      var apiTokensById = {};
+      var apiExtToken = null;
+
+      function apiExtFrom(t) {
+        var cur = new Date(t.expires_at).getTime();
+        return new Date(Math.max(Date.now(), isFinite(cur) ? cur : 0));
+      }
+      function apiFmt(d) {
+        var p = function (n) { return String(n).padStart(2, "0"); };
+        return p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear();
+      }
+      function updateApiExtPreview() {
+        var days = parseInt(document.getElementById("apiExtDays").value, 10);
+        document.querySelectorAll("#apiExtChips .ext-chip").forEach(function (c) { c.classList.toggle("active", Number(c.getAttribute("data-days")) === days); });
+        var box = document.getElementById("apiExtPreview");
+        if (!apiExtToken || !(days >= 1 && days <= 3650)) { box.style.display = "none"; return; }
+        var from = apiExtFrom(apiExtToken);
+        var to = new Date(from.getTime() + days * 86400000);
+        box.style.display = "block";
+        box.innerHTML = "<b>" + esc(apiFmt(from)) + "</b> dan <b>" + esc(apiFmt(to)) + "</b> gacha" +
+          (document.getElementById("apiExtOwner").value.trim() ? "<br>Egasiga bot orqali xabar yuboriladi." : "<br><span style=\"color:var(--text2)\">Telegram ID kiritilmagan — xabar yuborilmaydi.</span>");
+      }
+      function openApiExtend(t) {
+        hapticLight();
+        apiExtToken = t;
+        var expired = new Date(t.expires_at).getTime() <= Date.now();
+        document.getElementById("apiExtTitle").textContent = "Muddatni uzaytirish — " + (t.title || "API");
+        document.getElementById("apiExtInfo").innerHTML = esc(t.token_prefix) + " · " +
+          (expired ? '<span style="color:var(--red, #f43f5e)">muddati o\'tgan (' + esc(apiDate(t.expires_at)) + ")</span> — bugundan boshlab uzaytiriladi"
+                   : "hozirgi muddat: <b>" + esc(apiDate(t.expires_at)) + "</b> gacha");
+        document.getElementById("apiExtDays").value = "30";
+        document.getElementById("apiExtOwner").value = t.owner_user_id ? String(t.owner_user_id) : "";
+        updateApiExtPreview();
+        document.getElementById("apiExtendModal").classList.add("open");
+      }
+      function closeApiExtend() {
+        document.getElementById("apiExtendModal").classList.remove("open");
+        apiExtToken = null;
+      }
+      window.closeApiExtend = closeApiExtend;
+      function saveApiExtend() {
+        if (!apiExtToken) return;
+        var days = parseInt(document.getElementById("apiExtDays").value, 10);
+        var owner = document.getElementById("apiExtOwner").value.trim();
+        if (!(days >= 1 && days <= 3650)) { showToast("Muddat 1–3650 kun", "error"); return; }
+        if (owner && !/^\d{3,20}$/.test(owner)) { showToast("Telegram ID faqat raqamlardan iborat", "error"); return; }
+        var btn = document.getElementById("apiExtSave");
+        btn.disabled = true;
+        hapticLight();
+        api("api_token_extend", { id: apiExtToken.id, days: days, owner_user_id: owner }).then(function (r) {
+          btn.disabled = false;
+          if (!r.ok) { showToast("❌ " + (r.message || r.error || "Xatolik"), "error"); return; }
+          closeApiExtend();
+          var until = apiDate(r.data.expires_at);
+          showToast("✅ " + until + " gacha uzaytirildi" + (r.data.notified ? " — egasiga xabar yuborildi" : owner ? (r.data.ownerSaved === false ? " (ID saqlanmadi — 028 SQL kerak)" : " — xabar yetib bormadi (bot bilan /start qilmagan bo'lishi mumkin)") : ""), r.data.notified || !owner ? "success" : "info");
+          loadApiTokens();
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Tarmoq xatosi", "error");
+        });
+      }
+      window.saveApiExtend = saveApiExtend;
+      document.getElementById("apiExtDays").addEventListener("input", updateApiExtPreview);
+      document.getElementById("apiExtOwner").addEventListener("input", function (e) {
+        e.target.value = e.target.value.replace(/\D/g, "").slice(0, 20);
+        updateApiExtPreview();
+      });
+      document.querySelectorAll("#apiExtChips .ext-chip").forEach(function (c) {
+        c.addEventListener("click", function () {
+          hapticLight();
+          document.getElementById("apiExtDays").value = c.getAttribute("data-days");
+          updateApiExtPreview();
+        });
+      });
+      document.getElementById("apiExtendModal").addEventListener("click", function (e) {
+        if (e.target === e.currentTarget) { hapticLight(); closeApiExtend(); }
+      });
 
       function createApiToken() {
         var title = document.getElementById("apiTokTitle").value.trim();

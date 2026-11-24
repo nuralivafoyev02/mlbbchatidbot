@@ -125,7 +125,7 @@ test("mandatory channel: first load runs alongside the language; a stale value i
 
     // 1) Hech qachon yuklanmagan: til bilan bir vaqtda, bitta so'rov.
     await sendText(bot, { id: 701, first_name: "A", language_code: "uz" }, "Server aniqlash", background);
-    const lang = backend.state.db.find((c) => c.path.startsWith("/bot_users?"));
+    const lang = backend.state.db.find((c) => c.path.startsWith("/bot_users?") && c.path.includes("preferred_language"));
     const [first] = channelCalls(backend.state);
     assert.equal(channelCalls(backend.state).length, 1);
     assert.ok(first.start < lang.end && lang.start < first.end, "channel and language load in parallel");
