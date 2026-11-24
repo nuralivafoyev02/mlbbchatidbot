@@ -10,6 +10,7 @@ const cabinetGroups = require("./_cabinet-groups.js");
 const shopOrders = require("./_shop-orders.js");
 const adminAuth = require("./_admin-auth.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
+const { createShopNotifier, buildMainGroupTopupText } = require("./_shop-notify.js");
 
 // ---------------------------------------------------------------------------
 // Config (same pattern as api/admin.js)
@@ -1271,6 +1272,19 @@ async function notifyWalletUser(userId, text) {
   }
 }
 
+// Asosiy guruhga "X balansini N so'mga to'ldirdi" (best effort).
+async function notifyMainGroupTopup(userId, amount) {
+  if (!TELEGRAM_BOT_TOKEN || !/^\d{1,20}$/.test(String(userId))) return;
+  try {
+    const rows = await supabaseRequest(`/bot_users?user_id=eq.${encodeURIComponent(String(userId))}&select=username,first_name&limit=1`).catch(() => null);
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : {};
+    const notifier = createShopNotifier({ botToken: TELEGRAM_BOT_TOKEN, requestFn: (path, options) => supabaseRequest(path, options) });
+    await notifier.notifyMainGroup(buildMainGroupTopupText({ id: userId, username: row.username, first_name: row.first_name }, amount), userId);
+  } catch (e) {
+    console.error("[WALLET_NOTIFY_MAIN_GROUP_TOPUP]", e.message);
+  }
+}
+
 async function handleWalletOverview(req, res) {
   if (!(await requireAuth(req, res))) return;
 
@@ -1288,6 +1302,7 @@ async function handleWalletOverview(req, res) {
         `➕ Tushgan summa: <b>${formatSomText(item.amount)}</b>`,
         `💳 Joriy balans: <b>${formatSomText(item.balance)}</b>`,
       ].join("\n"));
+      await notifyMainGroupTopup(item.user_id, item.amount);
     }
     const [config, pending, recent, orders] = await Promise.all([
       wallet.getConfig(),
@@ -1451,6 +1466,7 @@ async function handleWalletTopupConfirm(req, res, body) {
         `➕ Tushgan summa: <b>${formatSomText(result.amount)}</b>`,
         `💳 Joriy balans: <b>${formatSomText(result.balance)}</b>`,
       ].join("\n"));
+      await notifyMainGroupTopup(result.user_id, result.amount);
     }
     return json(res, 200, { ok: true, data: { status: result.status, balance: result.balance ?? null } });
   } catch (e) {

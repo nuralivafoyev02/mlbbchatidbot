@@ -29,6 +29,7 @@ const {
   buildWalletSaleText,
   buildTopupCreditedText,
   buildMainGroupSaleText,
+  buildMainGroupTopupText,
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
@@ -958,6 +959,19 @@ async function notifyTopupCredited(config, user, topup, balance) {
     });
   } catch (error) {
     console.error("[WALLET_NOTIFY_USER]", error?.message);
+  }
+  await notifyMainGroupTopup(config, user, topup.paid_amount || topup.pay_amount);
+}
+
+// Asosiy guruhga "X balansini N so'mga to'ldirdi" (best effort). Callback'da
+// faqat user_id bor — ism/username bot_users dan olinadi.
+async function notifyMainGroupTopup(config, user, amount) {
+  try {
+    const who = user.username || user.first_name ? user : await loadLaunchUser(config, String(user.id));
+    const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+    await notifier.notifyMainGroup(buildMainGroupTopupText(who, amount), user.id);
+  } catch (error) {
+    console.error("[WALLET_NOTIFY_MAIN_GROUP_TOPUP]", error?.message);
   }
 }
 

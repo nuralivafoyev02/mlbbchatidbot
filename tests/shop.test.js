@@ -873,3 +873,15 @@ test("shop: limit buttons from the 'limit reached' message don't trap the user i
     delete require.cache[require.resolve("../api/bot.js")];
   }
 });
+
+test("shop: main group topup notice names the user and amount, never the balance", () => {
+  const { buildMainGroupTopupText } = require("../api/_shop-notify.js");
+  assert.equal(
+    buildMainGroupTopupText({ id: 7700600, username: "vali_uz" }, 25000),
+    "#balans #toldirish\n💰 @vali_uz balansini <b>25 000 so'm</b>ga to'ldirdi."
+  );
+  assert.equal(
+    buildMainGroupTopupText({ id: 7700600, first_name: "Vali <x>" }, 5001),
+    `#balans #toldirish\n💰 <a href="tg://user?id=7700600">Vali &lt;x&gt;</a> balansini <b>5 001 so'm</b>ga to'ldirdi.`
+  );
+});

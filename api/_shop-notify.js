@@ -11,7 +11,7 @@ const { ADMIN_CONTACT_USERNAME } = require("./_contact.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 const DEFAULT_ADMIN_IDS = "7396686285,5081175125";
 // bot.js dagi MAIN_GROUP_ID bilan bir xil: env yo'q bo'lsa — shu guruh, bo'sh bo'lsa — o'chiq.
-const DEFAULT_MAIN_GROUP_ID = "-1003832186200";
+const DEFAULT_MAIN_GROUP_ID = "-1004434649076";
 
 function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^['"]|['"]$/g, "");
@@ -123,6 +123,18 @@ function buildMainGroupSaleText(user, { kind, item, price }) {
   return [
     kind === "firstmail" ? "#sotuv #firstmail" : "#sotuv #limit",
     `${mention} ${what} — ${escapeHtml(formatSom(price))}.`,
+  ].join("\n");
+}
+
+// Asosiy guruhga — kim balansini qancha summaga to'ldirgani. Balans
+// qoldig'i yozilmaydi (faqat foydalanuvchining o'ziga boradi).
+function buildMainGroupTopupText(user, amount) {
+  const mention = user.username
+    ? `@${escapeHtml(user.username)}`
+    : `<a href="tg://user?id=${escapeHtml(user.id)}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+  return [
+    "#balans #toldirish",
+    `💰 ${mention} balansini <b>${escapeHtml(formatSom(amount))}</b>ga to'ldirdi.`,
   ].join("\n");
 }
 
@@ -241,6 +253,7 @@ module.exports = {
   buildFirstmailBuyText,
   buildLimitBuyText,
   buildMainGroupSaleText,
+  buildMainGroupTopupText,
   buildTopupCreditedText,
   buildWalletSaleText,
   createShopNotifier,
