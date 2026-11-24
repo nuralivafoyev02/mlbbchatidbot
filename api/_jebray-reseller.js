@@ -47,8 +47,11 @@ function classifyProviderError(status, payload, type) {
   if (status === 401 || status === 403 || /api key|unauthori[sz]ed|forbidden|subscription|expired/.test(error)) {
     return "provider_auth";
   }
-  if (/wrong verification code/.test(error)) {
+  if (/wrong verification code|kode (salah|tidak valid|tidak sesuai)/.test(error)) {
     return "wrong_code";
+  }
+  if (/gagal mengirim|tidak dapat mengirim|failed to send|could not send|unable to send/.test(error)) {
+    return "code_send_failed";
   }
   if (/password/.test(error)) {
     return "invalid_password";
@@ -193,6 +196,13 @@ function classifyChangeEmailError(status, payload, step) {
     return "provider_auth";
   }
   if (status === 402 || /insufficient balance|insufficient funds|saldo/.test(error)) return "insufficient_balance";
+  // Jebray xatolari ko'pincha indonezcha keladi.
+  if (/gagal mengirim|tidak dapat mengirim|failed to send|could not send|unable to send/.test(error)) return "code_send_failed";
+  if (/akun tidak ditemukan|email tidak terdaftar|tidak terdaftar|account not found|not registered|no account/.test(error)) return "account_not_found";
+  if (/terlalu banyak|too many|coba lagi (dalam|nanti) \d/.test(error)) return "rate_limited";
+  if (/sesi (tidak ditemukan|kedaluwarsa|kadaluarsa|habis|berakhir)/.test(error)) return "session_expired";
+  if (/kode (salah|tidak valid|tidak sesuai|invalid)|kode verifikasi salah/.test(error)) return "wrong_code";
+  if (/email (sudah|telah) (digunakan|terdaftar|terikat|dipakai)/.test(error)) return "email_taken";
   if (/session not found|expired|session/.test(error)) return "session_expired";
   if (/kontak gm|banned/.test(error)) return "account_banned";
   if (/invalid code|wrong code|incorrect code|code/.test(error)) return "wrong_code";

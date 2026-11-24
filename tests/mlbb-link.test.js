@@ -1378,3 +1378,29 @@ test("change email: 5-step flow, session bound to the user, charged only on conf
     net.restore();
   }
 });
+
+test("change email: Jebray's Indonesian errors map to clear reasons", async () => {
+  const supabase = createFakeSupabase();
+  const replies = {
+    start: { status: 400, body: { success: false, error: "Gagal mengirim kode verifikasi. Silakan coba lagi." } },
+  };
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: (call) => jsonResponse(replies[call.body.step].body, replies[call.body.step].status),
+  });
+  try {
+    const app = loadAccountApp({ changeEmailEnabled: true });
+    const userId = 7700310;
+    supabase.setBalance(userId, 50000);
+    const initData = signInitData({ id: userId });
+    const r = await callAccount(app, { action: "change_email", initData, step: "start", email: "a@gmail.com" });
+    assert.deepEqual([r.statusCode, r.body.error], [422, "code_send_failed"]);
+    replies.start = { status: 400, body: { success: false, error: "Akun tidak ditemukan" } };
+    const r2 = await callAccount(app, { action: "change_email", initData, step: "start", email: "a@gmail.com" });
+    assert.deepEqual([r2.statusCode, r2.body.error], [404, "account_not_found"]);
+    assert.equal(supabase.getBalance(userId), 50000);
+  } finally {
+    net.restore();
+  }
+});

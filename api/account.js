@@ -453,6 +453,7 @@ async function handleDeviceLogout(res, { config, user, body }) {
         invalid_email: 400,
         invalid_password: 400,
         invalid_code: 400,
+        code_send_failed: 422,
         rate_limited: 429,
         not_configured: 503,
         provider_auth: 502,
@@ -528,6 +529,8 @@ async function handleChangeEmailBootstrap(res, { config, user }) {
 }
 
 const CHANGE_EMAIL_STATUS = {
+  code_send_failed: 422,
+  account_not_found: 404,
   invalid_input: 400,
   invalid_email: 400,
   invalid_new_email: 400,
