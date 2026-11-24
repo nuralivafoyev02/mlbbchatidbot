@@ -26,6 +26,8 @@ const ADMIN_IDS = parseIdList(process.env.ADMIN_IDS || "7396686285,5081175125");
 const SUPPORT_USERNAME = require("./_contact.js").ADMIN_CONTACT_USERNAME;
 const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || "checkmlbbidBot").trim();
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+// Majburiy kanal shu botning o'z kaliti bilan (api/_mandatory-channel-key.js).
+const MANDATORY_CHANNEL_KEY = require("./_mandatory-channel-key.js").mandatoryChannelKey(TELEGRAM_BOT_TOKEN);
 
 const DEFAULT_FULLINFO_QUOTA = 3;
 const DEFAULT_RESETPW_QUOTA = 3;
@@ -836,7 +838,7 @@ async function handleCheckApiStatus(req, res) {
 
 async function getMandatoryChannelFromSupabase() {
   try {
-    const data = await supabaseRequest(`/bot_settings?key=eq.mandatory_channel&select=value`);
+    const data = await supabaseRequest(`/bot_settings?key=eq.${encodeURIComponent(MANDATORY_CHANNEL_KEY)}&select=value`);
     if (Array.isArray(data) && data.length > 0 && data[0]?.value) {
       return data[0].value;
     }
@@ -851,10 +853,10 @@ async function setMandatoryChannelInSupabase(value) {
     await supabaseRequest(`/bot_settings?on_conflict=key`, {
       method: "POST",
       prefer: "resolution=merge-duplicates",
-      body: { key: "mandatory_channel", value },
+      body: { key: MANDATORY_CHANNEL_KEY, value },
     });
   } else {
-    await supabaseRequest(`/bot_settings?key=eq.mandatory_channel`, {
+    await supabaseRequest(`/bot_settings?key=eq.${encodeURIComponent(MANDATORY_CHANNEL_KEY)}`, {
       method: "DELETE" });
   }
 }

@@ -74,6 +74,8 @@ async function saveUserLangToSupabase(userId, lang) {
 }
 
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+// Majburiy kanal shu botning o'z kaliti bilan (api/_mandatory-channel-key.js).
+const MANDATORY_CHANNEL_KEY = require("./_mandatory-channel-key.js").mandatoryChannelKey(TELEGRAM_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 // Aloqa manzili env'dan emas — api/_contact.js (hamma joyda bitta: @Ksava_org).
 const SUPPORT_USERNAME = sanitizeTelegramUsername(require("./_contact.js").ADMIN_CONTACT_USERNAME);
@@ -9159,7 +9161,7 @@ function refreshMandatoryChannel() {
 
   const task = (async () => {
     try {
-      const data = await supabaseRequest(`/bot_settings?key=eq.mandatory_channel&select=value`);
+      const data = await supabaseRequest(`/bot_settings?key=eq.${encodeURIComponent(MANDATORY_CHANNEL_KEY)}&select=value`);
       botSettings.mandatoryChannel = data && data.length > 0 ? data[0].value : null;
       botSettings.lastFetchedAt = Date.now();
     } catch (err) {
@@ -9214,10 +9216,10 @@ async function setMandatoryChannel(value) {
       await supabaseRequest(`/bot_settings?on_conflict=key`, {
         method: "POST",
         prefer: "resolution=merge-duplicates",
-        body: { key: "mandatory_channel", value },
+        body: { key: MANDATORY_CHANNEL_KEY, value },
       });
     } else {
-      await supabaseRequest(`/bot_settings?key=eq.mandatory_channel`, {
+      await supabaseRequest(`/bot_settings?key=eq.${encodeURIComponent(MANDATORY_CHANNEL_KEY)}`, {
         method: "DELETE",
       });
     }
