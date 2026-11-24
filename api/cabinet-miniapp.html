@@ -788,7 +788,7 @@
           hist_purchases: "Xaridlar", hist_payments: "To'lovlar", no_purchases: "Hali xarid qilinmagan.\nSotib olgan narsalaringiz shu yerda ko'rinadi.",
           no_payments: "Hali to'lov yo'q.\nBalansga tushgan va balansdan chiqqan pullar shu yerda ko'rinadi.",
           d_for: "Nima uchun", d_amount: "Summa", d_balance_after: "Qoldiq", d_tx: "Tranzaksiya", d_status: "Holat", d_note: "Izoh", open_order: "Xaridni ochish",
-          tx_in: "Kirim", tx_out: "Chiqim",
+          tx_in: "Kirim", tx_out: "Chiqim", tx_dl: "Qurilmalardan chiqish", tx_dl_refund: "Qurilmalardan chiqish — qaytarildi", tx_service: "Xizmat", tx_dl_ok: "Bajarildi", d_account: "Akkaunt",
           err_insufficient_funds: "Balansda mablag' yetarli emas", err_invalid_amount: "Summa noto'g'ri", err_topup_disabled: "To'ldirish vaqtincha o'chirilgan",
           err_wallet_unavailable: "Balans xizmati vaqtincha ishlamayapti", err_provider_unavailable: "To'lov tizimi javob bermadi. Birozdan keyin tekshiring",
           err_purchase_failed: "Xarid amalga oshmadi — pul yechilmadi"
@@ -876,7 +876,7 @@
           hist_purchases: "Покупки", hist_payments: "Платежи", no_purchases: "Покупок пока нет.\nЗдесь появится всё, что вы купили.",
           no_payments: "Платежей пока нет.\nЗдесь появятся поступления на баланс и списания с него.",
           d_for: "За что", d_amount: "Сумма", d_balance_after: "Остаток", d_tx: "Транзакция", d_status: "Статус", d_note: "Комментарий", open_order: "Открыть покупку",
-          tx_in: "Приход", tx_out: "Расход",
+          tx_in: "Приход", tx_out: "Расход", tx_dl: "Выход со всех устройств", tx_dl_refund: "Выход с устройств — возврат", tx_service: "Услуга", tx_dl_ok: "Выполнено", d_account: "Аккаунт",
           err_insufficient_funds: "Недостаточно средств на балансе", err_invalid_amount: "Неверная сумма", err_topup_disabled: "Пополнение временно отключено",
           err_wallet_unavailable: "Сервис баланса временно недоступен", err_provider_unavailable: "Платёжная система не ответила. Проверьте чуть позже",
           err_purchase_failed: "Покупка не прошла — деньги не списаны"
@@ -964,7 +964,7 @@
           hist_purchases: "Purchases", hist_payments: "Payments", no_purchases: "No purchases yet.\nEverything you buy will appear here.",
           no_payments: "No payments yet.\nMoney added to and spent from your balance will appear here.",
           d_for: "Paid for", d_amount: "Amount", d_balance_after: "Balance after", d_tx: "Transaction", d_status: "Status", d_note: "Note", open_order: "Open purchase",
-          tx_in: "Income", tx_out: "Spent",
+          tx_in: "Income", tx_out: "Spent", tx_dl: "Log out of all devices", tx_dl_refund: "Device logout — refunded", tx_service: "Service", tx_dl_ok: "Done", d_account: "Account",
           err_insufficient_funds: "Not enough funds", err_invalid_amount: "Invalid amount", err_topup_disabled: "Top-ups are temporarily disabled",
           err_wallet_unavailable: "Balance service is temporarily unavailable", err_provider_unavailable: "The payment system didn't respond. Check again shortly",
           err_purchase_failed: "Purchase failed — nothing was charged"
@@ -2424,8 +2424,22 @@
         topup: { icon: "plus-circle", tone: "green" },
         purchase: { icon: "bag", tone: "pink" },
         refund: { icon: "arrow-counterclockwise", tone: "green" },
-        admin: { icon: "person-gear", tone: "" }
+        admin: { icon: "person-gear", tone: "" },
+        device: { icon: "phone-flip", tone: "" },
+        device_refund: { icon: "arrow-counterclockwise", tone: "green" }
       };
+
+      // "Qurilmalardan chiqish" yechimi/qaytimi ledger'da kind=admin, izoh
+      // "Device logout[ refund][ · ab***@mail.com]" bo'lib yoziladi (api/account.js).
+      function txDevice(t) {
+        if (t.kind !== "admin") return null;
+        var m = /^Device logout( refund)?(?:\s*·\s*(.+))?$/.exec(t.note || "");
+        return m ? { refund: Boolean(m[1]), email: m[2] || "" } : null;
+      }
+      function txMeta(t) {
+        var dev = txDevice(t);
+        return dev ? TX[dev.refund ? "device_refund" : "device"] : (TX[t.kind] || TX.admin);
+      }
 
       // Xarid tranzaksiyasi nima uchun to'langan: buyurtmadan, u ro'yxatda
       // bo'lmasa — ledger izohidan ("full_info:10", "firstmail ab***@…").
@@ -2448,20 +2462,27 @@
       }
 
       function txTitle(t) {
+        var dev = txDevice(t);
+        if (dev) return L(dev.refund ? "tx_dl_refund" : "tx_dl");
         if (t.kind === "purchase" || t.kind === "refund") return txPurpose(t) || L("tx_" + t.kind);
         return L("tx_" + t.kind);
       }
 
       function txItemHtml(t, tappable) {
-        var k = TX[t.kind] || TX.admin;
+        var k = txMeta(t);
         var plus = t.delta > 0;
+        var dev = txDevice(t);
         var topup = t.kind === "topup" ? findTopup(t.topup_id) : null;
-        var sub = esc(t.kind === "topup" || t.kind === "admin" ? L(plus ? "tx_in" : "tx_out") : L("tx_" + t.kind));
+        var sub = dev
+          ? '<span class="pill ' + (dev.refund ? "green" : "accent") + '">' + esc(L("tx_service")) + "</span>"
+          : esc(t.kind === "topup" || t.kind === "admin" ? L(plus ? "tx_in" : "tx_out") : L("tx_" + t.kind));
         var okind = txOrderKind(t);
         if (okind) sub += " · " + esc(L("ord_" + okind));
         if (topup && topup.provider) sub += " · " + methodHtml(topup.provider);
         sub += " · " + esc(fmtDate(t.created_at));
-        if ((t.kind === "refund" && t.note && t.note !== "refund") || (t.kind === "admin" && t.note)) {
+        if (dev) {
+          if (dev.email) sub += '<br><span style="color:#a5b4fc">' + icon("envelope") + " " + esc(dev.email) + "</span>";
+        } else if ((t.kind === "refund" && t.note && t.note !== "refund") || (t.kind === "admin" && t.note)) {
           sub += '<br><span style="color:#a5b4fc">' + esc(t.note) + "</span>";
         }
         var tag = tappable ? 'button class="item tappable" data-tx="' + esc(t.id) + '"' : 'div class="item"';
@@ -2473,12 +2494,17 @@
       }
 
       function openTxDetail(t) {
-        var k = TX[t.kind] || TX.admin;
+        var k = txMeta(t);
         var plus = t.delta > 0;
+        var dev = txDevice(t);
         var order = findOrder(t.order_id);
         var topup = t.kind === "topup" ? findTopup(t.topup_id) : null;
-        var rows = payRow(L("d_type"), L("tx_" + t.kind));
-        if (t.kind === "purchase" || t.kind === "refund") {
+        var rows = payRow(L("d_type"), dev ? L("tx_service") : L("tx_" + t.kind));
+        if (dev) {
+          rows += payRow(L("d_for"), L("tx_dl"));
+          if (dev.email) rows += payRow(L("d_account"), dev.email);
+          rows += payRowHtml(L("d_status"), '<span class="pill ' + "green" + '">' + esc(L(dev.refund ? "tx_refund" : "tx_dl_ok")) + "</span>");
+        } else if (t.kind === "purchase" || t.kind === "refund") {
           rows += payRow(L("d_for"), txPurpose(t) || "—");
           if (order) {
             if (order.kind === "firstmail" && order.delivery && order.delivery.email) rows += payRow(L("fm_email"), order.delivery.email, order.delivery.email);

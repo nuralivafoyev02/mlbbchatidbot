@@ -138,6 +138,64 @@ function buildMainGroupTopupText(user, amount) {
   ].join("\n");
 }
 
+// "ab***@gmail.com" — guruh va tarix uchun (to'liq email faqat egasiga).
+function maskEmail(email) {
+  const [local, domain] = String(email || "").split("@");
+  if (!local || !domain) return "";
+  return `${local.slice(0, Math.min(2, local.length))}***@${domain}`;
+}
+
+// Asosiy guruhga — kim "Qurilmalardan chiqish" xizmatidan foydalangani. Email yozilmaydi.
+function buildMainGroupDeviceLogoutText(user, price) {
+  const mention = user.username
+    ? `@${escapeHtml(user.username)}`
+    : `<a href="tg://user?id=${escapeHtml(user.id)}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+  return [
+    "#sotuv #device_logout",
+    `🔐 ${mention} akkauntini barcha qurilmalardan chiqardi — <b>${escapeHtml(formatSom(price))}</b>.`,
+  ].join("\n");
+}
+
+const DEVICE_LOGOUT_DONE_TEXT = {
+  uz: (d) => [
+    "✅ <b>Barcha qurilmalardan chiqildi</b>",
+    "",
+    `📧 Akkaunt: <code>${d.email}</code>`,
+    `💳 Balansdan yechildi: <b>${d.price}</b>`,
+    `💰 Qoldiq: <b>${d.balance}</b>`,
+    "",
+    "Endi akkauntga faqat siz kira olasiz. Xavfsizlik uchun Moonton parolingizni ham almashtirib qo'ying.",
+  ],
+  ru: (d) => [
+    "✅ <b>Выполнен выход со всех устройств</b>",
+    "",
+    `📧 Аккаунт: <code>${d.email}</code>`,
+    `💳 Списано с баланса: <b>${d.price}</b>`,
+    `💰 Остаток: <b>${d.balance}</b>`,
+    "",
+    "Теперь войти в аккаунт можете только вы. Для безопасности смените и пароль Moonton.",
+  ],
+  en: (d) => [
+    "✅ <b>Logged out of all devices</b>",
+    "",
+    `📧 Account: <code>${d.email}</code>`,
+    `💳 Charged from balance: <b>${d.price}</b>`,
+    `💰 Balance left: <b>${d.balance}</b>`,
+    "",
+    "Only you can sign in to the account now. For safety, change your Moonton password as well.",
+  ],
+};
+
+function buildDeviceLogoutDoneText(lang, { email, price, balance }) {
+  const unit = lang === "ru" ? "сум" : lang === "en" ? "UZS" : "so'm";
+  const fmt = (v) => `${String(Math.max(0, Math.round(Number(v) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ${unit}`;
+  return (DEVICE_LOGOUT_DONE_TEXT[lang] || DEVICE_LOGOUT_DONE_TEXT.uz)({
+    email: escapeHtml(email),
+    price: fmt(price),
+    balance: fmt(balance),
+  }).join("\n");
+}
+
 function buildTopupCreditedText(amount, balance) {
   return [
     "✅ <b>Balans to'ldirildi</b>",
@@ -253,8 +311,11 @@ module.exports = {
   buildFirstmailBuyText,
   buildLimitBuyText,
   buildMainGroupSaleText,
+  buildDeviceLogoutDoneText,
+  buildMainGroupDeviceLogoutText,
   buildMainGroupTopupText,
   buildTopupCreditedText,
+  maskEmail,
   buildWalletSaleText,
   createShopNotifier,
   resolveShopNotifyConfig,

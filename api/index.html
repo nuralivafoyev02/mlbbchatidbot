@@ -6635,8 +6635,13 @@
 
       function wlTxHtml(t) {
         var plus = t.delta > 0;
-        return '<div class="fm-item" style="cursor:default"><div class="fm-avatar"><i class="bi bi-' + (plus ? "plus-lg" : "dash-lg") + '"></i></div>' +
-          '<div class="fm-body"><div class="fm-email">' + esc(WL_TX[t.kind] || t.kind) + (t.note ? ' <span style="color:var(--text2);font-weight:500">· ' + esc(t.note) + "</span>" : "") + "</div>" +
+        // "Device logout[ refund][ · ab***@mail.com]" — kabinetdagi bilan bir xil format.
+        var dev = t.kind === "admin" ? /^Device logout( refund)?(?:\s*·\s*(.+))?$/.exec(t.note || "") : null;
+        var title = dev ? (dev[1] ? "Qurilmalardan chiqish — qaytarildi" : "Qurilmalardan chiqish") : (WL_TX[t.kind] || t.kind);
+        var note = dev ? dev[2] || "" : t.note;
+        var ico = dev ? (dev[1] ? "arrow-counterclockwise" : "phone-flip") : plus ? "plus-lg" : "dash-lg";
+        return '<div class="fm-item" style="cursor:default"><div class="fm-avatar"><i class="bi bi-' + ico + '"></i></div>' +
+          '<div class="fm-body"><div class="fm-email">' + esc(title) + (note ? ' <span style="color:var(--text2);font-weight:500">· ' + esc(note) + "</span>" : "") + "</div>" +
           '<div class="fm-meta">' + esc(wlTime(t.created_at)) + " · qoldiq " + esc(formatSom(t.balance_after)) + "</div></div>" +
           '<div class="fm-price ' + (plus ? "wl-delta-plus" : "wl-delta-minus") + '">' + (plus ? "+" : "−") + esc(formatSom(Math.abs(t.delta))) + "</div></div>";
       }

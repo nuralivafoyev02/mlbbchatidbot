@@ -842,9 +842,18 @@ test("account app: device logout runs only for an enabled beta and the linked ac
       email: "owner@example.test",
       code: "654321",
     });
-    assert.deepEqual(final.body, { ok: true, type: "verify-code2", cost: 25000, chargedAmount: 42000, balance: 58000 });
+    assert.deepEqual(final.body, { ok: true, type: "verify-code2", cost: 25000, chargedAmount: 42000, balance: 58000, email: "ow***@example.test" });
     assert.equal(supabase.getBalance(userId), 58000);
-    assert.deepEqual(supabase.walletAdjustments.at(-1), { userId: String(userId), delta: -42000, note: "Device logout" });
+    assert.deepEqual(supabase.walletAdjustments.at(-1), { userId: String(userId), delta: -42000, note: "Device logout · ow***@example.test" });
+    // Muvaffaqiyat: foydalanuvchiga bot xabari (to'liq email) + guruhga e'lon (emailsiz).
+    const dm = net.telegram.find((m) => m.method === "sendMessage" && String(m.payload.chat_id) === String(userId));
+    assert.ok(dm, "foydalanuvchiga xabar ketdi");
+    assert.match(dm.payload.text, /owner@example\.test/);
+    assert.match(dm.payload.text, /42 000/);
+    const group = net.telegram.find((m) => m.method === "sendMessage" && /#device_logout/.test(m.payload.text || ""));
+    assert.ok(group, "guruhga e'lon ketdi");
+    assert.ok(String(group.payload.chat_id).startsWith("-100"));
+    assert.ok(!/example\.test/.test(group.payload.text));
     assert.ok(!JSON.stringify(final.body).includes("provider-secret"));
 
     const unlinkedRowId = supabase.rpc("add_user_account", {

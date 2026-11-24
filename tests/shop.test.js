@@ -885,3 +885,17 @@ test("shop: main group topup notice names the user and amount, never the balance
     `#balans #toldirish\n💰 <a href="tg://user?id=7700600">Vali &lt;x&gt;</a> balansini <b>5 001 so'm</b>ga to'ldirdi.`
   );
 });
+
+test("shop: device logout texts — masked email in group, full email only to the user", () => {
+  const { buildMainGroupDeviceLogoutText, buildDeviceLogoutDoneText, maskEmail } = require("../api/_shop-notify.js");
+  assert.equal(maskEmail("player123@gmail.com"), "pl***@gmail.com");
+  assert.equal(maskEmail("a@x.io"), "a***@x.io");
+  assert.equal(maskEmail("bad"), "");
+  const group = buildMainGroupDeviceLogoutText({ id: 42, username: "vali_uz" }, 25000);
+  assert.equal(group, "#sotuv #device_logout\n🔐 @vali_uz akkauntini barcha qurilmalardan chiqardi — <b>25 000 so'm</b>.");
+  assert.ok(!/@gmail/.test(group));
+  const dm = buildDeviceLogoutDoneText("ru", { email: "p<1>@gmail.com", price: 25000, balance: 1500 });
+  assert.match(dm, /<code>p&lt;1&gt;@gmail\.com<\/code>/);
+  assert.match(dm, /25 000 сум/);
+  assert.match(dm, /1 500 сум/);
+});

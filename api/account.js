@@ -30,6 +30,9 @@ const {
   buildTopupCreditedText,
   buildMainGroupSaleText,
   buildMainGroupTopupText,
+  buildDeviceLogoutDoneText,
+  buildMainGroupDeviceLogoutText,
+  maskEmail,
 } = require("./_shop-notify.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
 const { injectArenaWeb } = require("./_arena-web.js");
@@ -270,6 +273,42 @@ async function alertDeviceLogout(config, user, reason, details = {}) {
   }
 }
 
+// Tarix (wallet_transactions.note) uchun: "Device logout · ab***@gmail.com".
+// Kabinet shu formatni taniydi va chiroyli ko'rsatadi.
+function deviceLogoutNote(base, email) {
+  const masked = maskEmail(email);
+  return masked ? `${base} · ${masked}` : base;
+}
+
+// Muvaffaqiyatli chiqishdan keyin: foydalanuvchiga bot xabari + asosiy guruhga
+// e'lon (best effort — pul allaqachon yechilgan, xizmat bajarilgan).
+async function notifyDeviceLogoutDone(config, user, { email, price, balance }) {
+  if (!config.botToken) return;
+  const sendUser = async () => {
+    const lang = await loadPreferredLanguage(config, user);
+    const response = await telegramFetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: String(user.id),
+        text: enrichPremiumEmojis(buildDeviceLogoutDoneText(lang, { email, price, balance })),
+        parse_mode: "HTML",
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!data || !data.ok) console.error("[DEVICE_LOGOUT_NOTIFY_USER]", response.status, String(data?.description || "").slice(0, 200));
+  };
+  const sendGroup = async () => {
+    const who = user.username || user.first_name ? user : await loadLaunchUser(config, String(user.id));
+    const notifier = createShopNotifier({ botToken: config.botToken, requestFn: storeRequest(config) });
+    await notifier.notifyMainGroup(buildMainGroupDeviceLogoutText(who, price), user.id);
+  };
+  const results = await Promise.allSettled([sendUser(), sendGroup()]);
+  results.forEach((r) => {
+    if (r.status === "rejected") console.error("[DEVICE_LOGOUT_NOTIFY]", r.reason?.message || r.reason);
+  });
+}
+
 // Jebray faqat Moonton email + parol bilan ishlaydi — kabinetdagi akkaunt shart
 // emas. rowId kelsa (eski "Mening akkauntim" oqimi) — u shu userniki bo'lishi kerak.
 async function handleDeviceLogout(res, { config, user, body }) {
@@ -323,7 +362,7 @@ async function handleDeviceLogout(res, { config, user, body }) {
   try {
     let chargedBalance = null;
     if (isFinal) {
-      const debit = await wallet.adminAdjust(user.id, -price, "Device logout");
+      const debit = await wallet.adminAdjust(user.id, -price, deviceLogoutNote("Device logout", input.email));
       if (!debit || debit.ok !== true) {
         return json(res, debit?.error === "insufficient_funds" ? 402 : 503, {
           ok: false,
@@ -338,7 +377,8 @@ async function handleDeviceLogout(res, { config, user, body }) {
     try {
       const result = await requestDeviceLogout(body, { apiKey: config.resellerApiKey });
       if (isFinal) {
-        return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance });
+        await notifyDeviceLogoutDone(config, user, { email: input.email, price, balance: chargedBalance });
+        return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance, email: maskEmail(input.email) });
       }
       return json(res, 200, result);
     } catch (error) {
@@ -347,7 +387,7 @@ async function handleDeviceLogout(res, { config, user, body }) {
       if (isFinal && reason !== "result_unknown") {
         let refund = null;
         try {
-          refund = await wallet.adminAdjust(user.id, price, "Device logout refund");
+          refund = await wallet.adminAdjust(user.id, price, deviceLogoutNote("Device logout refund", input.email));
         } catch (refundError) {
           console.error("[DEVICE_LOGOUT_REFUND_ERROR]", refundError?.message);
         }
