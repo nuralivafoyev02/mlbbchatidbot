@@ -196,6 +196,17 @@ function buildDeviceLogoutDoneText(lang, { email, price, balance }) {
   }).join("\n");
 }
 
+// Admin panel → Balans: admin qo'lda pul qo'shganda (bonus, kompensatsiya…).
+function buildMainGroupAdminCreditText(user, amount) {
+  const mention = user.username
+    ? `@${escapeHtml(user.username)}`
+    : `<a href="tg://user?id=${escapeHtml(user.id)}">${escapeHtml(user.first_name || "Foydalanuvchi")}</a>`;
+  return [
+    "#balans #admin",
+    `💰 ${mention} balansiga admin tomonidan <b>${escapeHtml(formatSom(amount))}</b> qo'shildi.`,
+  ].join("\n");
+}
+
 function buildTopupCreditedText(amount, balance) {
   return [
     "✅ <b>Balans to'ldirildi</b>",
@@ -313,6 +324,7 @@ module.exports = {
   buildMainGroupSaleText,
   buildDeviceLogoutDoneText,
   buildMainGroupDeviceLogoutText,
+  buildMainGroupAdminCreditText,
   buildMainGroupTopupText,
   buildTopupCreditedText,
   maskEmail,

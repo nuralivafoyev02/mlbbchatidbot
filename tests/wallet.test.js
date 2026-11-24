@@ -405,6 +405,22 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     const adjust = await call("wallet_adjust", { user_id: "777", delta: "-5000" }, cookie);
     assert.deepEqual([adjust.status, adjust.payload.error], [400, "insufficient_funds"]);
     assert.equal((await call("wallet_adjust", { user_id: "abc", delta: 5 }, cookie)).payload.error, "invalid_user");
+
+    // Admin qo'lda qo'shsa — foydalanuvchiga xabar + asosiy guruhga "#balans #admin".
+    rpcResults.wallet_admin_adjust = { ok: true, balance: 12000 };
+    const sentBefore = telegram.length;
+    const credit = await call("wallet_adjust", { user_id: "777", delta: "7000", note: "bonus" }, cookie);
+    assert.equal(credit.payload.data.balance, 12000);
+    const sent = telegram.slice(sentBefore);
+    assert.ok(sent.some((m) => m.chat_id === "777" && /7 000 so'm/.test(m.text)));
+    const group = sent.find((m) => /#balans #admin/.test(m.text || ""));
+    assert.ok(group, "guruhga admin qo'shgani haqida xabar");
+    assert.equal(group.chat_id, require("../api/_shop-notify.js").resolveShopNotifyConfig().mainGroupId);
+    assert.match(group.text, /7 000 so'm/);
+    // Ayirishda guruhga xabar ketmaydi.
+    const sentBeforeMinus = telegram.length;
+    await call("wallet_adjust", { user_id: "777", delta: "-1000" }, cookie);
+    assert.ok(!telegram.slice(sentBeforeMinus).some((m) => /#balans/.test(m.text || "")));
     assert.equal((await call("wallet_config_save", { cardNumber: "123" }, cookie)).payload.error, "card_invalid");
     const savedConfig = await call("wallet_config_save", { deviceLogoutPrice: "42000" }, cookie);
     assert.equal(savedConfig.payload.data.config.deviceLogoutPrice, 42000);

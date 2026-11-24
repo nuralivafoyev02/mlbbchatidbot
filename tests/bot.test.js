@@ -2134,7 +2134,7 @@ test("feedback command sends user comments to all admins", async () => {
     );
 
     const mainGroupMessages = calls.filter((call) =>
-      String(call.payload.chat_id) === "-1003832186200"
+      String(call.payload.chat_id) === "-1004434649076"
     );
     const userAck = calls.find((call) => call.payload.chat_id === 777);
 

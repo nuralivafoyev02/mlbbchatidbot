@@ -10,7 +10,7 @@ const cabinetGroups = require("./_cabinet-groups.js");
 const shopOrders = require("./_shop-orders.js");
 const adminAuth = require("./_admin-auth.js");
 const { injectTelegramShell } = require("./_tg-shell.js");
-const { createShopNotifier, buildMainGroupTopupText } = require("./_shop-notify.js");
+const { createShopNotifier, buildMainGroupTopupText, buildMainGroupAdminCreditText } = require("./_shop-notify.js");
 
 // ---------------------------------------------------------------------------
 // Config (same pattern as api/admin.js)
@@ -1277,13 +1277,15 @@ async function notifyWalletUser(userId, text) {
 }
 
 // Asosiy guruhga "X balansini N so'mga to'ldirdi" (best effort).
-async function notifyMainGroupTopup(userId, amount) {
+// viaAdmin — admin paneldan qo'lda qo'shilgan pul (wallet_adjust, delta > 0).
+async function notifyMainGroupTopup(userId, amount, viaAdmin = false) {
   if (!TELEGRAM_BOT_TOKEN || !/^\d{1,20}$/.test(String(userId))) return;
   try {
     const rows = await supabaseRequest(`/bot_users?user_id=eq.${encodeURIComponent(String(userId))}&select=username,first_name&limit=1`).catch(() => null);
     const row = Array.isArray(rows) && rows[0] ? rows[0] : {};
     const notifier = createShopNotifier({ botToken: TELEGRAM_BOT_TOKEN, requestFn: (path, options) => supabaseRequest(path, options) });
-    await notifier.notifyMainGroup(buildMainGroupTopupText({ id: userId, username: row.username, first_name: row.first_name }, amount), userId);
+    const who = { id: userId, username: row.username, first_name: row.first_name };
+    await notifier.notifyMainGroup((viaAdmin ? buildMainGroupAdminCreditText : buildMainGroupTopupText)(who, amount), userId);
   } catch (e) {
     console.error("[WALLET_NOTIFY_MAIN_GROUP_TOPUP]", e.message);
   }
@@ -1445,6 +1447,7 @@ async function handleWalletAdjust(req, res, body) {
       body.note ? `📝 Izoh: ${escapeHtml(String(body.note).slice(0, 300))}` : "",
       `💳 Joriy balans: <b>${formatSomText(result.balance)}</b>`,
     ].filter(Boolean).join("\n"));
+    if (delta > 0) await notifyMainGroupTopup(userId, delta, true);
     return json(res, 200, { ok: true, data: { balance: result.balance } });
   } catch (e) {
     return walletFailure(res, "ADJUST", e);
