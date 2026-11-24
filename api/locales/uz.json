@@ -278,6 +278,7 @@
   "profile_full_info": "📋 <b>To'liq malumot:</b> {remaining} ta qoldi",
   "full_info_quota_reduced_user": "⚠️ <b>Limit kamaytirildi!</b>\n\nSizning to'liq malumot tekshirish limitingiz <b>{count} ta</b> ga kamaytirildi.\n📦 Qoldiq: <b>{remaining}</b> ta.",
   "label_reset_pw": "🔐 Parolni tiklash",
+  "label_device_logout": "📱 Qurilmalardan chiqish",
   "btn_reset_pw": "🔐 Parolni tiklash",
   "placeholder_reset_pw": "Sizning email",
   "profile_accounts_title": "🗂 <b>Akkauntlarim</b> ({count}/{max}):",

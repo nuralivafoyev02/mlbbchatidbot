@@ -133,6 +133,10 @@ function installFetch({ supabase, arenaHandler, resellerHandler }) {
         const data = supabase.rpc(name, options.body ? JSON.parse(options.body) : {});
         return new Response(data === null ? "" : JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
       }
+      if (path.startsWith("/bot_usage_events") && options.method === "POST") {
+        (supabase.usageEvents ||= []).push(JSON.parse(options.body));
+        return jsonResponse([]);
+      }
       if (path.startsWith("/bot_settings")) {
         const parsed = new URL(href);
         if (options.method === "POST") {
@@ -854,6 +858,8 @@ test("account app: device logout runs only for an enabled beta and the linked ac
     assert.ok(group, "guruhga e'lon ketdi");
     assert.ok(String(group.payload.chat_id).startsWith("-100"));
     assert.ok(!/example\.test/.test(group.payload.text));
+    // Admin panel → "Bugun jami tekshirishlar" uchun hisob.
+    assert.deepEqual(supabase.usageEvents, [{ user_id: String(userId), chat_id: String(userId), update_type: "miniapp", action: "device_logout" }]);
     assert.ok(!JSON.stringify(final.body).includes("provider-secret"));
 
     const unlinkedRowId = supabase.rpc("add_user_account", {

@@ -129,6 +129,7 @@ const FEATURE_ACTIONS = Object.freeze({
   RESET_PW: "reset_pw",
   FEEDBACK: "feedback",
   ML_LINK: "ml_link",
+  DEVICE_LOGOUT: "device_logout",
 });
 const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   start: "label_start",
@@ -138,6 +139,7 @@ const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   reset_pw: "label_reset_pw",
   feedback: "label_feedback",
   ml_link: "label_ml_link",
+  device_logout: "label_device_logout",
 });
 function getDailyReportActionLabel(action, lang) {
   const key = DAILY_REPORT_ACTION_KEYS[action];

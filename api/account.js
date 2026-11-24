@@ -280,6 +280,20 @@ function deviceLogoutNote(base, email) {
   return masked ? `${base} · ${masked}` : base;
 }
 
+// Admin panel → "Bugun jami tekshirishlar" va kunlik hisobot bot_usage_events
+// dan sanaydi — muvaffaqiyatli chiqish action=device_logout bo'lib yoziladi.
+async function logDeviceLogoutUsage(config, user) {
+  try {
+    await supabaseRequest(config, "/bot_usage_events", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: { user_id: String(user.id), chat_id: String(user.id), update_type: "miniapp", action: "device_logout" },
+    });
+  } catch (error) {
+    console.error("[DEVICE_LOGOUT_USAGE]", error?.message);
+  }
+}
+
 // Muvaffaqiyatli chiqishdan keyin: foydalanuvchiga bot xabari + asosiy guruhga
 // e'lon (best effort — pul allaqachon yechilgan, xizmat bajarilgan).
 async function notifyDeviceLogoutDone(config, user, { email, price, balance }) {
@@ -377,7 +391,10 @@ async function handleDeviceLogout(res, { config, user, body }) {
     try {
       const result = await requestDeviceLogout(body, { apiKey: config.resellerApiKey });
       if (isFinal) {
-        await notifyDeviceLogoutDone(config, user, { email: input.email, price, balance: chargedBalance });
+        await Promise.allSettled([
+          notifyDeviceLogoutDone(config, user, { email: input.email, price, balance: chargedBalance }),
+          logDeviceLogoutUsage(config, user),
+        ]);
         return json(res, 200, { ...result, chargedAmount: price, balance: chargedBalance, email: maskEmail(input.email) });
       }
       return json(res, 200, result);

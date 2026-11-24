@@ -260,6 +260,7 @@
   "profile_full_info": "📋 <b>Полная информация:</b> осталось {remaining}",
   "full_info_quota_reduced_user": "⚠️ <b>Лимит уменьшен!</b>\n\nВаш лимит проверки полной информации уменьшен на <b>{count}</b>.\n📦 Осталось: <b>{remaining}</b>.",
   "label_reset_pw": "🔐 Сброс пароля",
+  "label_device_logout": "📱 Выход со всех устройств",
   "btn_reset_pw": "🔐 Сброс пароля",
   "placeholder_reset_pw": "Ваш email",
   "cmd_reset_pw": "<code>/resetpw email</code> или <code>/parol</code> — отправить письмо для сброса пароля Moonton аккаунта",

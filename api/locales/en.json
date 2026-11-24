@@ -278,6 +278,7 @@
   "profile_full_info": "📋 <b>Full info:</b> {remaining} left",
   "full_info_quota_reduced_user": "⚠️ <b>Limit reduced!</b>\n\nYour full-info check limit was reduced by <b>{count}</b>.\n📦 Remaining: <b>{remaining}</b>.",
   "label_reset_pw": "🔐 Password reset",
+  "label_device_logout": "📱 Device logout",
   "btn_reset_pw": "🔐 Password reset",
   "placeholder_reset_pw": "Your email",
   "profile_accounts_title": "🗂 <b>My accounts</b> ({count}/{max}):",

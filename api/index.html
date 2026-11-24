@@ -3211,6 +3211,14 @@
               </div>
               <div class="action-name">Fikr yuborish</div>
             </div>
+            <div class="action-card yellow">
+              <div class="action-icon"><i class="bi bi-phone-flip"></i></div>
+              <div class="action-count" id="actDeviceLogout">
+                <div class="skeleton skeleton-line w40"
+                  style="display:inline-block;vertical-align:middle;margin:0;height:22px"></div>
+              </div>
+              <div class="action-name">Qurilmalardan chiqish</div>
+            </div>
           </div>
         </div>
         <div class="card">
@@ -4512,7 +4520,8 @@
         full_info: "📋 To'liq ma'lumot",
         reset_pw: "🔐 Parolni tiklash",
         start: "🚀 /start",
-        feedback: "💬 Fikrlar"
+        feedback: "💬 Fikrlar",
+        device_logout: "📱 Qurilmalardan chiqish"
       };
 
       var ACTIVE_PERIOD_LABELS = {
@@ -4584,6 +4593,7 @@
           animateNumber("actResetPw", b.reset_pw || 0);
           animateNumber("actStart", b.start || 0);
           animateNumber("actFeedback", b.feedback || 0);
+          animateNumber("actDeviceLogout", b.device_logout || 0);
           animateNumber("statDaily", d.dailyUsers || 0);
           animateNumber("statMonthly", d.monthlyUsers || 0);
           animateNumber("statTotalUsers", d.totalUsers || 0);
