@@ -2707,6 +2707,38 @@
       box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35)
     }
 
+    .shop-cat.devlogout {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(236, 72, 153, 0.08)), var(--surface);
+      border-color: rgba(99, 102, 241, 0.3)
+    }
+
+    .shop-cat.devlogout .shop-cat-icon {
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      box-shadow: 0 6px 18px rgba(99, 102, 241, 0.35)
+    }
+
+    .dl-card {
+      padding: 14px;
+      border-radius: 16px;
+      background: var(--surface);
+      border: 1px solid var(--card-border);
+      margin-bottom: 12px;
+      -webkit-backdrop-filter: var(--surface-blur);
+      backdrop-filter: var(--surface-blur)
+    }
+
+    .dl-card h3 { font-size: 14px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: center; gap: 8px }
+    .dl-status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text2); margin-bottom: 12px }
+    .dl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0 }
+    .dl-dot.on { background: var(--green); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2) }
+    .dl-price-row { display: flex; gap: 8px; align-items: stretch }
+    .dl-price-row .btn-save { border: none; border-radius: 10px; padding: 0 18px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px }
+    .dl-price-row .btn-save:disabled { opacity: .6 }
+    .dl-price-row input { flex: 1; min-width: 0; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums }
+    .dl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px }
+    .dl-chip { padding: 6px 11px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface2, rgba(255,255,255,.06)); border: 1px solid var(--card-border); color: var(--text); cursor: pointer }
+    .dl-chip:active { transform: scale(.96) }
+
     .shop-cat.wallet {
       background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(14, 165, 233, 0.08)), var(--surface);
       border-color: rgba(16, 185, 129, 0.34)
@@ -3360,6 +3392,14 @@
             </div>
             <i class="bi bi-chevron-right shop-cat-arrow"></i>
           </div>
+          <div class="shop-cat devlogout" onclick="openDeviceLogout()">
+            <div class="shop-cat-icon"><i class="bi bi-phone-flip"></i></div>
+            <div class="shop-cat-body">
+              <div class="shop-cat-title">Qurilmalardan chiqish</div>
+              <div class="shop-cat-meta" id="shopDlMeta">Yuklanmoqda...</div>
+            </div>
+            <i class="bi bi-chevron-right shop-cat-arrow"></i>
+          </div>
           <div class="hint" style="font-size:11px;color:var(--text2);margin-top:6px;padding:0 4px">
             <b>Limit narxlari</b> botdagi <b>🛒 Do'kon → 📦 Limitlar</b> bo'limida va <b>💼 Shaxsiy kabinet</b>dagi <b>$</b> tugmasida ko'rinadi.
             Firstmail'ga qo'shilgan pochtalar botdagi <b>🛒 Do'kon → 📧 Firstmail</b> bo'limida ko'rinadi.
@@ -3410,6 +3450,44 @@
             <button class="refresh-btn" style="margin:0" onclick="loadLimitPrices()"><i class="bi bi-arrow-clockwise"></i></button>
           </div>
           <div id="lpList"></div>
+          <div style="height:70px"></div>
+        </div>
+
+        <!-- Qurilmalardan chiqish (device logout) -->
+        <div id="shopDeviceLogout" style="display:none">
+          <div class="shop-title-row">
+            <button class="shop-back" onclick="closeDeviceLogout()" aria-label="Orqaga"><i class="bi bi-chevron-left"></i></button>
+            <h2><i class="bi bi-phone-flip"></i> Qurilmalardan chiqish</h2>
+            <button class="refresh-btn" style="margin:0" onclick="loadDeviceLogout()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+          <div class="dl-card">
+            <div class="dl-status"><span class="dl-dot" id="dlDot"></span><span id="dlStatus">Yuklanmoqda...</span></div>
+            <h3><i class="bi bi-tag"></i> Xizmat narxi</h3>
+            <div class="dl-price-row">
+              <div class="modal-field" style="flex:1;margin:0"><input type="text" id="dlPrice" inputmode="numeric" placeholder="25 000" oninput="dlFormatInput(this)"></div>
+              <button class="btn-save" id="dlSaveBtn" onclick="saveDeviceLogoutPrice()"><i class="bi bi-floppy"></i> Saqlash</button>
+            </div>
+            <div class="dl-chips">
+              <button class="dl-chip" onclick="dlSetPrice(15000)">15 000</button>
+              <button class="dl-chip" onclick="dlSetPrice(20000)">20 000</button>
+              <button class="dl-chip" onclick="dlSetPrice(25000)">25 000</button>
+              <button class="dl-chip" onclick="dlSetPrice(30000)">30 000</button>
+            </div>
+            <div class="hint" style="font-size:11.5px;color:var(--text2);margin-top:10px">
+              Bu summa foydalanuvchining bot balansidan faqat muvaffaqiyatli chiqishda yechiladi. Jebray provayder narxi API hisobidan alohida yechiladi. Yangi narx darhol kuchga kiradi.
+            </div>
+          </div>
+          <div class="fm-sums">
+            <div class="fm-sum green">
+              <div class="fm-sum-label"><i class="bi bi-calendar-check"></i> Bugun</div>
+              <div class="fm-sum-value" id="dlToday">—</div>
+            </div>
+            <div class="fm-sum">
+              <div class="fm-sum-label"><i class="bi bi-graph-up"></i> Jami</div>
+              <div class="fm-sum-value" id="dlTotal">—</div>
+            </div>
+          </div>
+          <div class="hint" style="font-size:11px;color:var(--text2);padding:0 4px" id="dlStatsHint"></div>
           <div style="height:70px"></div>
         </div>
 
@@ -3730,8 +3808,6 @@
           <div class="modal-field"><label>Bank / tur</label><input type="text" id="wlBank" maxlength="40" placeholder="Uzcard, Humo..."></div>
           <div class="modal-field"><label>Eng kam (so'm)</label><input type="text" id="wlMin" inputmode="numeric" placeholder="5000"></div>
           <div class="modal-field"><label>Eng ko'p (so'm)</label><input type="text" id="wlMax" inputmode="numeric" placeholder="5000000"></div>
-          <div class="modal-field"><label>Qurilmalardan chiqish narxi (so'm)</label><input type="text" id="wlDeviceLogoutPrice" inputmode="numeric" placeholder="25000"></div>
-          <div class="hint pay-hint">Bu summa foydalanuvchining bot balansidan yechiladi. Jebray provayder narxi API hisobidan alohida yechiladi.</div>
         </div>
         <div class="modal-field" style="margin-top:8px"><label>Tez summalar (vergul bilan)</label><input type="text" id="wlPresets" placeholder="10000, 20000, 50000, 100000"></div>
         <div class="modal-field lp-hit-row">
@@ -4245,6 +4321,7 @@
           if (fmView === "list") reloadFirstmailsKeepingPosition();
           else if (dnView !== "none") loadDonat();
           else if (lpView) loadLimitPrices();
+          else if (dlView) loadDeviceLogout();
           else loadShopSummary();
         }
         updateShopFab();
@@ -5320,6 +5397,7 @@
       var fmView = "home";
       var dnView = "none"; // "none" | "games" | "game" — Donat bo'limi
       var lpView = false; // Limit narxlari bo'limi ochiqmi
+      var dlView = false; // Qurilmalardan chiqish bo'limi ochiqmi
       var wlView = false; // Balans va to'lovlar bo'limi ochiqmi
       var fmLoading = false;
       var fmHasMore = false;
@@ -5378,6 +5456,7 @@
       function loadShopSummary() {
         loadDonat();
         loadLimitPrices();
+        loadDeviceLogout();
         api("shop_fm_list", { limit: 0 }).then(function (result) {
           if (result.ok && result.data) {
             applyFmSummary(result.data);
@@ -6285,7 +6364,6 @@
         document.getElementById("wlBank").value = c.cardBank || "";
         document.getElementById("wlMin").value = c.min || "";
         document.getElementById("wlMax").value = c.max || "";
-        document.getElementById("wlDeviceLogoutPrice").value = c.deviceLogoutPrice || "";
         document.getElementById("wlPresets").value = (c.presets || []).join(", ");
         document.getElementById("wlEnabled").checked = c.enabled !== false;
         bindWalletButtons(document.getElementById("featScreen"));
@@ -6777,7 +6855,6 @@
           cardBank: document.getElementById("wlBank").value,
           min: document.getElementById("wlMin").value.replace(/\s+/g, ""),
           max: document.getElementById("wlMax").value.replace(/\s+/g, ""),
-          deviceLogoutPrice: document.getElementById("wlDeviceLogoutPrice").value.replace(/\s+/g, ""),
           presets: document.getElementById("wlPresets").value,
           enabled: document.getElementById("wlEnabled").checked
         }).then(function (result) {
@@ -6791,6 +6868,100 @@
         });
       }
       window.saveWalletConfig = saveWalletConfig;
+
+      /* -----------------------------------------------------------------------
+         Do'kon → Qurilmalardan chiqish: narx (wallet_config.deviceLogoutPrice)
+      ----------------------------------------------------------------------- */
+      var dlData = null;
+      var dlSeq = 0;
+
+      function dlDigits(v) { return String(v || "").replace(/\D/g, "").slice(0, 10); }
+      function dlFormatInput(el) {
+        var d = dlDigits(el.value);
+        el.value = d ? d.replace(/\B(?=(\d{3})+(?!\d))/g, " ") : "";
+      }
+      window.dlFormatInput = dlFormatInput;
+      function dlSetPrice(n) {
+        hapticLight();
+        var el = document.getElementById("dlPrice");
+        el.value = String(n);
+        dlFormatInput(el);
+      }
+      window.dlSetPrice = dlSetPrice;
+
+      function renderDeviceLogout() {
+        var meta = document.getElementById("shopDlMeta");
+        if (!dlData) return;
+        var svc = dlData.service || {};
+        var st = dlData.stats;
+        if (meta) meta.textContent = formatSom(dlData.price) + (svc.enabled ? " · yoqilgan" : " · o'chiq") + (st ? " · bugun " + Math.max(0, st.today) + " ta" : "");
+        if (!dlView) return;
+        var input = document.getElementById("dlPrice");
+        if (document.activeElement !== input) { input.value = String(dlData.price || ""); dlFormatInput(input); }
+        document.getElementById("dlDot").classList.toggle("on", Boolean(svc.enabled));
+        document.getElementById("dlStatus").textContent = svc.enabled
+          ? "Xizmat yoqilgan — botda «Qurilmalardan chiqish» tugmasi ko'rinadi"
+          : !svc.flagOn ? "Xizmat o'chiq (JEBRAY_DEVICE_LOGOUT_ENABLED yoqilmagan)" : "Xizmat o'chiq — JEBRAY_RESELLER_API_KEY sozlanmagan";
+        var statHtml = function (n, sum) {
+          return esc(Math.max(0, n) + " ta") + '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-top:2px">' + esc(formatSom(Math.max(0, sum))) + "</div>";
+        };
+        document.getElementById("dlToday").innerHTML = st ? statHtml(st.today, st.todaySum) : "—";
+        document.getElementById("dlTotal").innerHTML = st ? statHtml(st.total, st.sum) : "—";
+        document.getElementById("dlStatsHint").textContent = st
+          ? (st.refunds ? st.refunds + " ta qaytarilgan (summadan ayirilgan). " : "") + (st.lastAt ? "Oxirgisi: " + wlTime(st.lastAt) : "Hali sotuv bo'lmagan.")
+          : "";
+      }
+
+      function loadDeviceLogout() {
+        var seq = ++dlSeq;
+        api("shop_dl_get", {}).then(function (result) {
+          if (seq !== dlSeq) return;
+          if (!result.ok || !result.data) {
+            var meta = document.getElementById("shopDlMeta");
+            if (meta) meta.textContent = "Ma'lumotni yuklab bo'lmadi";
+            if (dlView) showToast("❌ " + (result.message || "Yuklab bo'lmadi"), "error");
+            return;
+          }
+          dlData = result.data;
+          renderDeviceLogout();
+        }).catch(function () {
+          if (seq !== dlSeq) return;
+          if (dlView) showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.loadDeviceLogout = loadDeviceLogout;
+
+      function showDlView(open) {
+        dlView = open;
+        document.getElementById("shopHome").style.display = open ? "none" : "block";
+        document.getElementById("shopDeviceLogout").style.display = open ? "block" : "none";
+        updateShopFab();
+        if (open) renderDeviceLogout();
+      }
+      function openDeviceLogout() { hapticLight(); showDlView(true); loadDeviceLogout(); }
+      function closeDeviceLogout() { hapticLight(); showDlView(false); }
+      window.openDeviceLogout = openDeviceLogout;
+      window.closeDeviceLogout = closeDeviceLogout;
+
+      function saveDeviceLogoutPrice() {
+        var btn = document.getElementById("dlSaveBtn");
+        var price = Number(dlDigits(document.getElementById("dlPrice").value));
+        if (!price || price < 1 || price > 1000000000) { showToast("❌ Narx 1 dan 1 000 000 000 so'mgacha bo'lsin", "error"); return; }
+        if (dlData && price === Number(dlData.price)) { showToast("Narx o'zgarmadi", "info"); return; }
+        btn.disabled = true;
+        api("shop_dl_save", { price: price }).then(function (result) {
+          btn.disabled = false;
+          if (!result.ok || !result.data) { showToast("❌ " + (result.message || "Xatolik"), "error"); return; }
+          if (dlData) dlData.price = result.data.price;
+          if (wlData && wlData.config) wlData.config.deviceLogoutPrice = result.data.price;
+          renderDeviceLogout();
+          showToast("✅ Narx saqlandi: " + formatSom(result.data.price), "success");
+        }).catch(function () {
+          btn.disabled = false;
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.saveDeviceLogoutPrice = saveDeviceLogoutPrice;
 
       /* -----------------------------------------------------------------------
          Do'kon → Limit narxlari (shaxsiy kabinetdagi "$" tugmasi)

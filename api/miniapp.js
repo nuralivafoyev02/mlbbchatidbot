@@ -159,6 +159,10 @@ module.exports = async function handler(req, res) {
           return handleShopLpSave(req, res, body);
         case "shop_lp_delete":
           return handleShopLpDelete(req, res, body);
+        case "shop_dl_get":
+          return handleShopDeviceLogoutGet(req, res);
+        case "shop_dl_save":
+          return handleShopDeviceLogoutSave(req, res, body);
         case "wallet_overview":
           return handleWalletOverview(req, res, body);
         case "wallet_config_save":
@@ -1326,6 +1330,70 @@ async function handleWalletOverview(req, res) {
     });
   } catch (e) {
     return walletFailure(res, "OVERVIEW", e);
+  }
+}
+
+// Do'kon → Qurilmalardan chiqish: narx (wallet_config.deviceLogoutPrice) va
+// qisqa statistika (ledger: kind=admin, note "Device logout[ refund]…").
+function deviceLogoutServiceState() {
+  const enabled = process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true";
+  const keySet = Boolean(String(process.env.JEBRAY_RESELLER_API_KEY || "").trim());
+  return { enabled: enabled && keySet, flagOn: enabled, keySet };
+}
+
+async function deviceLogoutStats() {
+  const params = new URLSearchParams({
+    kind: "eq.admin",
+    note: "like.Device logout*",
+    select: "delta,note,created_at",
+    order: "id.desc",
+    limit: "2000",
+  });
+  const rows = await supabaseRequest(`/wallet_transactions?${params.toString()}`).catch(() => null);
+  if (!Array.isArray(rows)) return null;
+  const startOfDay = new Date(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tashkent" }) + "T00:00:00+05:00").getTime();
+  const stats = { total: 0, sum: 0, today: 0, todaySum: 0, refunds: 0, lastAt: null };
+  for (const row of rows) {
+    const delta = Number(row.delta) || 0;
+    const refund = /^Device logout refund/.test(row.note || "");
+    const sign = refund ? -1 : 1;
+    if (refund) stats.refunds += 1;
+    stats.total += sign;
+    stats.sum += -delta;
+    if (Date.parse(row.created_at) >= startOfDay) {
+      stats.today += sign;
+      stats.todaySum += -delta;
+    }
+    if (!refund && !stats.lastAt) stats.lastAt = row.created_at;
+  }
+  return stats;
+}
+
+async function handleShopDeviceLogoutGet(req, res) {
+  if (!(await requireAuth(req, res))) return;
+  try {
+    const [config, stats] = await Promise.all([getWallet().getConfig(), deviceLogoutStats()]);
+    return json(res, 200, { ok: true, data: { price: config.deviceLogoutPrice, service: deviceLogoutServiceState(), stats } });
+  } catch (e) {
+    return walletFailure(res, "DL_GET", e);
+  }
+}
+
+async function handleShopDeviceLogoutSave(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const raw = String(body.price ?? "").replace(/\s+/g, "");
+  if (!/^\d{1,10}$/.test(raw) || Number(raw) < 1 || Number(raw) > 1000000000) {
+    return walletError(res, "device_logout_price_invalid");
+  }
+  try {
+    const wallet = getWallet();
+    // Faqat narx o'zgaradi — karta, limitlar va boshqa sozlamalar saqlanib qoladi.
+    const current = await wallet.getConfig();
+    const result = await wallet.saveConfig({ ...current, deviceLogoutPrice: raw });
+    if (!result.ok) return walletError(res, result.error);
+    return json(res, 200, { ok: true, data: { price: result.config.deviceLogoutPrice } });
+  } catch (e) {
+    return walletFailure(res, "DL_SAVE", e);
   }
 }
 

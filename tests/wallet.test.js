@@ -410,6 +410,22 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     assert.equal(savedConfig.payload.data.config.deviceLogoutPrice, 42000);
     assert.equal(settings.get("wallet_config").deviceLogoutPrice, 42000);
     assert.equal((await call("wallet_config_save", { deviceLogoutPrice: "" }, cookie)).payload.error, "device_logout_price_invalid");
+
+    // Do'kon → Qurilmalardan chiqish: faqat narx o'zgaradi, karta/limitlar saqlanadi.
+    await call("wallet_config_save", { cardNumber: "8600 1234 1234 1234", cardHolder: "Ali", min: "3000", max: "900000", presets: "5000, 9000", deviceLogoutPrice: "42000" }, cookie);
+    assert.equal((await call("shop_dl_save", { price: "abc" }, cookie)).payload.error, "device_logout_price_invalid");
+    assert.equal((await call("shop_dl_save", { price: "0" }, cookie)).payload.error, "device_logout_price_invalid");
+    const dlSaved = await call("shop_dl_save", { price: "31 000" }, cookie);
+    assert.equal(dlSaved.payload.data.price, 31000);
+    const stored = settings.get("wallet_config");
+    assert.deepEqual(
+      [stored.deviceLogoutPrice, stored.cardNumber, stored.cardHolder, stored.min, stored.max, stored.presets],
+      [31000, "8600123412341234", "Ali", 3000, 900000, [5000, 9000]]
+    );
+    const dlGet = await call("shop_dl_get", {}, cookie);
+    assert.equal(dlGet.payload.data.price, 31000);
+    assert.equal(dlGet.payload.data.service.enabled, false);
+    assert.equal((await call("shop_dl_save", { price: "1000" })).status, 401);
   } finally {
     global.fetch = originalFetch;
     for (const key of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ADMIN_PANEL_SECRET", "ADMIN_PANEL_USERNAME", "ADMIN_PANEL_PASSWORD", "TELEGRAM_BOT_TOKEN"]) {
