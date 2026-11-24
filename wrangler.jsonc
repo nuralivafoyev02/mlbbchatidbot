@@ -90,6 +90,7 @@
     "FULL_INFO_API": "https://api.jebray.com",
     "FULL_INFO_TIMEOUT_MS": "30000",
     "FULL_INFO_RETRIES": "2",
+    "JEBRAY_DEVICE_LOGOUT_ENABLED": "true",
     "TELEGRAPH_TIMEOUT_MS": "10000",
     "BROADCAST_RATE_PER_SEC": "25",
     "BROADCAST_BATCH_SIZE": "25",
