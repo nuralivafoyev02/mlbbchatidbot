@@ -193,6 +193,8 @@ module.exports = async function handler(req, res) {
           return handleApiTokenRevoke(req, res, body);
         case "api_token_extend":
           return handleApiTokenExtend(req, res, body);
+        case "api_token_owner":
+          return handleApiTokenOwner(req, res, body);
         default:
           return json(res, 400, { ok: false, error: "unknown_action" });
       }
@@ -1877,6 +1879,9 @@ async function handleApiTokenCreate(req, res, body) {
   if (!title) return json(res, 400, { ok: false, error: "title_required" });
   if (!Number.isFinite(days) || days < 1 || days > 3650) return json(res, 400, { ok: false, error: "invalid_days" });
 
+  const ownerRaw = String(body.owner_user_id ?? "").trim();
+  if (ownerRaw && !/^\d{3,20}$/.test(ownerRaw)) return json(res, 400, { ok: false, error: "invalid_owner", message: "Telegram ID faqat raqamlardan iborat" });
+
   const rawToken = `mlbb_${crypto.randomBytes(20).toString("hex")}`;
   try {
     const rows = await supabaseRequest("/api_tokens", {
@@ -1890,6 +1895,7 @@ async function handleApiTokenCreate(req, res, body) {
         expires_at: new Date(Date.now() + days * 86400000).toISOString(),
         is_revoked: false,
         usage_count: 0,
+        ...(ownerRaw ? { owner_user_id: ownerRaw } : {}),
       },
     });
     const row = Array.isArray(rows) ? rows[0] : null;
@@ -1910,6 +1916,22 @@ async function handleApiTokenRevoke(req, res, body) {
   } catch (e) {
     console.error("[API_TOKEN_REVOKE]", e.message);
     return json(res, 500, { ok: false, error: "revoke_failed" });
+  }
+}
+
+// Kalit egasini (Telegram ID) uzaytirmasdan saqlash yoki olib tashlash.
+async function handleApiTokenOwner(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const id = toPgBigint(body.id);
+  const ownerRaw = String(body.owner_user_id ?? "").trim();
+  if (!id) return json(res, 400, { ok: false, error: "invalid_id" });
+  if (ownerRaw && !/^\d{3,20}$/.test(ownerRaw)) return json(res, 400, { ok: false, error: "invalid_owner", message: "Telegram ID faqat raqamlardan iborat" });
+  try {
+    await supabaseRequest(`/api_tokens?id=eq.${id}`, { method: "PATCH", body: { owner_user_id: ownerRaw || null } });
+    return json(res, 200, { ok: true, data: { owner_user_id: ownerRaw || null } });
+  } catch (e) {
+    console.error("[API_TOKEN_OWNER]", e.message);
+    return json(res, 500, { ok: false, error: "owner_failed", message: "Saqlab bo'lmadi" });
   }
 }
 

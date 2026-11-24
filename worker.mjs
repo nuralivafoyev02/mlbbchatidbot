@@ -7,6 +7,7 @@ import {
 } from "./broadcast-core.mjs";
 import { AsyncRunner, getBindRunnerName } from "./async-runner.mjs";
 import { MONITOR_CRON, MONITOR_RUNNER_NAME } from "./webhook-monitor.mjs";
+import { runApiTokenReminders } from "./api-token-reminders.mjs";
 import { flushHealthCounters } from "./health-counters.mjs";
 import { handlePublicApi, isPublicApiPath } from "./public-api.mjs";
 import {
@@ -96,7 +97,13 @@ export default {
   async scheduled(event, env, ctx) {
     // Har cron o'z ishiga: webhook kuzatuvi kunlik hisobotni qo'zg'atmasligi kerak.
     if (event?.cron === MONITOR_CRON) {
+      // API kalitlari: muddat tugashiga 7 kun qolganda egasiga va adminlarga
+      // (soatiga bir marta, faqat API_TOKEN_REMINDERS=true bo'lgan prod Worker'da).
+      const reminders = runApiTokenReminders({ env, now: Number(event.scheduledTime) || Date.now() })
+        .catch((error) => console.error("[API_TOKEN_REMINDERS_ERROR]", error?.message || error));
+      if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(reminders);
       await runWebhookMonitorCheck(env);
+      await reminders;
       return;
     }
 

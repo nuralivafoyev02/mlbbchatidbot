@@ -149,6 +149,14 @@ test("admin: block/unblock a user and extend an API key with a bot message to it
     assert.equal((await adminCall("api_token_extend", { id: 9, until: "2027-03-01" }, cookie)).payload.error, "until_too_early");
     assert.equal((await adminCall("api_token_extend", { id: 9, until: "30.06.2027" }, cookie)).payload.error, "invalid_until");
 
+    // Faqat egasini saqlash / olib tashlash.
+    assert.equal((await adminCall("api_token_owner", { id: 9, owner_user_id: "12x" }, cookie)).payload.error, "invalid_owner");
+    const own = await adminCall("api_token_owner", { id: 9, owner_user_id: "5551234" }, cookie);
+    assert.equal(own.payload.data.owner_user_id, "5551234");
+    assert.deepEqual(state.tokenPatches.at(-1), { owner_user_id: "5551234" });
+    await adminCall("api_token_owner", { id: 9, owner_user_id: "" }, cookie);
+    assert.deepEqual(state.tokenPatches.at(-1), { owner_user_id: null });
+
     // Muddati o'tgan kalit bugundan boshlab uzaytiriladi.
     state.token.expires_at = "2020-01-01T00:00:00.000Z";
     const late = await adminCall("api_token_extend", { id: 9, days: 10 }, cookie);
