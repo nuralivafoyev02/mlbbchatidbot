@@ -431,23 +431,24 @@ test("main keyboard has no placeholder and hides admin buttons from users", () =
 
   assert.equal(userKeyboard.input_field_placeholder, undefined);
   assert.equal(userKeyboard.keyboard[0][0].text, "Server aniqlash");
-  // 2 ustunli jadval, eng pastda butun qator — Shaxsiy kabinet (web_app).
-  // Emoji faqat Profilim, Shaxsiy kabinet va admin tugmalarida.
+  // Tartib: [Server][To'liq] / [Parol][Profil][Do'kon] / (xizmatlar) / [Kabinet].
+  // Til va Foydalanuvchilar menyuda yo'q (buyruqlar ishlayveradi).
   assert.deepEqual(userKeyboard.keyboard.map((row) => row.map((button) => button.text)), [
     ["Server aniqlash", "To'liq ma'lumot"],
-    ["Parolni tiklash", "Do'kon"],
-    ["👤 Profilim", "Til"],
+    ["Parolni tiklash", "👤 Profilim", "Do'kon"],
     ["💼 Shaxsiy kabinet"],
   ]);
-  assert.deepEqual(adminKeyboard.keyboard.slice(3, 5).map((row) => row.map((button) => button.text)), [
-    ["📊 Statistika", "👥 Foydalanuvchilar"],
-    ["🎛️ Admin Panel"],
+  assert.deepEqual(adminKeyboard.keyboard.map((row) => row.map((button) => button.text)), [
+    ["Server aniqlash", "To'liq ma'lumot"],
+    ["Parolni tiklash", "👤 Profilim", "Do'kon"],
+    ["🎛️ Admin Panel", "📊 Statistika"],
+    ["💼 Shaxsiy kabinet"],
   ]);
-  assert.match(userKeyboard.keyboard[3][0].web_app?.url || "", /view=cabinet/);
+  assert.match(userKeyboard.keyboard.at(-1)[0].web_app?.url || "", /view=cabinet/);
   assert.equal(adminKeyboard.keyboard.at(-1)[0].text, "💼 Shaxsiy kabinet");
+  assert.doesNotMatch(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar|🌐 Til/);
   assert.doesNotMatch(userKeyboardText, /📊|📣|👥|⚠️|Statistika|Xabar yuborish|Foydalanuvchilar|Xatoliklar|Buyruqlar|Yordam|🏠 Menyu|💬 Fikr va izohlar/);
   assert.match(JSON.stringify(adminKeyboard), /📊 Statistika/);
-  assert.match(JSON.stringify(adminKeyboard), /👥 Foydalanuvchilar/);
   assert.match(JSON.stringify(adminKeyboard), /🎛️ Admin Panel/);
   assert.doesNotMatch(JSON.stringify(adminKeyboard), /⚠️ Xatoliklar|📣 Xabar yuborish|📋 Buyruqlar|ℹ️ Yordam|🏠 Menyu|⚙️ Majburiylikni sozlash/);
 });

@@ -1,6 +1,9 @@
 {
   "_comment": "Emoji markazlashtirilgan konfiguratsiya. 'premium' — unicode emoji -> Telegram custom (premium) emoji ID. ID bo'sh ('') bo'lsa oddiy statik emoji ishlatiladi (ID ni keyin to'ldirish kifoya — global enrichment avtomatik yoqadi). 'static' — kodda nomi bilan chaqiriladigan statik emojilar (telegra.ph sahifasi uchun premium qo'llab-quvvatlanmaydi). Premium emoji ID sini Telegram-dan olish: client da yuborilgan premium emojiga o'ng tugma -> 'Copy emoji ID'.",
   "premium": {
+    "📧": "5915613475035418071",
+    "🔒": "5231302159739395058",
+    "💰": "5316711376876485361",
     "🏪": "5208573502046610594",
     "✅": "5316561083085895267",
     "🚨": "5204082134486117389",
@@ -47,9 +50,9 @@
   "buttonIcons": {
     "⬅️": "5830060857530257978",
     "➡️": "5886334622849044906",
-    "💰": "5987880246865565644",
+    "💰": "5316711376876485361",
     "🛒": "5983399041197675256",
-    "📧": "5967280668885913944",
+    "📧": "5915613475035418071",
     "⚙️": "5258096772776991776",
     "🎛️": "5258096772776991776",
     "🔄": "5244758760429213978",

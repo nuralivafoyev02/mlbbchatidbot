@@ -7175,22 +7175,24 @@ function getBroadcastResultText(result = {}, lang) {
 // yuborilmaydi (sendMessage → remove_keyboard), shuning uchun web_app xavfsiz.
 function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
-  // Rang (style): asosiy funksiyalar — ko'k, amallar — yashil, sozlamalar — oddiy.
-  // Emoji (va premium ikonka) faqat Profilim, Shaxsiy kabinet va admin
-  // tugmalarida; qolganlari emojisiz (isTranslatedKeyboardButton ikkalasini taniydi).
+  // Tartib (oddiy user):
+  //   [Server aniqlash][To'liq ma'lumot]
+  //   [Parolni tiklash][Profil][Do'kon]
+  //   [Qurilmalarni chiqarish][Email almashtirish]   — xizmat yoqilgan bo'lsa
+  //   [Shaxsiy kabinet]
+  // Adminlarda kabinet ustida [Admin panel][Statistika]. Til (/language) va
+  // Foydalanuvchilar tugmalari menyudan olingan — buyruqlar ishlayveradi.
+  // Rang (style): asosiy funksiyalar — ko'k, amallar — yashil. Emoji (premium
+  // ikonka) Profil, xizmatlar, kabinet va admin tugmalarida.
   const plain = (key) => tgButtons.stripLeadingEmoji(t(key, lang));
   const keyboard = [
     [{ text: plain("btn_check"), style: "primary" }, { text: plain("btn_full_info"), style: "primary" }],
-    [{ text: plain("btn_reset_pw"), style: "success" }, { text: plain("btn_shop"), style: "success" }],
-    [{ text: t("btn_my_profile", lang) }, { text: plain("btn_language") }],
+    [
+      { text: plain("btn_reset_pw"), style: "success" },
+      { text: t("btn_my_profile", lang) },
+      { text: plain("btn_shop"), style: "success" },
+    ],
   ];
-
-  if (isAdmin(user.id)) {
-    keyboard.push(
-      [{ text: t("btn_stats", lang) }, { text: t("btn_users", lang) }],
-      [{ text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
-    );
-  }
 
   // Oddiy matn tugmalari (web_app emas): bosilganda bot avval bosqichlar, narx
   // va balansni ko'rsatadi, keyin Mini App yoki "Balansni to'ldirish" tugmasini beradi.
@@ -7198,6 +7200,10 @@ function mainKeyboard(user = {}) {
   if (DEVICE_LOGOUT_ENABLED && getDeviceLogoutMiniAppUrl()) services.push({ text: t("btn_device_logout", lang) });
   if (CHANGE_EMAIL_ENABLED && getChangeEmailMiniAppUrl()) services.push({ text: t("btn_change_email", lang) });
   if (services.length) keyboard.push(services);
+
+  if (isAdmin(user.id)) {
+    keyboard.push([{ text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }, { text: t("btn_stats", lang) }]);
+  }
 
   keyboard.push([{ text: t("btn_cabinet", lang), style: "primary", web_app: { url: CABINET_MINIAPP_URL } }]);
 
@@ -7894,6 +7900,10 @@ const LEGACY_BUTTON_LABELS = Object.freeze({
   btn_my_profile: ["👤 Mening profilim", "👤 Мой профиль", "👤 My profile"],
   btn_language: ["🌐 Til almashtirish", "🌐 Сменить язык", "🌐 Change language"],
   btn_shop_firstmail: ["📧 Firstmail sotib olish", "📧 Купить Firstmail", "📧 Buy Firstmail"],
+  // Eski klaviaturalar (yangilanmagan chatlarda) ham ishlasin.
+  btn_device_logout: ["🔐 Qurilmalardan chiqish", "🔐 Выход с устройств", "🔐 Log out devices"],
+  btn_change_email: ["✉️ Emailni almashtirish", "✉️ Сменить email", "✉️ Change email"],
+  btn_users: ["👥 Foydalanuvchilar", "👥 Пользователи", "👥 Users"],
 });
 
 // Ikonkali reply tugma bosilganda emojisiz matn keladi ("🔎 Server aniqlash" →
