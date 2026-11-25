@@ -144,9 +144,14 @@ function installFetch({ supabase, arenaHandler, resellerHandler }) {
           supabase.settings.set(setting.key, setting.value);
           return jsonResponse([]);
         }
-        const key = String(parsed.searchParams.get("key") || "").replace(/^eq\./, "");
+        const rawKey = String(parsed.searchParams.get("key") || "");
+        if (rawKey.startsWith("in.(")) {
+          const keys = rawKey.slice(4, -1).split(",").map((k) => k.replace(/^"|"$/g, ""));
+          return jsonResponse(keys.filter((k) => supabase.settings.has(k)).map((k) => ({ key: k, value: supabase.settings.get(k) })));
+        }
+        const key = rawKey.replace(/^eq\./, "");
         const value = supabase.settings.get(key);
-        return jsonResponse(value ? [{ value }] : []);
+        return jsonResponse(value ? [{ key, value }] : []);
       }
       return jsonResponse([]);
     }
@@ -642,6 +647,99 @@ test("bot: low balance sends the user to top up the missing amount (device logou
     assert.match(message.payload.text, /1\. [\s\S]*5\. /);
     assert.match(message.payload.text, /26 000/);
     assert.equal(new URL(button.web_app.url).searchParams.get("need"), "26000");
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("bot: a service paused in the admin panel answers 'temporarily unavailable' for everyone", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const bot = loadBot({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const uz = JSON.parse(require("node:fs").readFileSync(require.resolve("../api/locales/uz.json"), "utf8"));
+    const userId = 7700301;
+    supabase.setBalance(userId, 90000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 25000 });
+    supabase.settings.set("service_toggles:123456", { device_logout: false });
+
+    for (const [id, text] of [[301, "/device_logout"], [302, uz.btn_device_logout], [303, "/device_logout"]]) {
+      await sendUpdate(bot, textUpdate(id, id === 303 ? 5081175125 : userId, text));
+      const message = lastText(net.telegram);
+      assert.match(message.payload.text, /vaqtincha mavjud emas, tez orada qayta yoqiladi/);
+      assert.ok(!buttonsOf(message).some((item) => item.web_app), "no Mini App button while paused");
+    }
+
+    // Boshqa xizmat ishlayveradi.
+    await sendUpdate(bot, textUpdate(304, userId, "/change_email"));
+    let message = lastText(net.telegram);
+    assert.equal(new URL(buttonsOf(message).find((item) => item.web_app).web_app.url).searchParams.get("view"), "change_email");
+
+    // Boshqa bot (beta/prod) kaliti bu botga ta'sir qilmaydi.
+    supabase.settings.set("service_toggles:123456", { device_logout: true });
+    supabase.settings.set("service_toggles:999999", { device_logout: false });
+    await sendUpdate(bot, textUpdate(305, userId, "/device_logout"));
+    message = lastText(net.telegram);
+    assert.equal(new URL(buttonsOf(message).find((item) => item.web_app).web_app.url).searchParams.get("view"), "device_logout");
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: paused services refuse bootstrap and every step; cabinet lists them with state", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const userId = 8800401;
+    supabase.setBalance(userId, 90000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 27000 });
+    supabase.settings.set("service_toggles:123456", { device_logout: false, change_email: false });
+    const initData = signInitData({ id: userId });
+
+    const dl = await callAccount(app, { action: "dl_bootstrap", initData });
+    assert.deepEqual([dl.body.enabled, dl.body.paused], [false, true]);
+    const ce = await callAccount(app, { action: "ce_bootstrap", initData });
+    assert.deepEqual([ce.body.enabled, ce.body.paused], [false, true]);
+    assert.equal((await callAccount(app, { action: "bootstrap", initData })).body.deviceLogoutEnabled, false);
+
+    const send = await callAccount(app, { action: "device_logout", initData, type: "send-code", email: "a@example.test", password: "Pass1234" });
+    assert.deepEqual([send.statusCode, send.body.error], [503, "service_paused"]);
+    const final = await callAccount(app, { action: "device_logout", initData, type: "verify-code2", email: "a@example.test", code: "123456" });
+    assert.deepEqual([final.statusCode, final.body.error], [503, "service_paused"]);
+    const start = await callAccount(app, { action: "change_email", initData, step: "start", email: "a@example.test" });
+    assert.deepEqual([start.statusCode, start.body.error], [503, "service_paused"]);
+    assert.equal(net.resellerCalls.length, 0);
+
+    const cabinet = await callAccount(app, { action: "cabinet", initData });
+    assert.deepEqual(cabinet.body.services, [
+      { id: "device_logout", enabled: false, price: 25000 },
+      { id: "change_email", enabled: false, price: 27000 },
+    ]);
+
+    supabase.settings.set("service_toggles:123456", { device_logout: true, change_email: true });
+    const on = await callAccount(app, { action: "dl_bootstrap", initData });
+    assert.deepEqual([on.body.enabled, on.body.paused], [true, false]);
+    assert.deepEqual((await callAccount(app, { action: "cabinet", initData })).body.services.map((x) => x.enabled), [true, true]);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: device logout and change email need enough balance at every paid step", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const userId = 8800402;
+    supabase.setBalance(userId, 1000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 25000 });
+    const initData = signInitData({ id: userId });
+
+    const v1 = await callAccount(app, { action: "device_logout", initData, type: "verify-code1", email: "a@example.test", code: "123456" });
+    assert.deepEqual([v1.statusCode, v1.body.error], [402, "insufficient_funds"]);
     assert.equal(net.resellerCalls.length, 0);
   } finally {
     net.restore();

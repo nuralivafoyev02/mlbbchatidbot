@@ -47,6 +47,7 @@ const {
 } = require("./_jebray-reseller.js");
 const { enrichPremiumEmojis } = require("./_premium-emoji.js");
 const { verifyCabinetLaunchToken } = require("./_cabinet-launch.js");
+const serviceToggles = require("./_service-toggles.js");
 
 const SUPPORTED_LANGS = ["uz", "ru", "en"];
 const INIT_DATA_MAX_AGE_SEC = 24 * 60 * 60;
@@ -66,7 +67,20 @@ function getConfig() {
     deviceLogoutEnabled: process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true",
     // Email almashtirish — hozircha faqat beta (dev) muhitida yoqiladi.
     changeEmailEnabled: process.env.JEBRAY_CHANGE_EMAIL_ENABLED === "true",
+    // Admin panel (Do'kon) o'chirgichi — shu botning kaliti (api/_service-toggles.js).
+    serviceTogglesKey: serviceToggles.serviceTogglesKey(process.env.TELEGRAM_BOT_TOKEN),
   };
+}
+
+// Xizmat holati: available — muhitda sozlangan (env flag + Jebray kaliti);
+// paused — admin panelda vaqtincha o'chirilgan; enabled — foydalanuvchi ishlata oladi.
+async function resellerServiceStatus(config, service) {
+  const flag = service === "change_email" ? config.changeEmailEnabled : config.deviceLogoutEnabled;
+  const available = Boolean(flag && config.resellerApiKey);
+  if (!flag) return { available: false, paused: false, enabled: false };
+  const toggles = await serviceToggles.loadServiceToggles(storeRequest(config), config.serviceTogglesKey);
+  const paused = toggles[service] === false;
+  return { available, paused, enabled: available && !paused };
 }
 
 module.exports = async function handler(req, res) {
@@ -184,7 +198,7 @@ async function handleBootstrap(res, { config, user }) {
     supabaseRpc(config, "list_user_accounts", { p_user_id: String(user.id) }),
     loadPreferredLanguage(config, user),
   ]);
-  const deviceLogoutEnabled = config.deviceLogoutEnabled && Boolean(config.resellerApiKey);
+  const deviceLogoutEnabled = (await resellerServiceStatus(config, "device_logout")).enabled;
   let deviceLogoutPrice = walletLib.TOPUP_DEFAULTS.deviceLogoutPrice;
   let deviceLogoutBalance = null;
   if (deviceLogoutEnabled) {
@@ -233,7 +247,8 @@ async function handleLogout(res, { config, user, body }) {
 }
 
 async function handleDeviceLogoutBootstrap(res, { config, user }) {
-  const enabled = config.deviceLogoutEnabled && Boolean(config.resellerApiKey);
+  const status = await resellerServiceStatus(config, "device_logout");
+  const enabled = status.enabled;
   const wallet = enabled ? createWalletFor(config) : null;
   const [lang, walletConfig, balance] = await Promise.all([
     loadPreferredLanguage(config, user),
@@ -246,6 +261,7 @@ async function handleDeviceLogoutBootstrap(res, { config, user }) {
     ok: true,
     lang,
     enabled,
+    paused: status.paused,
     price,
     balance: Number.isFinite(Number(balance)) ? Number(balance) : null,
     affordable: Number.isFinite(Number(balance)) && Number(balance) >= price,
@@ -349,6 +365,10 @@ async function handleDeviceLogout(res, { config, user, body }) {
   if (!config.deviceLogoutEnabled) {
     return json(res, 404, { ok: false, error: "not_available" });
   }
+  // O'chirilganda ham boshlangan jarayonni bekor qilish mumkin (pul yechilmaydi).
+  if (String(body.type || "") !== "cancel" && (await resellerServiceStatus(config, "device_logout")).paused) {
+    return json(res, 503, { ok: false, error: "service_paused" });
+  }
   if (!config.resellerApiKey) {
     await alertDeviceLogout(config, user, "not_configured");
     return json(res, 503, { ok: false, error: "not_configured" });
@@ -375,7 +395,9 @@ async function handleDeviceLogout(res, { config, user, body }) {
   const wallet = createWalletFor(config);
   const walletConfig = await wallet.getConfig();
   const price = walletConfig.deviceLogoutPrice;
-  if (input.type === "send-code") {
+  // Balans yetmasa hech bir bosqich bajarilmaydi; yakuniy bosqichda pul
+  // atomik yechiladi (wallet_admin_adjust balansni manfiyga tushirmaydi).
+  if (input.type !== "verify-code2" && input.type !== "cancel") {
     const balance = await wallet.getBalance(user.id);
     if (balance < price) {
       return json(res, 402, { ok: false, error: "insufficient_funds", price, balance });
@@ -509,7 +531,8 @@ function changeEmailNote(base, oldEmail, newEmail) {
 }
 
 async function handleChangeEmailBootstrap(res, { config, user }) {
-  const enabled = config.changeEmailEnabled && Boolean(config.resellerApiKey);
+  const status = await resellerServiceStatus(config, "change_email");
+  const enabled = status.enabled;
   const wallet = enabled ? createWalletFor(config) : null;
   const [lang, walletConfig, balance] = await Promise.all([
     loadPreferredLanguage(config, user),
@@ -521,6 +544,7 @@ async function handleChangeEmailBootstrap(res, { config, user }) {
     ok: true,
     lang,
     enabled,
+    paused: status.paused,
     price,
     balance: Number.isFinite(Number(balance)) ? Number(balance) : null,
     affordable: Number.isFinite(Number(balance)) && Number(balance) >= price,
@@ -554,6 +578,9 @@ async function handleChangeEmail(res, { config, user, body }) {
   if (!config.changeEmailEnabled) {
     return json(res, 404, { ok: false, error: "not_available" });
   }
+  if (String(body.step || "") !== "cancel" && (await resellerServiceStatus(config, "change_email")).paused) {
+    return json(res, 503, { ok: false, error: "service_paused" });
+  }
   if (!config.resellerApiKey) {
     await alertDeviceLogout(config, user, "ce_not_configured");
     return json(res, 503, { ok: false, error: "not_configured" });
@@ -577,7 +604,8 @@ async function handleChangeEmail(res, { config, user, body }) {
   const wallet = createWalletFor(config);
   const walletConfig = await wallet.getConfig();
   const price = walletConfig.changeEmailPrice;
-  if (step === "start") {
+  // Balans yetmasa hech bir bosqich bajarilmaydi; "confirm"da pul atomik yechiladi.
+  if (step !== "confirm" && step !== "cancel") {
     const balance = await wallet.getBalance(user.id);
     if (balance < price) return json(res, 402, { ok: false, error: "insufficient_funds", price, balance });
   }
@@ -956,6 +984,7 @@ async function handleCabinet(res, { config, user }) {
     settle(wallet.listTransactions(userId, CABINET_HISTORY_LIMIT), "TRANSACTIONS"),
     settle(cabinetGroups.createCabinetGroupsStore(storeRequest(config)).list(), "GROUPS"),
   ]);
+  const services = await settle(cabinetServices(config, walletConfig), "SERVICES");
 
   return json(res, 200, {
     ok: true,
@@ -994,7 +1023,26 @@ async function handleCabinet(res, { config, user }) {
     transactions: Array.isArray(transactions) ? transactions : null,
     // Sozlamalar → "Guruhlarimiz" (admin panelda boshqariladi).
     groups: (groups || []).map(cabinetGroups.toPublicGroup),
+    // Bosh sahifa → "Xizmatlar": device logout / email almashtirish tugmalari.
+    services: services || [],
   });
+}
+
+// Kabinetdagi xizmat tugmalari: muhitda sozlangan xizmatlar ko'rsatiladi;
+// o'chirilgani "vaqtincha o'chiq" belgisi bilan. Balans va holat baribir
+// xizmat sahifasida (va serverda) qayta tekshiriladi.
+async function cabinetServices(config, walletConfig) {
+  const defs = [
+    { id: "device_logout", flag: config.deviceLogoutEnabled, priceKey: "deviceLogoutPrice" },
+    { id: "change_email", flag: config.changeEmailEnabled, priceKey: "changeEmailPrice" },
+  ].filter((d) => d.flag && config.resellerApiKey);
+  if (!defs.length) return [];
+  const toggles = await serviceToggles.loadServiceToggles(storeRequest(config), config.serviceTogglesKey);
+  return defs.map((d) => ({
+    id: d.id,
+    enabled: toggles[d.id] !== false,
+    price: Number(walletConfig && walletConfig[d.priceKey]) || walletLib.TOPUP_DEFAULTS[d.priceKey],
+  }));
 }
 
 async function handleSetLang(res, { config, user, body }) {

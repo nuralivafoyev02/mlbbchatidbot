@@ -28,6 +28,8 @@ const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || "checkmlbbidBot").tri
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 // Majburiy kanal shu botning o'z kaliti bilan (api/_mandatory-channel-key.js).
 const MANDATORY_CHANNEL_KEY = require("./_mandatory-channel-key.js").mandatoryChannelKey(TELEGRAM_BOT_TOKEN);
+const serviceToggles = require("./_service-toggles.js");
+const SERVICE_TOGGLES_KEY = serviceToggles.serviceTogglesKey(TELEGRAM_BOT_TOKEN);
 
 const DEFAULT_FULLINFO_QUOTA = 3;
 const DEFAULT_RESETPW_QUOTA = 3;
@@ -167,6 +169,8 @@ module.exports = async function handler(req, res) {
           return handleShopDeviceLogoutGet(req, res, body);
         case "shop_dl_save":
           return handleShopDeviceLogoutSave(req, res, body);
+        case "shop_dl_toggle":
+          return handleShopDeviceLogoutToggle(req, res, body);
         case "wallet_overview":
           return handleWalletOverview(req, res, body);
         case "wallet_config_save":
@@ -1421,10 +1425,13 @@ function resellerService(body) {
   return RESELLER_ADMIN_SERVICES[name] ? { name, ...RESELLER_ADMIN_SERVICES[name] } : null;
 }
 
-function resellerServiceState(svc) {
-  const enabled = process.env[svc.flag] === "true";
+// enabled — foydalanuvchilar uchun haqiqatda ishlaydimi (env flag + kalit +
+// admin o'chirgichi); toggleOn — admin paneldagi o'chirgich holati.
+function resellerServiceState(svc, toggles) {
+  const flagOn = process.env[svc.flag] === "true";
   const keySet = Boolean(String(process.env.JEBRAY_RESELLER_API_KEY || "").trim());
-  return { enabled: enabled && keySet, flagOn: enabled, keySet, flag: svc.flag };
+  const toggleOn = serviceToggles.normalizeServiceToggles(toggles)[svc.name] !== false;
+  return { enabled: flagOn && keySet && toggleOn, flagOn, keySet, toggleOn, flag: svc.flag };
 }
 
 async function resellerServiceStats(svc) {
@@ -1461,8 +1468,12 @@ async function handleShopDeviceLogoutGet(req, res, body) {
   const svc = resellerService(body);
   if (!svc) return walletError(res, "not_found");
   try {
-    const [config, stats] = await Promise.all([getWallet().getConfig(), resellerServiceStats(svc)]);
-    return json(res, 200, { ok: true, data: { service: svc.name, price: config[svc.priceKey], state: resellerServiceState(svc), stats } });
+    const [config, stats, toggles] = await Promise.all([
+      getWallet().getConfig(),
+      resellerServiceStats(svc),
+      serviceToggles.loadServiceToggles(supabaseRequest, SERVICE_TOGGLES_KEY),
+    ]);
+    return json(res, 200, { ok: true, data: { service: svc.name, price: config[svc.priceKey], state: resellerServiceState(svc, toggles), stats } });
   } catch (e) {
     return walletFailure(res, "DL_GET", e);
   }
@@ -1485,6 +1496,24 @@ async function handleShopDeviceLogoutSave(req, res, body) {
     return json(res, 200, { ok: true, data: { service: svc.name, price: result.config[svc.priceKey] } });
   } catch (e) {
     return walletFailure(res, "DL_SAVE", e);
+  }
+}
+
+// Do'kon → xizmatni vaqtincha o'chirish/yoqish (faqat shu bot uchun).
+// O'chiq bo'lsa bot buyrug'i/tugmasi "vaqtincha mavjud emas" deydi, Mini App
+// sahifalari va server action'lari ham ishlamaydi.
+async function handleShopDeviceLogoutToggle(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const svc = resellerService(body);
+  if (!svc) return walletError(res, "not_found");
+  const raw = body.enabled;
+  if (![true, false, "true", "false", 1, 0, "1", "0"].includes(raw)) return walletError(res, "invalid_request");
+  const enabled = raw === true || raw === "true" || raw === 1 || raw === "1";
+  try {
+    const toggles = await serviceToggles.saveServiceToggle(supabaseRequest, SERVICE_TOGGLES_KEY, svc.name, enabled);
+    return json(res, 200, { ok: true, data: { service: svc.name, state: resellerServiceState(svc, toggles) } });
+  } catch (e) {
+    return walletFailure(res, "DL_TOGGLE", e);
   }
 }
 

@@ -76,6 +76,9 @@ async function saveUserLangToSupabase(userId, lang) {
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 // Majburiy kanal shu botning o'z kaliti bilan (api/_mandatory-channel-key.js).
 const MANDATORY_CHANNEL_KEY = require("./_mandatory-channel-key.js").mandatoryChannelKey(TELEGRAM_BOT_TOKEN);
+// Do'kon → xizmatlarni vaqtincha o'chirish (api/_service-toggles.js), shu bot uchun.
+const serviceToggles = require("./_service-toggles.js");
+const SERVICE_TOGGLES_KEY = serviceToggles.serviceTogglesKey(TELEGRAM_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 // Aloqa manzili env'dan emas — api/_contact.js (hamma joyda bitta: @Ksava_org).
 const SUPPORT_USERNAME = sanitizeTelegramUsername(require("./_contact.js").ADMIN_CONTACT_USERNAME);
@@ -6429,17 +6432,24 @@ const RESELLER_SERVICES = Object.freeze({
 });
 const RESELLER_DEFAULT_PRICE = 25000;
 
-// Narx admin panelda (Do'kon) — bot_settings.wallet_config.
-async function getResellerServicePrice(priceKey) {
-  if (!isSupabaseConfigured()) return RESELLER_DEFAULT_PRICE;
+// Narx (bot_settings.wallet_config) va admin o'chirgichi (service_toggles:<bot_id>)
+// admin panelda (Do'kon) — bitta so'rov bilan o'qiladi.
+async function getResellerServiceSettings(service, priceKey) {
+  if (!isSupabaseConfigured()) return { price: RESELLER_DEFAULT_PRICE, enabled: true };
   try {
-    const rows = await supabaseRequest(`/bot_settings?key=eq.wallet_config&select=value&limit=1`);
-    const value = Array.isArray(rows) && rows[0] ? rows[0].value : null;
-    const price = Number(value && value[priceKey]);
-    return Number.isInteger(price) && price > 0 ? price : RESELLER_DEFAULT_PRICE;
+    const keys = ["wallet_config", SERVICE_TOGGLES_KEY].map((k) => `"${k}"`).join(",");
+    const rows = await supabaseRequest(`/bot_settings?key=in.(${encodeURIComponent(keys)})&select=key,value`);
+    const list = Array.isArray(rows) ? rows : [];
+    const wallet = list.find((row) => row.key === "wallet_config");
+    const toggles = list.find((row) => row.key === SERVICE_TOGGLES_KEY);
+    const price = Number(wallet && wallet.value && wallet.value[priceKey]);
+    return {
+      price: Number.isInteger(price) && price > 0 ? price : RESELLER_DEFAULT_PRICE,
+      enabled: serviceToggles.normalizeServiceToggles(toggles ? toggles.value : null)[service] !== false,
+    };
   } catch (error) {
-    console.error("[RESELLER_PRICE_ERROR]", priceKey, error.message);
-    return RESELLER_DEFAULT_PRICE;
+    console.error("[RESELLER_SETTINGS_ERROR]", priceKey, error.message);
+    return { price: RESELLER_DEFAULT_PRICE, enabled: true };
   }
 }
 
@@ -6452,7 +6462,13 @@ async function handleResellerServiceIntro(chatId, user, service) {
     return;
   }
 
-  const [price, balance] = await Promise.all([getResellerServicePrice(cfg.priceKey), getWalletBalance(user.id)]);
+  const [settings, balance] = await Promise.all([getResellerServiceSettings(service, cfg.priceKey), getWalletBalance(user.id)]);
+  // Admin panelda vaqtincha o'chirilgan — hech kimda (admin ham) ishlamaydi.
+  if (!settings.enabled) {
+    await sendMessage(chatId, t("svc_paused", lang), mainKeyboard(user));
+    return;
+  }
+  const price = settings.price;
   const som = (value) => formatShopSom(value, lang);
   const lines = [t(cfg.intro, lang), "", t("svc_price_line", lang, { price: som(price) })];
   let button;

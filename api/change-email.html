@@ -255,7 +255,7 @@
           code: "Tasdiqlash kodi", verify: "Tasdiqlash", finish: "Almashtirish va {price} to'lash",
           charged_note: "{price} faqat muvaffaqiyatli tugaganda yechiladi. Bekor qilish bepul.",
           same_email: "Yangi email joriy email bilan bir xil bo'lmasligi kerak.",
-          cancel: "Bekor qilish", back_bot: "Botga qaytish", open_mail: "Pochtani ochish",
+          cancel: "Bekor qilish", back_bot: "Botga qaytish", back_cabinet: "Kabinetga qaytish", open_mail: "Pochtani ochish",
           resumed: "Oldingi jarayon davom ettirilmoqda ({email}).",
           confirm_cancel: "Jarayonni bekor qilasizmi? Mablag' yechilmaydi.",
           confirm_pay: "{price} yechiladi va akkaunt emaili {email} ga almashtiriladi. Tasdiqlaysizmi?",
@@ -267,7 +267,7 @@
           low_title: "Balans yetarli emas",
           low_text: "Xizmat narxi {price}, balansingiz {balance}. Avval balansingizni kamida {need} ga to'ldiring.",
           topup: "Balansni to'ldirish",
-          off_title: "Hozircha mavjud emas", off_text: "Bu xizmat hozir yoqilmagan. Keyinroq qayta urinib ko'ring.",
+          paused_title: "Vaqtincha mavjud emas", paused_text: "Bu xizmat vaqtincha mavjud emas, tez orada qayta yoqiladi.", off_title: "Hozircha mavjud emas", off_text: "Bu xizmat hozir yoqilmagan. Keyinroq qayta urinib ko'ring.",
           auth_title: "Botdan qayta oching",
           auth_text: "Sahifa Telegram'dan tashqarida yoki eskirgan havola bilan ochildi. Botga /change_email yuborib, tugmani qayta bosing.",
           load_error: "Ma'lumotni yuklab bo'lmadi. Internetni tekshirib, qayta urining.",
@@ -292,7 +292,7 @@
             timeout: "Provayder javob bermadi. Qayta urinib ko'ring.",
             network: "Tarmoq xatosi. Internetni tekshirib, qayta urinib ko'ring.",
             not_configured: "Xizmat sozlanmagan. Yordamga xabar bering.",
-            not_available: "Xizmat hozircha mavjud emas.",
+            not_available: "Xizmat hozircha mavjud emas.", service_paused: "Bu xizmat vaqtincha mavjud emas, tez orada qayta yoqiladi.",
             service_unavailable: "Xizmat vaqtincha ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
             request_failed: "So'rov bajarilmadi. Ma'lumotlarni tekshirib qayta urinib ko'ring."
           }
@@ -317,7 +317,7 @@
           code: "Код подтверждения", verify: "Подтвердить", finish: "Сменить и оплатить {price}",
           charged_note: "{price} списываются только при успешном завершении. Отмена бесплатна.",
           same_email: "Новый email не должен совпадать с текущим.",
-          cancel: "Отменить", back_bot: "Вернуться в бот", open_mail: "Открыть почту",
+          cancel: "Отменить", back_bot: "Вернуться в бот", back_cabinet: "Вернуться в кабинет", open_mail: "Открыть почту",
           resumed: "Продолжаем начатый процесс ({email}).",
           confirm_cancel: "Отменить процесс? Деньги не спишутся.",
           confirm_pay: "Будет списано {price}, email аккаунта сменится на {email}. Подтверждаете?",
@@ -329,7 +329,7 @@
           low_title: "Недостаточно средств",
           low_text: "Цена услуги {price}, ваш баланс {balance}. Сначала пополните баланс минимум на {need}.",
           topup: "Пополнить баланс",
-          off_title: "Пока недоступно", off_text: "Услуга сейчас выключена. Попробуйте позже.",
+          paused_title: "Временно недоступно", paused_text: "Этот сервис временно недоступен, скоро он снова будет включён.", off_title: "Пока недоступно", off_text: "Услуга сейчас выключена. Попробуйте позже.",
           auth_title: "Откройте из бота",
           auth_text: "Страница открыта вне Telegram или по устаревшей ссылке. Отправьте боту /change_email и нажмите кнопку снова.",
           load_error: "Не удалось загрузить данные. Проверьте интернет и повторите.",
@@ -354,7 +354,7 @@
             timeout: "Провайдер не ответил. Попробуйте ещё раз.",
             network: "Ошибка сети. Проверьте интернет и повторите.",
             not_configured: "Сервис не настроен. Сообщите в поддержку.",
-            not_available: "Сервис пока недоступен.",
+            not_available: "Сервис пока недоступен.", service_paused: "Этот сервис временно недоступен, скоро он снова будет включён.",
             service_unavailable: "Сервис временно не работает. Попробуйте позже.",
             request_failed: "Запрос не выполнен. Проверьте данные и повторите."
           }
@@ -379,7 +379,7 @@
           code: "Verification code", verify: "Confirm", finish: "Change and pay {price}",
           charged_note: "{price} is charged only on success. Cancelling is free.",
           same_email: "The new email must differ from the current one.",
-          cancel: "Cancel", back_bot: "Back to bot", open_mail: "Open mail",
+          cancel: "Cancel", back_bot: "Back to bot", back_cabinet: "Back to cabinet", open_mail: "Open mail",
           resumed: "Resuming your previous process ({email}).",
           confirm_cancel: "Cancel the process? Nothing will be charged.",
           confirm_pay: "{price} will be charged and the account email changed to {email}. Confirm?",
@@ -391,7 +391,7 @@
           low_title: "Not enough balance",
           low_text: "The service costs {price}, your balance is {balance}. Top up at least {need} first.",
           topup: "Top up balance",
-          off_title: "Not available yet", off_text: "This service is turned off right now. Try again later.",
+          paused_title: "Temporarily unavailable", paused_text: "This service is temporarily unavailable and will be back soon.", off_title: "Not available yet", off_text: "This service is turned off right now. Try again later.",
           auth_title: "Open from the bot",
           auth_text: "The page was opened outside Telegram or with an old link. Send /change_email to the bot and tap the button again.",
           load_error: "Couldn't load data. Check your connection and retry.",
@@ -416,7 +416,7 @@
             timeout: "The provider didn't respond. Try again.",
             network: "Network error. Check your connection and retry.",
             not_configured: "The service isn't configured. Tell support.",
-            not_available: "The service isn't available yet.",
+            not_available: "The service isn't available yet.", service_paused: "This service is temporarily unavailable and will be back soon.",
             service_unavailable: "The service is temporarily down. Try again later.",
             request_failed: "The request failed. Check your data and retry."
           }
@@ -485,6 +485,14 @@
       }
 
       function shortfall() { return Math.max(0, Number(state.price) - Number(state.balance || 0)); }
+      // Kabinetdagi "Xizmatlar" bo'limidan ochilgan (?from=cabinet) — orqaga kabinetga.
+      var fromCabinet = (function () {
+        try { return new URLSearchParams(location.search).get("from") === "cabinet"; } catch (e) { return false; }
+      })();
+      function openCabinet() {
+        haptic("light");
+        location.href = location.pathname + "?view=cabinet";
+      }
       function openBot() {
         haptic("light");
         var link = state.botUsername ? "https://t.me/" + state.botUsername : null;
@@ -776,11 +784,12 @@
 
       function onBack() {
         if (state.flow) return cancelFlow(document.getElementById("ceCancel"));
+        if (fromCabinet) return openCabinet();
         if (tg) tg.close();
       }
       function syncBack() {
         if (!tg || !tg.BackButton) return;
-        try { state.flow ? tg.BackButton.show() : tg.BackButton.hide(); } catch (e) { /* noop */ }
+        try { state.flow || fromCabinet ? tg.BackButton.show() : tg.BackButton.hide(); } catch (e) { /* noop */ }
       }
       if (tg && tg.BackButton) { try { tg.BackButton.onClick(onBack); } catch (e) { /* noop */ } }
 
@@ -803,7 +812,10 @@
           state.affordable = Boolean(r.affordable);
           state.botUsername = r.botUsername;
           if (!r.enabled) {
-            return stateView("warn", "hourglass-split", L("off_title"), L("off_text"), [{ label: L("back_bot"), cls: "primary", onClick: openBot }]);
+            var back = fromCabinet ? { label: L("back_cabinet"), cls: "primary", icon: "arrow-left", onClick: openCabinet } : { label: L("back_bot"), cls: "primary", onClick: openBot };
+            return r.paused
+              ? stateView("warn", "pause-circle", L("paused_title"), L("paused_text"), [back])
+              : stateView("warn", "hourglass-split", L("off_title"), L("off_text"), [back]);
           }
           var resumed = loadFlow();
           if (resumed) {

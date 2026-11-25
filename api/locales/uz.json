@@ -406,6 +406,7 @@
   "label_change_email": "✉️ Email almashtirish",
   "svc_dl_intro": "🔒 <b>Barcha qurilmalardan chiqish</b>\n\nAkkauntingizga kirib turgan barcha qurilmalar (begonalar ham) chiqarib yuboriladi.\n\n<b>Qanday ishlaydi:</b>\n1. Pastdagi tugma orqali Mini App'ni oching.\n2. Akkauntga bog'langan Moonton email va parolni kiriting — emailga 1-kod keladi.\n3. 1-kodni kiriting.\n4. Mobile Legends o'yiniga kiring va o'yinni yopmang — emailga 2-kod keladi.\n5. 2-kodni kiriting — barcha qurilmalar chiqariladi.\n\n🔒 Email va parol faqat Mini App ichida kiritiladi — ularni chatga yubormang.",
   "svc_ce_intro": "📧 <b>Akkaunt emailini almashtirish</b>\n\nMobile Legends akkauntingizga bog'langan email yangisiga almashtiriladi.\n\n<b>Qanday ishlaydi:</b>\n1. Pastdagi tugma orqali Mini App'ni oching va joriy Moonton emailni kiriting — unga kirish kodi keladi (parol kerak emas).\n2. Kirish kodini kiriting.\n3. Joriy emailga kelgan 1-kodni kiriting.\n4. Yangi emailni kiriting — unga 2-kod keladi.\n5. 2-kodni kiriting — akkaunt emaili yangisiga almashtiriladi.\n\n🔒 Kodlarni faqat Mini App ichida kiriting — ularni chatga yubormang.",
+  "svc_paused": "⏸ Bu xizmat vaqtincha mavjud emas, tez orada qayta yoqiladi.",
   "svc_price_line": "💰 Narx: <b>{price}</b> — bot balansingizdan, faqat muvaffaqiyatli tugaganda yechiladi.",
   "svc_balance_line": "💳 Balansingiz: <b>{balance}</b>",
   "svc_ready": "✅ Balansingiz yetarli — boshlash uchun pastdagi tugmani bosing.",

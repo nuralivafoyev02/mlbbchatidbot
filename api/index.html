@@ -2761,6 +2761,10 @@
     .dl-status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text2); margin-bottom: 12px }
     .dl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0 }
     .dl-dot.on { background: var(--green); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2) }
+    .dl-toggle-row { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 0 0 14px; border-radius: 12px; background: var(--surface2, rgba(255, 255, 255, 0.04)); border: 1px solid var(--card-border) }
+    .dl-toggle-row .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px }
+    .dl-toggle-row b { font-size: 13.5px }
+    .dl-toggle-row span { font-size: 11.5px; color: var(--text2); line-height: 1.35 }
     .dl-price-row { display: flex; gap: 8px; align-items: stretch }
     .dl-price-row .btn-save { border: none; border-radius: 10px; padding: 0 18px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px }
     .dl-price-row .btn-save:disabled { opacity: .6 }
@@ -3516,6 +3520,16 @@
           </div>
           <div class="dl-card">
             <div class="dl-status"><span class="dl-dot" id="dlDot"></span><span id="dlStatus">Yuklanmoqda...</span></div>
+            <div class="dl-toggle-row">
+              <div class="grow">
+                <b id="dlToggleTitle">Xizmat holati</b>
+                <span id="dlToggleHint">O'chirilsa, bot buyrug'i, tugmasi va kabinetdagi sahifa «vaqtincha mavjud emas» deydi.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="dlToggle" onchange="toggleDlService(this)">
+                <span class="slider"></span>
+              </label>
+            </div>
             <h3><i class="bi bi-tag"></i> Xizmat narxi</h3>
             <div class="dl-price-row">
               <div class="modal-field" style="flex:1;margin:0"><input type="text" id="dlPrice" inputmode="numeric" placeholder="25 000" oninput="dlFormatInput(this)"></div>
@@ -7195,7 +7209,8 @@
         var meta = document.getElementById(DL_SERVICES[service].meta);
         if (!data || !meta) return;
         var st = data.stats;
-        meta.textContent = formatSom(data.price) + (data.state && data.state.enabled ? " · yoqilgan" : " · o'chiq") + (st ? " · bugun " + Math.max(0, st.today) + " ta" : "");
+        var metaState = data.state && data.state.enabled ? " · yoqilgan" : data.state && data.state.toggleOn === false ? " · vaqtincha o'chirilgan" : " · o'chiq";
+        meta.textContent = formatSom(data.price) + metaState + (st ? " · bugun " + Math.max(0, st.today) + " ta" : "");
       }
 
       function renderDeviceLogout() {
@@ -7209,8 +7224,14 @@
         if (document.activeElement !== input) { input.value = String(data.price || ""); dlFormatInput(input); }
         document.getElementById("dlDot").classList.toggle("on", Boolean(state.enabled));
         document.getElementById("dlStatus").textContent = state.enabled
-          ? "Xizmat yoqilgan — botda " + svcInfo.button + " tugmasi ko'rinadi"
-          : !state.flagOn ? "Xizmat o'chiq (" + (state.flag || "flag") + " yoqilmagan)" : "Xizmat o'chiq — JEBRAY_RESELLER_API_KEY sozlanmagan";
+          ? "Xizmat yoqilgan — botda " + svcInfo.button + " tugmasi ishlaydi"
+          : !state.flagOn ? "Xizmat o'chiq (" + (state.flag || "flag") + " yoqilmagan)"
+          : !state.keySet ? "Xizmat o'chiq — JEBRAY_RESELLER_API_KEY sozlanmagan"
+          : "Xizmat admin tomonidan vaqtincha o'chirilgan — foydalanuvchilarga «vaqtincha mavjud emas» deyiladi";
+        var toggle = document.getElementById("dlToggle");
+        if (!dlToggleBusy) toggle.checked = state.toggleOn !== false;
+        toggle.disabled = dlToggleBusy;
+        document.getElementById("dlToggleTitle").textContent = state.toggleOn === false ? "Xizmat o'chirilgan" : "Xizmat yoqilgan";
         var statHtml = function (n, sum) {
           return esc(Math.max(0, n) + " ta") + '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-top:2px">' + esc(formatSom(Math.max(0, sum))) + "</div>";
         };
@@ -7290,6 +7311,39 @@
         });
       }
       window.saveDeviceLogoutPrice = saveDeviceLogoutPrice;
+
+      // Xizmatni vaqtincha o'chirish/yoqish (shu bot uchun).
+      var dlToggleBusy = false;
+      function toggleDlService(input) {
+        var service = dlService;
+        var enabled = Boolean(input.checked);
+        var label = DL_SERVICES[service].title;
+        if (!enabled && !confirm("«" + label + "» xizmati o'chirilsinmi? Foydalanuvchilarga «vaqtincha mavjud emas» deb javob beriladi.")) {
+          input.checked = true;
+          return;
+        }
+        hapticLight();
+        dlToggleBusy = true;
+        input.disabled = true;
+        api("shop_dl_toggle", { service: service, enabled: enabled }).then(function (result) {
+          dlToggleBusy = false;
+          if (!result.ok || !result.data) {
+            input.checked = !enabled;
+            input.disabled = false;
+            showToast("❌ " + (result.message || "Saqlab bo'lmadi"), "error");
+            return;
+          }
+          if (dlCache[service]) dlCache[service].state = result.data.state;
+          renderDeviceLogout();
+          showToast(enabled ? "✅ " + label + " yoqildi" : "⏸ " + label + " vaqtincha o'chirildi", "success");
+        }).catch(function () {
+          dlToggleBusy = false;
+          input.checked = !enabled;
+          input.disabled = false;
+          showToast("❌ Server bilan bog'lanishda xatolik", "error");
+        });
+      }
+      window.toggleDlService = toggleDlService;
 
       /* -----------------------------------------------------------------------
          Do'kon → Limit narxlari (shaxsiy kabinetdagi "$" tugmasi)
