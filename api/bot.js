@@ -76,6 +76,9 @@ async function saveUserLangToSupabase(userId, lang) {
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 // Majburiy kanal shu botning o'z kaliti bilan (api/_mandatory-channel-key.js).
 const MANDATORY_CHANNEL_KEY = require("./_mandatory-channel-key.js").mandatoryChannelKey(TELEGRAM_BOT_TOKEN);
+// Do'kon → xizmatlarni vaqtincha o'chirish (api/_service-toggles.js), shu bot uchun.
+const serviceToggles = require("./_service-toggles.js");
+const SERVICE_TOGGLES_KEY = serviceToggles.serviceTogglesKey(TELEGRAM_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_SECRET = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
 // Aloqa manzili env'dan emas — api/_contact.js (hamma joyda bitta: @Ksava_org).
 const SUPPORT_USERNAME = sanitizeTelegramUsername(require("./_contact.js").ADMIN_CONTACT_USERNAME);
@@ -109,10 +112,13 @@ const MINIAPP_URL = cleanEnv(process.env.MINIAPP_URL) || `https://${cleanEnv(pro
 // Foydalanuvchining shaxsiy Mini App'i ("🎮 Mening akkauntim") — api/account.js.
 const ACCOUNT_MINIAPP_URL = cleanEnv(process.env.ACCOUNT_MINIAPP_URL) || `https://${cleanEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL || "mlbbchatidbot.vercel.app")}/api/account`;
 const DEVICE_LOGOUT_ENABLED = process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true";
+// "Email almashtirish" (Jebray changeemail) — env flag + admin panel o'chirgichi (Do'kon).
+const CHANGE_EMAIL_ENABLED = process.env.JEBRAY_CHANGE_EMAIL_ENABLED === "true";
 // Shaxsiy kabinet — o'sha Vercel funksiyasi, ?view=cabinet bilan.
 const CABINET_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=cabinet`;
 // "Qurilmalardan chiqish" — alohida yengil Mini App (api/device-logout.html).
 const DEVICE_LOGOUT_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=device_logout`;
+const CHANGE_EMAIL_MINIAPP_URL = `${ACCOUNT_MINIAPP_URL}${ACCOUNT_MINIAPP_URL.includes("?") ? "&" : "?"}view=change_email`;
 // "Balansni to'ldirish" — kabinet ochilishi bilan to'ldirish oynasi chiqadi.
 const CABINET_TOPUP_URL = `${CABINET_MINIAPP_URL}&open=topup`;
 const BOT_LOGO_URL =
@@ -132,6 +138,7 @@ const FEATURE_ACTIONS = Object.freeze({
   FEEDBACK: "feedback",
   ML_LINK: "ml_link",
   DEVICE_LOGOUT: "device_logout",
+  CHANGE_EMAIL: "change_email",
 });
 const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   start: "label_start",
@@ -142,6 +149,7 @@ const DAILY_REPORT_ACTION_KEYS = Object.freeze({
   feedback: "label_feedback",
   ml_link: "label_ml_link",
   device_logout: "label_device_logout",
+  change_email: "label_change_email",
 });
 function getDailyReportActionLabel(action, lang) {
   const key = DAILY_REPORT_ACTION_KEYS[action];
@@ -983,20 +991,13 @@ async function handleMessage(message, updateMeta = {}) {
     return;
   }
 
-  if (isCommand(text, "device_logout")) {
-    const lang = getUserLang(user.id);
-    const url = DEVICE_LOGOUT_ENABLED ? getDeviceLogoutMiniAppUrl() : null;
-    if (Number(chatId) <= 0 || !url) {
-      await sendMessage(chatId, t("device_logout_unavailable", lang), mainKeyboard(user));
-      return;
-    }
+  if (isCommand(text, "device_logout") || isTranslatedKeyboardButton(text, "btn_device_logout")) {
+    await handleResellerServiceIntro(chatId, user, "device_logout");
+    return;
+  }
 
-    await sendMessage(chatId, t("device_logout_bot_open", lang), {
-      inline_keyboard: [[{
-        text: t("device_logout_bot_button", lang),
-        web_app: { url },
-      }]],
-    });
+  if (isCommand(text, "change_email") || isTranslatedKeyboardButton(text, "btn_change_email")) {
+    await handleResellerServiceIntro(chatId, user, "change_email");
     return;
   }
 
@@ -1816,6 +1817,8 @@ const SHOP_FM_PAGE_SIZE = 10;
 // Asosiy klaviatura tugmalari: shop rejimida bosilsa, user do'kondan chiqib
 // o'sha funksiyaga o'tadi (eski klaviatura qolib ketgan holatlar uchun).
 const SHOP_EXIT_BUTTON_KEYS = [
+  "btn_device_logout",
+  "btn_change_email",
   "btn_check",
   "btn_check_again",
   "btn_bind_info",
@@ -6351,6 +6354,9 @@ function getCommandsText(user = {}) {
   if (DEVICE_LOGOUT_ENABLED) {
     commands.splice(commands.length - 1, 0, t("cmd_device_logout", lang));
   }
+  if (CHANGE_EMAIL_ENABLED) {
+    commands.splice(commands.length - 1, 0, t("cmd_change_email", lang));
+  }
 
   if (isAdmin(user.id)) {
     commands.push(
@@ -6390,8 +6396,107 @@ function buildBotCommands(lang) {
       description: "Barcha qurilmalardan chiqish",
     });
   }
+  if (CHANGE_EMAIL_ENABLED) {
+    commands.splice(commands.length - 1, 0, {
+      command: "change_email",
+      description: "Akkaunt emailini almashtirish",
+    });
+  }
 
   return commands;
+}
+
+// ---------------------------------------------------------------------------
+// Pullik Jebray xizmatlari (device logout, email almashtirish): buyruq yoki
+// tugma bosilganda bot ish ketma-ketligini raqamlab tushuntiradi, narx va
+// balansni ko'rsatadi. Balans yetarli bo'lsa — Mini App tugmasi, yetmasa —
+// yetishmagan summa bilan "Balansni to'ldirish" (kabinet ?open=topup&need=).
+// ---------------------------------------------------------------------------
+const RESELLER_SERVICES = Object.freeze({
+  device_logout: {
+    enabled: () => DEVICE_LOGOUT_ENABLED,
+    url: () => getDeviceLogoutMiniAppUrl(),
+    priceKey: "deviceLogoutPrice",
+    intro: "svc_dl_intro",
+    open: "svc_open_dl",
+    unavailable: "device_logout_unavailable",
+  },
+  change_email: {
+    enabled: () => CHANGE_EMAIL_ENABLED,
+    url: () => getChangeEmailMiniAppUrl(),
+    priceKey: "changeEmailPrice",
+    intro: "svc_ce_intro",
+    open: "svc_open_ce",
+    unavailable: "change_email_unavailable",
+  },
+});
+const RESELLER_DEFAULT_PRICE = 25000;
+
+// Narx (bot_settings.wallet_config) va admin o'chirgichi (service_toggles:<bot_id>)
+// admin panelda (Do'kon) — bitta so'rov bilan o'qiladi.
+async function getResellerServiceSettings(service, priceKey) {
+  if (!isSupabaseConfigured()) return { price: RESELLER_DEFAULT_PRICE, enabled: true };
+  try {
+    const keys = ["wallet_config", SERVICE_TOGGLES_KEY].map((k) => `"${k}"`).join(",");
+    const rows = await supabaseRequest(`/bot_settings?key=in.(${encodeURIComponent(keys)})&select=key,value`);
+    const list = Array.isArray(rows) ? rows : [];
+    const wallet = list.find((row) => row.key === "wallet_config");
+    const toggles = list.find((row) => row.key === SERVICE_TOGGLES_KEY);
+    const price = Number(wallet && wallet.value && wallet.value[priceKey]);
+    return {
+      price: Number.isInteger(price) && price > 0 ? price : RESELLER_DEFAULT_PRICE,
+      enabled: serviceToggles.normalizeServiceToggles(toggles ? toggles.value : null)[service] !== false,
+    };
+  } catch (error) {
+    console.error("[RESELLER_SETTINGS_ERROR]", priceKey, error.message);
+    return { price: RESELLER_DEFAULT_PRICE, enabled: true };
+  }
+}
+
+async function handleResellerServiceIntro(chatId, user, service) {
+  const cfg = RESELLER_SERVICES[service];
+  const lang = getUserLang(user.id);
+  const url = cfg.enabled() ? cfg.url() : null;
+  if (Number(chatId) <= 0 || !url) {
+    await sendMessage(chatId, t(cfg.unavailable, lang), mainKeyboard(user));
+    return;
+  }
+
+  const [settings, balance] = await Promise.all([getResellerServiceSettings(service, cfg.priceKey), getWalletBalance(user.id)]);
+  // Admin panelda vaqtincha o'chirilgan — hech kimda (admin ham) ishlamaydi.
+  if (!settings.enabled) {
+    await sendMessage(chatId, t("svc_paused", lang), mainKeyboard(user));
+    return;
+  }
+  const price = settings.price;
+  const som = (value) => formatShopSom(value, lang);
+  const lines = [t(cfg.intro, lang), "", t("svc_price_line", lang, { price: som(price) })];
+  let button;
+  if (balance === null) {
+    // Balans tizimi javob bermadi — Mini App o'zi tekshiradi.
+    lines.push(t("svc_balance_needed", lang, { price: som(price) }));
+    button = { text: t(cfg.open, lang), web_app: { url } };
+  } else {
+    lines.push(t("svc_balance_line", lang, { balance: som(balance) }), "");
+    if (balance >= price) {
+      lines.push(t("svc_ready", lang));
+      button = { text: t(cfg.open, lang), web_app: { url } };
+    } else {
+      const need = price - balance;
+      lines.push(t("svc_low", lang, { need: som(need) }));
+      button = { text: t("svc_topup", lang, { need: som(need) }), web_app: { url: `${CABINET_TOPUP_URL}&need=${need}` } };
+    }
+  }
+
+  await sendMessage(chatId, lines.join("\n"), { inline_keyboard: [[button]] });
+}
+
+function getChangeEmailMiniAppUrl() {
+  try {
+    return new URL(CHANGE_EMAIL_MINIAPP_URL).protocol === "https:" ? CHANGE_EMAIL_MINIAPP_URL : null;
+  } catch {
+    return null;
+  }
 }
 
 function getDeviceLogoutMiniAppUrl() {
@@ -7168,25 +7273,34 @@ function getBroadcastResultText(result = {}, lang) {
 // yuborilmaydi (sendMessage → remove_keyboard), shuning uchun web_app xavfsiz.
 function mainKeyboard(user = {}) {
   const lang = getUserLang(user.id);
-  // Rang (style): asosiy funksiyalar — ko'k, amallar — yashil, sozlamalar — oddiy.
-  // Emoji (va premium ikonka) faqat Profilim, Shaxsiy kabinet va admin
-  // tugmalarida; qolganlari emojisiz (isTranslatedKeyboardButton ikkalasini taniydi).
+  // Tartib (oddiy user):
+  //   [Server aniqlash][To'liq ma'lumot]
+  //   [Parolni tiklash][Profil][Do'kon]
+  //   [Qurilmalarni chiqarish][Email almashtirish]   — xizmat yoqilgan bo'lsa
+  //   [Shaxsiy kabinet]
+  // Adminlarda kabinet ustida [Admin panel][Statistika]. Til (/language) va
+  // Foydalanuvchilar tugmalari menyudan olingan — buyruqlar ishlayveradi.
+  // Rang (style): asosiy funksiyalar — ko'k, amallar — yashil. Emoji (premium
+  // ikonka) Profil, xizmatlar, kabinet va admin tugmalarida.
   const plain = (key) => tgButtons.stripLeadingEmoji(t(key, lang));
   const keyboard = [
     [{ text: plain("btn_check"), style: "primary" }, { text: plain("btn_full_info"), style: "primary" }],
-    [{ text: plain("btn_reset_pw"), style: "success" }, { text: plain("btn_shop"), style: "success" }],
-    [{ text: t("btn_my_profile", lang) }, { text: plain("btn_language") }],
+    [
+      { text: plain("btn_reset_pw"), style: "success" },
+      { text: t("btn_my_profile", lang) },
+      { text: plain("btn_shop"), style: "success" },
+    ],
   ];
 
-  if (isAdmin(user.id)) {
-    keyboard.push(
-      [{ text: t("btn_stats", lang) }, { text: t("btn_users", lang) }],
-      [{ text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }]
-    );
-  }
+  // Oddiy matn tugmalari (web_app emas): bosilganda bot avval bosqichlar, narx
+  // va balansni ko'rsatadi, keyin Mini App yoki "Balansni to'ldirish" tugmasini beradi.
+  const services = [];
+  if (DEVICE_LOGOUT_ENABLED && getDeviceLogoutMiniAppUrl()) services.push({ text: t("btn_device_logout", lang) });
+  if (CHANGE_EMAIL_ENABLED && getChangeEmailMiniAppUrl()) services.push({ text: t("btn_change_email", lang) });
+  if (services.length) keyboard.push(services);
 
-  if (DEVICE_LOGOUT_ENABLED && getDeviceLogoutMiniAppUrl()) {
-    keyboard.push([{ text: t("btn_device_logout", lang), web_app: { url: DEVICE_LOGOUT_MINIAPP_URL } }]);
+  if (isAdmin(user.id)) {
+    keyboard.push([{ text: BUTTON_ADMIN_PANEL, web_app: { url: MINIAPP_URL } }, { text: t("btn_stats", lang) }]);
   }
 
   keyboard.push([{ text: t("btn_cabinet", lang), style: "primary", web_app: { url: CABINET_MINIAPP_URL } }]);
@@ -7884,6 +7998,10 @@ const LEGACY_BUTTON_LABELS = Object.freeze({
   btn_my_profile: ["👤 Mening profilim", "👤 Мой профиль", "👤 My profile"],
   btn_language: ["🌐 Til almashtirish", "🌐 Сменить язык", "🌐 Change language"],
   btn_shop_firstmail: ["📧 Firstmail sotib olish", "📧 Купить Firstmail", "📧 Buy Firstmail"],
+  // Eski klaviaturalar (yangilanmagan chatlarda) ham ishlasin.
+  btn_device_logout: ["🔐 Qurilmalardan chiqish", "🔐 Выход с устройств", "🔐 Log out devices"],
+  btn_change_email: ["✉️ Emailni almashtirish", "✉️ Сменить email", "✉️ Change email"],
+  btn_users: ["👥 Foydalanuvchilar", "👥 Пользователи", "👥 Users"],
 });
 
 // Ikonkali reply tugma bosilganda emojisiz matn keladi ("🔎 Server aniqlash" →

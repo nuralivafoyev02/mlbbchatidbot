@@ -440,7 +440,30 @@ test("wallet admin: requires login; refund / manual topup / adjust call the RPCs
     );
     const dlGet = await call("shop_dl_get", {}, cookie);
     assert.equal(dlGet.payload.data.price, 31000);
-    assert.equal(dlGet.payload.data.service.enabled, false);
+    assert.equal(dlGet.payload.data.state.enabled, false);
+    const ceSaved = await call("shop_dl_save", { service: "change_email", price: "33000" }, cookie);
+    assert.equal(ceSaved.payload.data.price, 33000);
+    assert.deepEqual([settings.get("wallet_config").changeEmailPrice, settings.get("wallet_config").deviceLogoutPrice], [33000, 31000]);
+    assert.equal((await call("shop_dl_get", { service: "nope" }, cookie)).payload.error, "not_found");
+
+    // Do'kon → xizmatni vaqtincha o'chirish: shu bot kaliti (service_toggles:<bot_id>).
+    process.env.JEBRAY_DEVICE_LOGOUT_ENABLED = "true";
+    process.env.JEBRAY_RESELLER_API_KEY = "test-key";
+    assert.deepEqual(
+      [(await call("shop_dl_get", {}, cookie)).payload.data.state.enabled, (await call("shop_dl_get", {}, cookie)).payload.data.state.toggleOn],
+      [true, true]
+    );
+    assert.equal((await call("shop_dl_toggle", { enabled: false })).status, 401);
+    assert.equal((await call("shop_dl_toggle", { enabled: "maybe" }, cookie)).payload.error, "invalid_request");
+    const off = await call("shop_dl_toggle", { service: "device_logout", enabled: false }, cookie);
+    assert.deepEqual([off.payload.data.state.enabled, off.payload.data.state.toggleOn], [false, false]);
+    assert.deepEqual(settings.get("service_toggles:123"), { device_logout: false, change_email: true });
+    assert.equal((await call("shop_dl_get", {}, cookie)).payload.data.state.enabled, false);
+    await call("shop_dl_toggle", { service: "change_email", enabled: false }, cookie);
+    await call("shop_dl_toggle", { service: "device_logout", enabled: true }, cookie);
+    assert.deepEqual(settings.get("service_toggles:123"), { device_logout: true, change_email: false });
+    delete process.env.JEBRAY_DEVICE_LOGOUT_ENABLED;
+    delete process.env.JEBRAY_RESELLER_API_KEY;
     assert.equal((await call("shop_dl_save", { price: "1000" })).status, 401);
   } finally {
     global.fetch = originalFetch;

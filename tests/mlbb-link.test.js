@@ -144,14 +144,19 @@ function installFetch({ supabase, arenaHandler, resellerHandler }) {
           supabase.settings.set(setting.key, setting.value);
           return jsonResponse([]);
         }
-        const key = String(parsed.searchParams.get("key") || "").replace(/^eq\./, "");
+        const rawKey = String(parsed.searchParams.get("key") || "");
+        if (rawKey.startsWith("in.(")) {
+          const keys = rawKey.slice(4, -1).split(",").map((k) => k.replace(/^"|"$/g, ""));
+          return jsonResponse(keys.filter((k) => supabase.settings.has(k)).map((k) => ({ key: k, value: supabase.settings.get(k) })));
+        }
+        const key = rawKey.replace(/^eq\./, "");
         const value = supabase.settings.get(key);
-        return jsonResponse(value ? [{ value }] : []);
+        return jsonResponse(value ? [{ key, value }] : []);
       }
       return jsonResponse([]);
     }
 
-    if (href.startsWith("https://api.jebray.com/reseller/v1/logout")) {
+    if (href.startsWith("https://api.jebray.com/reseller/v1/logout") || href.startsWith("https://api.jebray.com/reseller/v1/changeemail")) {
       const call = {
         method: options.method || "GET",
         url: href,
@@ -181,7 +186,7 @@ function installFetch({ supabase, arenaHandler, resellerHandler }) {
   return { telegram, arenaCalls, resellerCalls, restore: () => { global.fetch = original; } };
 }
 
-function loadBot({ deviceLogoutEnabled = false } = {}) {
+function loadBot({ deviceLogoutEnabled = false, changeEmailEnabled = false } = {}) {
   process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
   process.env.SUPPORT_USERNAME = "Ksava_org";
@@ -192,6 +197,7 @@ function loadBot({ deviceLogoutEnabled = false } = {}) {
   process.env.MLBB_LINK_SECRET = LINK_SECRET;
   process.env.ACCOUNT_MINIAPP_URL = MINIAPP;
   process.env.JEBRAY_DEVICE_LOGOUT_ENABLED = deviceLogoutEnabled ? "true" : "false";
+  process.env.JEBRAY_CHANGE_EMAIL_ENABLED = changeEmailEnabled ? "true" : "false";
   delete process.env.SUPABASE_SERVICE_KEY;
   delete process.env.MAIN_GROUP_ID;
   delete global.__MLBB_BOT_STATS__;
@@ -199,7 +205,7 @@ function loadBot({ deviceLogoutEnabled = false } = {}) {
   return require("../api/bot.js");
 }
 
-function loadAccountApp({ deviceLogoutEnabled = false } = {}) {
+function loadAccountApp({ deviceLogoutEnabled = false, changeEmailEnabled = false } = {}) {
   process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
   process.env.TELEGRAM_BOT_USERNAME = "checkmlbbidBot";
   process.env.SUPABASE_URL = "https://testproject.supabase.co";
@@ -207,6 +213,7 @@ function loadAccountApp({ deviceLogoutEnabled = false } = {}) {
   process.env.MLBB_ARENA_API_URL = ARENA;
   process.env.MLBB_LINK_SECRET = LINK_SECRET;
   process.env.JEBRAY_DEVICE_LOGOUT_ENABLED = deviceLogoutEnabled ? "true" : "false";
+  process.env.JEBRAY_CHANGE_EMAIL_ENABLED = changeEmailEnabled ? "true" : "false";
   process.env.JEBRAY_RESELLER_API_KEY = "test-jebray-reseller-key";
   process.env.JEBRAY_RESELLER_API_URL = "https://api.jebray.com";
   delete require.cache[require.resolve("../api/account.js")];
@@ -585,24 +592,175 @@ test("bot: code mode string fits the 32-char DO limit", () => {
   assert.equal(parseMlCodeMode("profile_add"), null);
 });
 
-test("bot: device logout command opens the beta Mini App without collecting credentials in chat", async () => {
+test("bot: device logout command explains the steps, price and balance, then opens the Mini App", async () => {
   const supabase = createFakeSupabase();
   const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
 
   try {
     const bot = loadBot({ deviceLogoutEnabled: true });
     const userId = 7700199;
+    supabase.setBalance(userId, 30000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 27000 });
     await sendUpdate(bot, textUpdate(90, userId, "/device_logout"));
     const message = lastText(net.telegram);
+    const text = message.payload.text;
     const button = buttonsOf(message).find((item) => item.web_app);
 
-    assert.ok(message.payload.text.includes("Mini App"));
+    assert.match(text, /1\. [\s\S]*2\. [\s\S]*3\. [\s\S]*4\. [\s\S]*5\. /, "numbered steps");
+    assert.match(text, /27 000/);
+    assert.match(text, /30 000/);
+    assert.ok(text.includes("Mini App"));
     assert.ok(button);
     const target = new URL(button.web_app.url);
     assert.equal(target.origin, "https://mini.example.test");
     assert.equal(target.searchParams.get("view"), "device_logout");
-    assert.ok(!message.payload.text.includes("password"));
+    assert.ok(!text.includes("password"));
     assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("bot: low balance sends the user to top up the missing amount (device logout and change email)", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+
+  try {
+    const bot = loadBot({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const userId = 7700197;
+    supabase.setBalance(userId, 4000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 30000 });
+
+    await sendUpdate(bot, textUpdate(92, userId, "/device_logout"));
+    let message = lastText(net.telegram);
+    let button = buttonsOf(message).find((item) => item.web_app);
+    assert.match(message.payload.text, /21 000/);
+    assert.equal(new URL(button.web_app.url).searchParams.get("view"), "cabinet");
+    assert.equal(new URL(button.web_app.url).searchParams.get("open"), "topup");
+    assert.equal(new URL(button.web_app.url).searchParams.get("need"), "21000");
+
+    // Klaviatura tugmasi (oddiy matn) buyruq bilan bir xil ishlaydi.
+    const { t } = { t: (key) => JSON.parse(require("node:fs").readFileSync(require.resolve("../api/locales/uz.json"), "utf8"))[key] };
+    await sendUpdate(bot, textUpdate(93, userId, t("btn_change_email")));
+    message = lastText(net.telegram);
+    button = buttonsOf(message).find((item) => item.web_app);
+    assert.match(message.payload.text, /1\. [\s\S]*5\. /);
+    assert.match(message.payload.text, /26 000/);
+    assert.equal(new URL(button.web_app.url).searchParams.get("need"), "26000");
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("bot: a service paused in the admin panel answers 'temporarily unavailable' for everyone", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const bot = loadBot({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const uz = JSON.parse(require("node:fs").readFileSync(require.resolve("../api/locales/uz.json"), "utf8"));
+    const userId = 7700301;
+    supabase.setBalance(userId, 90000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 25000 });
+    supabase.settings.set("service_toggles:123456", { device_logout: false });
+
+    for (const [id, text] of [[301, "/device_logout"], [302, uz.btn_device_logout], [303, "/device_logout"]]) {
+      await sendUpdate(bot, textUpdate(id, id === 303 ? 5081175125 : userId, text));
+      const message = lastText(net.telegram);
+      assert.match(message.payload.text, /vaqtincha mavjud emas, tez orada qayta yoqiladi/);
+      assert.ok(!buttonsOf(message).some((item) => item.web_app), "no Mini App button while paused");
+    }
+
+    // Boshqa xizmat ishlayveradi.
+    await sendUpdate(bot, textUpdate(304, userId, "/change_email"));
+    let message = lastText(net.telegram);
+    assert.equal(new URL(buttonsOf(message).find((item) => item.web_app).web_app.url).searchParams.get("view"), "change_email");
+
+    // Boshqa bot (beta/prod) kaliti bu botga ta'sir qilmaydi.
+    supabase.settings.set("service_toggles:123456", { device_logout: true });
+    supabase.settings.set("service_toggles:999999", { device_logout: false });
+    await sendUpdate(bot, textUpdate(305, userId, "/device_logout"));
+    message = lastText(net.telegram);
+    assert.equal(new URL(buttonsOf(message).find((item) => item.web_app).web_app.url).searchParams.get("view"), "device_logout");
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: paused services refuse bootstrap and every step; cabinet lists them with state", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const userId = 8800401;
+    supabase.setBalance(userId, 90000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 27000 });
+    supabase.settings.set("service_toggles:123456", { device_logout: false, change_email: false });
+    const initData = signInitData({ id: userId });
+
+    const dl = await callAccount(app, { action: "dl_bootstrap", initData });
+    assert.deepEqual([dl.body.enabled, dl.body.paused], [false, true]);
+    const ce = await callAccount(app, { action: "ce_bootstrap", initData });
+    assert.deepEqual([ce.body.enabled, ce.body.paused], [false, true]);
+    assert.equal((await callAccount(app, { action: "bootstrap", initData })).body.deviceLogoutEnabled, false);
+
+    const send = await callAccount(app, { action: "device_logout", initData, type: "send-code", email: "a@example.test", password: "Pass1234" });
+    assert.deepEqual([send.statusCode, send.body.error], [503, "service_paused"]);
+    const final = await callAccount(app, { action: "device_logout", initData, type: "verify-code2", email: "a@example.test", code: "123456" });
+    assert.deepEqual([final.statusCode, final.body.error], [503, "service_paused"]);
+    const start = await callAccount(app, { action: "change_email", initData, step: "start", email: "a@example.test" });
+    assert.deepEqual([start.statusCode, start.body.error], [503, "service_paused"]);
+    assert.equal(net.resellerCalls.length, 0);
+
+    const cabinet = await callAccount(app, { action: "cabinet", initData });
+    assert.deepEqual(cabinet.body.services, [
+      { id: "device_logout", enabled: false, price: 25000 },
+      { id: "change_email", enabled: false, price: 27000 },
+    ]);
+
+    supabase.settings.set("service_toggles:123456", { device_logout: true, change_email: true });
+    const on = await callAccount(app, { action: "dl_bootstrap", initData });
+    assert.deepEqual([on.body.enabled, on.body.paused], [true, false]);
+    assert.deepEqual((await callAccount(app, { action: "cabinet", initData })).body.services.map((x) => x.enabled), [true, true]);
+  } finally {
+    net.restore();
+  }
+});
+
+test("account app: device logout and change email need enough balance at every paid step", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const app = loadAccountApp({ deviceLogoutEnabled: true, changeEmailEnabled: true });
+    const userId = 8800402;
+    supabase.setBalance(userId, 1000);
+    supabase.settings.set("wallet_config", { deviceLogoutPrice: 25000, changeEmailPrice: 25000 });
+    const initData = signInitData({ id: userId });
+
+    const v1 = await callAccount(app, { action: "device_logout", initData, type: "verify-code1", email: "a@example.test", code: "123456" });
+    assert.deepEqual([v1.statusCode, v1.body.error], [402, "insufficient_funds"]);
+    assert.equal(net.resellerCalls.length, 0);
+  } finally {
+    net.restore();
+  }
+});
+
+test("bot: change email command is beta-only and opens its own Mini App", async () => {
+  const supabase = createFakeSupabase();
+  const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
+  try {
+    const userId = 7700196;
+    supabase.setBalance(userId, 50000);
+    const bot = loadBot({ changeEmailEnabled: true });
+    await sendUpdate(bot, textUpdate(94, userId, "/change_email"));
+    const message = lastText(net.telegram);
+    const button = buttonsOf(message).find((item) => item.web_app);
+    assert.equal(new URL(button.web_app.url).searchParams.get("view"), "change_email");
+
+    const off = loadBot();
+    await sendUpdate(off, textUpdate(97, userId, "/change_email"));
+    assert.equal(buttonsOf(lastText(net.telegram)).some((item) => item.web_app), false);
   } finally {
     net.restore();
   }
@@ -696,30 +854,32 @@ test("device logout: old ?device_logout=1 links hand off to the new page", async
   }
 });
 
-test("bot: main menu gets a one-tap device logout button with a launch key", async () => {
+test("bot: main menu shows service buttons as plain text buttons (bot explains first)", async () => {
   const supabase = createFakeSupabase();
   const net = installFetch({ supabase, arenaHandler: defaultArenaHandler });
   try {
-    const bot = loadBot({ deviceLogoutEnabled: true });
+    const uz = JSON.parse(require("node:fs").readFileSync(require.resolve("../api/locales/uz.json"), "utf8"));
+    const bot = loadBot({ deviceLogoutEnabled: true, changeEmailEnabled: true });
     const userId = 7700177;
     await sendUpdate(bot, textUpdate(95, userId, "/start"));
     const withKeyboard = [...net.telegram].reverse().find((c) => c.payload?.reply_markup?.keyboard);
     const buttons = withKeyboard.payload.reply_markup.keyboard.flat();
-    const dl = buttons.find((b) => b.web_app && new URL(b.web_app.url).searchParams.get("view") === "device_logout");
-    assert.ok(dl, "device logout button missing");
-    const url = new URL(dl.web_app.url);
-    const { verifyCabinetLaunchToken } = require("../api/_cabinet-launch.js");
-    assert.equal(verifyCabinetLaunchToken(url.searchParams.get("lt"), BOT_TOKEN).userId, String(userId));
+    // Premium emoji yoqilganda boshidagi emoji ikonkaga aylanadi — matn bo'yicha qidiramiz.
+    const label = (key) => uz[key].replace(/^\S+\s+/, "");
+    const dl = buttons.find((b) => String(b.text || "").includes(label("btn_device_logout")));
+    const ce = buttons.find((b) => String(b.text || "").includes(label("btn_change_email")));
+    assert.ok(dl && !dl.web_app, "device logout must be a text button");
+    assert.ok(ce && !ce.web_app, "change email must be a text button");
 
     const disabledBot = loadBot();
     await sendUpdate(disabledBot, textUpdate(96, userId, "/start"));
     const plain = [...net.telegram].reverse().find((c) => c.payload?.reply_markup?.keyboard);
-    assert.equal(plain.payload.reply_markup.keyboard.flat().some((b) => /view=device_logout/.test(b.web_app?.url || "")), false);
+    const texts = plain.payload.reply_markup.keyboard.flat().map((b) => String(b.text || "")).join("|");
+    assert.ok(!texts.includes(label("btn_device_logout")) && !texts.includes(label("btn_change_email")));
   } finally {
     net.restore();
   }
 });
-
 function arenaWebFor() {
   const { createArenaWeb } = require("../api/_arena-web.js");
   return createArenaWeb({
@@ -1221,6 +1381,123 @@ test("account app: unknown final outcome alerts the admin because the charge is 
     const alert = net.telegram.find((c) => c.method === "sendMessage" && /QAYTARILMAGAN/.test(c.payload.text || ""));
     assert.ok(alert, "admin must be told about a kept charge");
     assert.match(alert.payload.text, new RegExp(String(userId)));
+  } finally {
+    net.restore();
+  }
+});
+
+test("change email: 5-step flow, session bound to the user, charged only on confirm, refunded on failure", async () => {
+  const supabase = createFakeSupabase();
+  let confirmFails = false;
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: (call) => {
+      const step = call.body.step;
+      if (step === "start") return jsonResponse({ success: true, message: "Login code sent to email", session_id: "sess_abc123xyz" });
+      if (step === "confirm") {
+        if (confirmFails) return jsonResponse({ success: false, error: "Invalid code" }, 400);
+        return jsonResponse({ success: true, old_email: "old@gmail.com", new_email: "new@gmail.com", cost: 25000, balance_after: 400000 });
+      }
+      return jsonResponse({ success: true, message: "ok" });
+    },
+  });
+
+  try {
+    const app = loadAccountApp({ changeEmailEnabled: true });
+    const userId = 7700300;
+    const initData = signInitData({ id: userId, username: "ali_uz" });
+    supabase.setBalance(userId, 40000);
+    supabase.settings.set("wallet_config", { changeEmailPrice: 30000 });
+
+    const page = createRes();
+    await app({ method: "GET", headers: {}, query: { view: "change_email" } }, page);
+    assert.match(page.body, /ce_bootstrap/);
+    assert.match(page.body, /mlbb_ce_flow/);
+
+    const boot = await callAccount(app, { action: "ce_bootstrap", initData });
+    assert.deepEqual([boot.body.enabled, boot.body.price, boot.body.balance, boot.body.affordable], [true, 30000, 40000, true]);
+
+    const start = await callAccount(app, { action: "change_email", initData, step: "start", email: "old@gmail.com" });
+    assert.equal(start.statusCode, 200);
+    assert.ok(start.body.session.startsWith("sess_abc123xyz."));
+    assert.ok(!JSON.stringify(start.body).includes("test-jebray-reseller-key"));
+    assert.deepEqual(net.resellerCalls.at(-1).body, { step: "start", email: "old@gmail.com" });
+    assert.equal(net.resellerCalls.at(-1).url, "https://api.jebray.com/reseller/v1/changeemail");
+
+    // Boshqa foydalanuvchi bu sessiyani davom ettira olmaydi.
+    const intruder = await callAccount(app, { action: "change_email", initData: signInitData({ id: userId + 1 }), step: "login", session: start.body.session, code: "123456" });
+    assert.deepEqual([intruder.statusCode, intruder.body.error], [410, "session_expired"]);
+    const forged = await callAccount(app, { action: "change_email", initData, step: "login", session: "sess_abc123xyz.forged", code: "123456" });
+    assert.equal(forged.statusCode, 410);
+
+    const session = start.body.session;
+    for (const [step, extra] of [["login", { code: "111111" }], ["verify_code_old", { code: "222222" }], ["set_new_email", { emailNew: "new@gmail.com" }]]) {
+      const r = await callAccount(app, { action: "change_email", initData, step, session, email: "old@gmail.com", ...extra });
+      assert.equal(r.statusCode, 200, step);
+    }
+    assert.deepEqual(net.resellerCalls.at(-1).body, { step: "set_new_email", session_id: "sess_abc123xyz", email_new: "new@gmail.com" });
+    assert.equal(supabase.getBalance(userId), 40000, "nothing charged before confirm");
+
+    // confirm rad etilsa — pul qaytariladi.
+    confirmFails = true;
+    const bad = await callAccount(app, { action: "change_email", initData, step: "confirm", session, code: "333333", email: "old@gmail.com", emailNew: "new@gmail.com" });
+    assert.deepEqual([bad.statusCode, bad.body.error], [400, "wrong_code"]);
+    assert.equal(supabase.getBalance(userId), 40000);
+    assert.deepEqual(supabase.walletAdjustments.slice(-2).map((a) => [a.delta, a.note]), [
+      [-30000, "Change email · ol***@gmail.com → ne***@gmail.com"],
+      [30000, "Change email refund · ol***@gmail.com → ne***@gmail.com"],
+    ]);
+
+    confirmFails = false;
+    const ok = await callAccount(app, { action: "change_email", initData, step: "confirm", session, code: "333333", email: "old@gmail.com", emailNew: "new@gmail.com" });
+    assert.equal(ok.statusCode, 200);
+    assert.deepEqual([ok.body.chargedAmount, ok.body.balance, ok.body.newEmail, ok.body.oldEmail], [30000, 10000, "new@gmail.com", "ol***@gmail.com"]);
+    assert.deepEqual(net.resellerCalls.at(-1).body, { step: "confirm", session_id: "sess_abc123xyz", code: "333333" });
+
+    const dm = net.telegram.find((m) => String(m.payload.chat_id) === String(userId) && /new@gmail\.com/.test(m.payload.text || ""));
+    assert.ok(dm, "user DM");
+    assert.match(dm.payload.text, /old@gmail\.com/);
+    const group = net.telegram.find((m) => /#change_email/.test(m.payload.text || ""));
+    assert.ok(group, "group notice");
+    assert.ok(!/gmail/.test(group.payload.text));
+    assert.deepEqual(supabase.usageEvents.at(-1), { user_id: String(userId), chat_id: String(userId), update_type: "miniapp", action: "change_email" });
+
+    // Balans yetmasa — start'dayoq 402, provayderga so'rov ketmaydi.
+    const calls = net.resellerCalls.length;
+    const low = await callAccount(app, { action: "change_email", initData, step: "start", email: "old@gmail.com" });
+    assert.deepEqual([low.statusCode, low.body.error, low.body.price, low.body.balance], [402, "insufficient_funds", 30000, 10000]);
+    assert.equal(net.resellerCalls.length, calls);
+
+    // Bayroqsiz — xizmat yopiq.
+    const off = loadAccountApp();
+    assert.equal((await callAccount(off, { action: "change_email", initData, step: "start", email: "old@gmail.com" })).statusCode, 404);
+  } finally {
+    net.restore();
+  }
+});
+
+test("change email: Jebray's Indonesian errors map to clear reasons", async () => {
+  const supabase = createFakeSupabase();
+  const replies = {
+    start: { status: 400, body: { success: false, error: "Gagal mengirim kode verifikasi. Silakan coba lagi." } },
+  };
+  const net = installFetch({
+    supabase,
+    arenaHandler: defaultArenaHandler,
+    resellerHandler: (call) => jsonResponse(replies[call.body.step].body, replies[call.body.step].status),
+  });
+  try {
+    const app = loadAccountApp({ changeEmailEnabled: true });
+    const userId = 7700310;
+    supabase.setBalance(userId, 50000);
+    const initData = signInitData({ id: userId });
+    const r = await callAccount(app, { action: "change_email", initData, step: "start", email: "a@gmail.com" });
+    assert.deepEqual([r.statusCode, r.body.error], [422, "code_send_failed"]);
+    replies.start = { status: 400, body: { success: false, error: "Akun tidak ditemukan" } };
+    const r2 = await callAccount(app, { action: "change_email", initData, step: "start", email: "a@gmail.com" });
+    assert.deepEqual([r2.statusCode, r2.body.error], [404, "account_not_found"]);
+    assert.equal(supabase.getBalance(userId), 50000);
   } finally {
     net.restore();
   }

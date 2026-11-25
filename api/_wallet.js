@@ -29,6 +29,7 @@ const TOPUP_DEFAULTS = Object.freeze({
   min: 5000,
   max: 5000000,
   deviceLogoutPrice: 25000,
+  changeEmailPrice: 25000,
   // Provayder (ElderPay/Hamyon) buyurtmasi 5 daqiqa amal qiladi; provayder
   // ulanmagan bo'lsa (admin qo'lda tasdiqlaydi) so'rov 30 daqiqa turadi.
   ttlMinutes: elderpay.ORDER_TTL_MINUTES,
@@ -76,6 +77,7 @@ function normalizeWalletConfig(stored = {}, env = process.env) {
   const min = parsePositiveInt(value.min);
   const max = parsePositiveInt(value.max);
   const deviceLogoutPrice = parsePositiveInt(value.deviceLogoutPrice);
+  const changeEmailPrice = parsePositiveInt(value.changeEmailPrice);
   const presets = Array.isArray(value.presets)
     ? value.presets.map(parsePositiveInt).filter((n) => Number.isFinite(n)).slice(0, 6)
     : [];
@@ -89,6 +91,9 @@ function normalizeWalletConfig(stored = {}, env = process.env) {
     deviceLogoutPrice: Number.isFinite(deviceLogoutPrice) && deviceLogoutPrice <= 1000000000
       ? deviceLogoutPrice
       : TOPUP_DEFAULTS.deviceLogoutPrice,
+    changeEmailPrice: Number.isFinite(changeEmailPrice) && changeEmailPrice <= 1000000000
+      ? changeEmailPrice
+      : TOPUP_DEFAULTS.changeEmailPrice,
     presets: presets.length ? presets : TOPUP_DEFAULTS.presets.slice(),
     // Admin to'ldirishni vaqtincha o'chirib qo'yishi mumkin.
     enabled: value.enabled !== false,
@@ -115,6 +120,13 @@ function normalizeWalletConfigInput(input = {}, previous = {}) {
   if ((hasDeviceLogoutPrice && !Number.isFinite(deviceLogoutPrice)) || deviceLogoutPrice > 1000000000) {
     return { ok: false, error: "device_logout_price_invalid" };
   }
+  const hasChangeEmailPrice = input.changeEmailPrice !== undefined;
+  const changeEmailPrice = hasChangeEmailPrice
+    ? parsePositiveInt(input.changeEmailPrice)
+    : parsePositiveInt(previous.changeEmailPrice) || TOPUP_DEFAULTS.changeEmailPrice;
+  if ((hasChangeEmailPrice && !Number.isFinite(changeEmailPrice)) || changeEmailPrice > 1000000000) {
+    return { ok: false, error: "change_email_price_invalid" };
+  }
   if (Number.isFinite(min) && Number.isFinite(max) && max < min) return { ok: false, error: "max_invalid" };
 
   const presets = String(Array.isArray(input.presets) ? input.presets.join(",") : input.presets ?? "")
@@ -132,6 +144,7 @@ function normalizeWalletConfigInput(input = {}, previous = {}) {
       min: Number.isFinite(min) ? min : null,
       max: Number.isFinite(max) ? max : null,
       deviceLogoutPrice,
+      changeEmailPrice,
       presets,
       enabled: !(input.enabled === false || input.enabled === "false" || input.enabled === 0 || input.enabled === "0"),
     },
@@ -439,6 +452,7 @@ function createWallet(requestFn, { env = process.env, fetchFn = fetch, payClient
       min: config.min,
       max: config.max,
       deviceLogoutPrice: config.deviceLogoutPrice,
+      changeEmailPrice: config.changeEmailPrice,
       presets: config.presets,
       auto: Boolean(config.auto),
       provider: config.auto ? config.provider : null,

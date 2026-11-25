@@ -116,7 +116,7 @@ test("bot: icon buttons send text without the emoji and still work; a rejected d
     await send(bot, 3, "/start");
     const sent = calls.filter((c) => c.method === "sendMessage" && c.payload.reply_markup?.keyboard);
     assert.equal(sent.length, 2, "decorated attempt + plain retry");
-    assert.equal(sent[1].payload.reply_markup.keyboard[2][0].text, "👤 Profilim");
+    assert.equal(sent[1].payload.reply_markup.keyboard[1][1].text, "👤 Profilim");
     assert.ok(!JSON.stringify(sent[1].payload.reply_markup).includes("icon_custom_emoji_id"));
     assert.match(sent[1].payload.reply_markup.keyboard.flat().find((b) => b.web_app).web_app.url, /lt=7701\./);
 

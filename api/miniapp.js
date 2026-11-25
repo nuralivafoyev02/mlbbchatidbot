@@ -28,6 +28,8 @@ const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || "checkmlbbidBot").tri
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 // Majburiy kanal shu botning o'z kaliti bilan (api/_mandatory-channel-key.js).
 const MANDATORY_CHANNEL_KEY = require("./_mandatory-channel-key.js").mandatoryChannelKey(TELEGRAM_BOT_TOKEN);
+const serviceToggles = require("./_service-toggles.js");
+const SERVICE_TOGGLES_KEY = serviceToggles.serviceTogglesKey(TELEGRAM_BOT_TOKEN);
 
 const DEFAULT_FULLINFO_QUOTA = 3;
 const DEFAULT_RESETPW_QUOTA = 3;
@@ -164,9 +166,11 @@ module.exports = async function handler(req, res) {
         case "shop_lp_delete":
           return handleShopLpDelete(req, res, body);
         case "shop_dl_get":
-          return handleShopDeviceLogoutGet(req, res);
+          return handleShopDeviceLogoutGet(req, res, body);
         case "shop_dl_save":
           return handleShopDeviceLogoutSave(req, res, body);
+        case "shop_dl_toggle":
+          return handleShopDeviceLogoutToggle(req, res, body);
         case "wallet_overview":
           return handleWalletOverview(req, res, body);
         case "wallet_config_save":
@@ -1265,6 +1269,7 @@ const WALLET_ERROR_TEXTS = {
   min_invalid: "Eng kam summa noto'g'ri",
   max_invalid: "Eng ko'p summa eng kamidan kichik bo'lmasin",
   device_logout_price_invalid: "Qurilmalardan chiqish narxi 1 dan 1 000 000 000 so'mgacha bo'lishi kerak",
+  change_email_price_invalid: "Email almashtirish narxi 1 dan 1 000 000 000 so'mgacha bo'lishi kerak",
   invalid_amount: "Summa noto'g'ri",
   insufficient_funds: "Balansda buncha mablag' yo'q",
   not_found: "Topilmadi",
@@ -1408,16 +1413,31 @@ async function handleWalletOverview(req, res) {
 
 // Do'kon → Qurilmalardan chiqish: narx (wallet_config.deviceLogoutPrice) va
 // qisqa statistika (ledger: kind=admin, note "Device logout[ refund]…").
-function deviceLogoutServiceState() {
-  const enabled = process.env.JEBRAY_DEVICE_LOGOUT_ENABLED === "true";
-  const keySet = Boolean(String(process.env.JEBRAY_RESELLER_API_KEY || "").trim());
-  return { enabled: enabled && keySet, flagOn: enabled, keySet };
+// Pullik Jebray xizmatlari: narx (wallet_config) va ledger statistikasi
+// (kind=admin, note "Device logout…" / "Change email…").
+const RESELLER_ADMIN_SERVICES = {
+  device_logout: { flag: "JEBRAY_DEVICE_LOGOUT_ENABLED", priceKey: "deviceLogoutPrice", note: "Device logout", error: "device_logout_price_invalid" },
+  change_email: { flag: "JEBRAY_CHANGE_EMAIL_ENABLED", priceKey: "changeEmailPrice", note: "Change email", error: "change_email_price_invalid" },
+};
+
+function resellerService(body) {
+  const name = String(body?.service || "device_logout");
+  return RESELLER_ADMIN_SERVICES[name] ? { name, ...RESELLER_ADMIN_SERVICES[name] } : null;
 }
 
-async function deviceLogoutStats() {
+// enabled — foydalanuvchilar uchun haqiqatda ishlaydimi (env flag + kalit +
+// admin o'chirgichi); toggleOn — admin paneldagi o'chirgich holati.
+function resellerServiceState(svc, toggles) {
+  const flagOn = process.env[svc.flag] === "true";
+  const keySet = Boolean(String(process.env.JEBRAY_RESELLER_API_KEY || "").trim());
+  const toggleOn = serviceToggles.normalizeServiceToggles(toggles)[svc.name] !== false;
+  return { enabled: flagOn && keySet && toggleOn, flagOn, keySet, toggleOn, flag: svc.flag };
+}
+
+async function resellerServiceStats(svc) {
   const params = new URLSearchParams({
     kind: "eq.admin",
-    note: "like.Device logout*",
+    note: `like.${svc.note}*`,
     select: "delta,note,created_at",
     order: "id.desc",
     limit: "2000",
@@ -1425,10 +1445,11 @@ async function deviceLogoutStats() {
   const rows = await supabaseRequest(`/wallet_transactions?${params.toString()}`).catch(() => null);
   if (!Array.isArray(rows)) return null;
   const startOfDay = new Date(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tashkent" }) + "T00:00:00+05:00").getTime();
+  const refundRe = new RegExp(`^${svc.note} refund`);
   const stats = { total: 0, sum: 0, today: 0, todaySum: 0, refunds: 0, lastAt: null };
   for (const row of rows) {
     const delta = Number(row.delta) || 0;
-    const refund = /^Device logout refund/.test(row.note || "");
+    const refund = refundRe.test(row.note || "");
     const sign = refund ? -1 : 1;
     if (refund) stats.refunds += 1;
     stats.total += sign;
@@ -1442,11 +1463,17 @@ async function deviceLogoutStats() {
   return stats;
 }
 
-async function handleShopDeviceLogoutGet(req, res) {
+async function handleShopDeviceLogoutGet(req, res, body) {
   if (!(await requireAuth(req, res))) return;
+  const svc = resellerService(body);
+  if (!svc) return walletError(res, "not_found");
   try {
-    const [config, stats] = await Promise.all([getWallet().getConfig(), deviceLogoutStats()]);
-    return json(res, 200, { ok: true, data: { price: config.deviceLogoutPrice, service: deviceLogoutServiceState(), stats } });
+    const [config, stats, toggles] = await Promise.all([
+      getWallet().getConfig(),
+      resellerServiceStats(svc),
+      serviceToggles.loadServiceToggles(supabaseRequest, SERVICE_TOGGLES_KEY),
+    ]);
+    return json(res, 200, { ok: true, data: { service: svc.name, price: config[svc.priceKey], state: resellerServiceState(svc, toggles), stats } });
   } catch (e) {
     return walletFailure(res, "DL_GET", e);
   }
@@ -1454,19 +1481,39 @@ async function handleShopDeviceLogoutGet(req, res) {
 
 async function handleShopDeviceLogoutSave(req, res, body) {
   if (!(await requireAuth(req, res))) return;
+  const svc = resellerService(body);
+  if (!svc) return walletError(res, "not_found");
   const raw = String(body.price ?? "").replace(/\s+/g, "");
   if (!/^\d{1,10}$/.test(raw) || Number(raw) < 1 || Number(raw) > 1000000000) {
-    return walletError(res, "device_logout_price_invalid");
+    return walletError(res, svc.error);
   }
   try {
     const wallet = getWallet();
     // Faqat narx o'zgaradi — karta, limitlar va boshqa sozlamalar saqlanib qoladi.
     const current = await wallet.getConfig();
-    const result = await wallet.saveConfig({ ...current, deviceLogoutPrice: raw });
+    const result = await wallet.saveConfig({ ...current, [svc.priceKey]: raw });
     if (!result.ok) return walletError(res, result.error);
-    return json(res, 200, { ok: true, data: { price: result.config.deviceLogoutPrice } });
+    return json(res, 200, { ok: true, data: { service: svc.name, price: result.config[svc.priceKey] } });
   } catch (e) {
     return walletFailure(res, "DL_SAVE", e);
+  }
+}
+
+// Do'kon → xizmatni vaqtincha o'chirish/yoqish (faqat shu bot uchun).
+// O'chiq bo'lsa bot buyrug'i/tugmasi "vaqtincha mavjud emas" deydi, Mini App
+// sahifalari va server action'lari ham ishlamaydi.
+async function handleShopDeviceLogoutToggle(req, res, body) {
+  if (!(await requireAuth(req, res))) return;
+  const svc = resellerService(body);
+  if (!svc) return walletError(res, "not_found");
+  const raw = body.enabled;
+  if (![true, false, "true", "false", 1, 0, "1", "0"].includes(raw)) return walletError(res, "invalid_request");
+  const enabled = raw === true || raw === "true" || raw === 1 || raw === "1";
+  try {
+    const toggles = await serviceToggles.saveServiceToggle(supabaseRequest, SERVICE_TOGGLES_KEY, svc.name, enabled);
+    return json(res, 200, { ok: true, data: { service: svc.name, state: resellerServiceState(svc, toggles) } });
+  } catch (e) {
+    return walletFailure(res, "DL_TOGGLE", e);
   }
 }
 

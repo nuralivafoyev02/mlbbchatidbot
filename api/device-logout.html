@@ -253,7 +253,7 @@
           code: "Tasdiqlash kodi",
           verify1: "Tasdiqlash", verify2: "Chiqarish va {price} to'lash",
           charged_note: "{price} faqat muvaffaqiyatli tugaganda yechiladi.",
-          cancel: "Bekor qilish", restart: "Boshidan boshlash", back_bot: "Botga qaytish",
+          cancel: "Bekor qilish", restart: "Boshidan boshlash", back_bot: "Botga qaytish", back_cabinet: "Kabinetga qaytish",
           open_mail: "Pochtani ochish",
           resumed: "Oldingi jarayon davom ettirilmoqda ({email}).",
           confirm_cancel: "Jarayonni bekor qilasizmi? Mablag' yechilmaydi.",
@@ -264,9 +264,9 @@
           unknown_title: "Natija tasdiqlanmadi",
           unknown_text: "Oxirgi so'rov natijasi noma'lum. Takrorlamang — avval o'yinda akkaunt holatini tekshiring. Muammo bo'lsa, yordamga yozing.",
           low_title: "Balans yetarli emas",
-          low_text: "Xizmat narxi {price}, balansingiz {balance}. Balansni to'ldirib, qayta oching.",
+          low_text: "Xizmat narxi {price}, balansingiz {balance}. Avval balansingizni kamida {need} ga to'ldiring.",
           topup: "Balansni to'ldirish",
-          off_title: "Hozircha mavjud emas",
+          paused_title: "Vaqtincha mavjud emas", paused_text: "Bu xizmat vaqtincha mavjud emas, tez orada qayta yoqiladi.", off_title: "Hozircha mavjud emas",
           off_text: "Bu xizmat hozir yoqilmagan. Keyinroq qayta urinib ko'ring.",
           auth_title: "Botdan qayta oching",
           auth_text: "Sahifa Telegram'dan tashqarida yoki eskirgan havola bilan ochildi. Botga /start yuborib, tugmani qayta bosing.",
@@ -275,6 +275,7 @@
           cancelled: "Jarayon bekor qilindi. Mablag' yechilmadi.",
           remaining: "Yana {n} ta urinish qoldi.",
           err: {
+            code_send_failed: "Emailga kod yuborib bo'lmadi. Email Mobile Legends (Moonton) akkauntiga bog'langanini tekshiring va 1–2 daqiqadan keyin qayta urining.",
             invalid_email: "Email manzilini tekshiring.",
             invalid_password: "Parol kamida 8 ta belgi, bitta katta harf va bitta raqamdan iborat bo'lishi, belgi ishlatmasligi kerak.",
             invalid_code: "Kod faqat 4–8 ta raqamdan iborat bo'ladi.",
@@ -287,7 +288,7 @@
             timeout: "Provayder javob bermadi. Qayta urinib ko'ring.",
             network: "Tarmoq xatosi. Internetni tekshirib, qayta urinib ko'ring.",
             not_configured: "Xizmat sozlanmagan. Yordamga xabar bering.",
-            not_available: "Xizmat hozircha mavjud emas.",
+            not_available: "Xizmat hozircha mavjud emas.", service_paused: "Bu xizmat vaqtincha mavjud emas, tez orada qayta yoqiladi.",
             service_unavailable: "Xizmat vaqtincha ishlamayapti. Birozdan keyin qayta urinib ko'ring.",
             request_failed: "So'rov bajarilmadi. Ma'lumotlarni tekshirib qayta urinib ko'ring."
           }
@@ -310,7 +311,7 @@
           code: "Код подтверждения",
           verify1: "Подтвердить", verify2: "Выйти и оплатить {price}",
           charged_note: "{price} списываются только при успешном завершении.",
-          cancel: "Отменить", restart: "Начать заново", back_bot: "Вернуться в бот",
+          cancel: "Отменить", restart: "Начать заново", back_bot: "Вернуться в бот", back_cabinet: "Вернуться в кабинет",
           open_mail: "Открыть почту",
           resumed: "Продолжаем начатый процесс ({email}).",
           confirm_cancel: "Отменить процесс? Средства не спишутся.",
@@ -321,9 +322,9 @@
           unknown_title: "Результат не подтверждён",
           unknown_text: "Результат последнего запроса неизвестен. Не повторяйте — сначала проверьте аккаунт в игре. При проблеме напишите в поддержку.",
           low_title: "Недостаточно средств",
-          low_text: "Цена услуги {price}, ваш баланс {balance}. Пополните баланс и откройте снова.",
+          low_text: "Цена услуги {price}, ваш баланс {balance}. Сначала пополните баланс минимум на {need}.",
           topup: "Пополнить баланс",
-          off_title: "Пока недоступно",
+          paused_title: "Временно недоступно", paused_text: "Этот сервис временно недоступен, скоро он снова будет включён.", off_title: "Пока недоступно",
           off_text: "Сервис сейчас выключен. Попробуйте позже.",
           auth_title: "Откройте из бота",
           auth_text: "Страница открыта вне Telegram или по устаревшей ссылке. Отправьте боту /start и нажмите кнопку снова.",
@@ -332,6 +333,7 @@
           cancelled: "Процесс отменён. Средства не списаны.",
           remaining: "Осталось попыток: {n}.",
           err: {
+            code_send_failed: "Не удалось отправить код на email. Проверьте, что email привязан к аккаунту Mobile Legends (Moonton), и повторите через 1–2 минуты.",
             invalid_email: "Проверьте адрес email.",
             invalid_password: "Пароль: не менее 8 символов, заглавная буква и цифра, без спецсимволов.",
             invalid_code: "Код состоит из 4–8 цифр.",
@@ -344,7 +346,7 @@
             timeout: "Провайдер не ответил. Попробуйте ещё раз.",
             network: "Ошибка сети. Проверьте интернет и повторите.",
             not_configured: "Сервис не настроен. Сообщите в поддержку.",
-            not_available: "Сервис пока недоступен.",
+            not_available: "Сервис пока недоступен.", service_paused: "Этот сервис временно недоступен, скоро он снова будет включён.",
             service_unavailable: "Сервис временно недоступен. Попробуйте позже.",
             request_failed: "Запрос не выполнен. Проверьте данные и повторите."
           }
@@ -367,7 +369,7 @@
           code: "Verification code",
           verify1: "Verify", verify2: "Log out and pay {price}",
           charged_note: "{price} is charged only if it succeeds.",
-          cancel: "Cancel", restart: "Start over", back_bot: "Back to bot",
+          cancel: "Cancel", restart: "Start over", back_bot: "Back to bot", back_cabinet: "Back to cabinet",
           open_mail: "Open mail",
           resumed: "Resuming your previous attempt ({email}).",
           confirm_cancel: "Cancel the process? Nothing will be charged.",
@@ -378,9 +380,9 @@
           unknown_title: "Result not confirmed",
           unknown_text: "The final request's result is unknown. Don't repeat it — check the account in the game first. Contact support if something is wrong.",
           low_title: "Balance too low",
-          low_text: "The service costs {price}; your balance is {balance}. Top up and open this again.",
+          low_text: "The service costs {price}; your balance is {balance}. Top up at least {need} first.",
           topup: "Top up balance",
-          off_title: "Not available yet",
+          paused_title: "Temporarily unavailable", paused_text: "This service is temporarily unavailable and will be back soon.", off_title: "Not available yet",
           off_text: "This service is currently turned off. Please try later.",
           auth_title: "Open it from the bot",
           auth_text: "This page was opened outside Telegram or with an expired link. Send /start to the bot and tap the button again.",
@@ -389,6 +391,7 @@
           cancelled: "Process cancelled. Nothing was charged.",
           remaining: "{n} attempts left.",
           err: {
+            code_send_failed: "Couldn't send the code to this email. Check that it is linked to a Mobile Legends (Moonton) account and try again in 1–2 minutes.",
             invalid_email: "Check the email address.",
             invalid_password: "Password: 8+ characters with an uppercase letter and a digit, no symbols.",
             invalid_code: "The code has 4–8 digits.",
@@ -401,7 +404,7 @@
             timeout: "The provider didn't respond. Please retry.",
             network: "Network error. Check your connection and retry.",
             not_configured: "The service isn't configured. Please tell support.",
-            not_available: "The service isn't available yet.",
+            not_available: "The service isn't available yet.", service_paused: "This service is temporarily unavailable and will be back soon.",
             service_unavailable: "The service is temporarily unavailable. Try later.",
             request_failed: "The request failed. Check the details and retry."
           }
@@ -473,6 +476,14 @@
         return null;
       }
 
+      // Kabinetdagi "Xizmatlar" bo'limidan ochilgan (?from=cabinet) — orqaga kabinetga.
+      var fromCabinet = (function () {
+        try { return new URLSearchParams(location.search).get("from") === "cabinet"; } catch (e) { return false; }
+      })();
+      function openCabinet() {
+        haptic("light");
+        location.href = location.pathname + "?view=cabinet";
+      }
       function openBot() {
         haptic("light");
         var link = state.botUsername ? "https://t.me/" + state.botUsername : null;
@@ -481,7 +492,8 @@
       }
       function openWallet() {
         haptic("light");
-        location.href = location.pathname + "?view=cabinet";
+        var need = Math.max(0, Number(state.price) - Number(state.balance || 0));
+        location.href = location.pathname + "?view=cabinet&open=topup" + (need ? "&need=" + need : "");
       }
       function openMail() {
         haptic("light");
@@ -536,7 +548,7 @@
 
       function renderCredentials() {
         if (!state.affordable) {
-          return stateView("warn", "wallet2", L("low_title"), fill(L("low_text"), { price: money(state.price), balance: money(state.balance || 0) }), [
+          return stateView("warn", "wallet2", L("low_title"), fill(L("low_text"), { price: money(state.price), balance: money(state.balance || 0), need: money(Math.max(0, Number(state.price) - Number(state.balance || 0))) }), [
             { label: L("topup"), cls: "primary", icon: "plus-circle", onClick: openWallet },
             { label: L("back_bot"), cls: "ghost", onClick: openBot }
           ]);
@@ -731,11 +743,12 @@
       // ---- Telegram orqaga tugmasi: oqim bo'lsa — bekor qilish, bo'lmasa — yopish
       function onBack() {
         if (state.flow) return cancelFlow(document.getElementById("dlCancel"));
+        if (fromCabinet) return openCabinet();
         if (tg) tg.close();
       }
       function syncBack() {
         if (!tg || !tg.BackButton) return;
-        try { state.flow ? tg.BackButton.show() : tg.BackButton.hide(); } catch (e) { /* noop */ }
+        try { state.flow || fromCabinet ? tg.BackButton.show() : tg.BackButton.hide(); } catch (e) { /* noop */ }
       }
       if (tg && tg.BackButton) { try { tg.BackButton.onClick(onBack); } catch (e) { /* noop */ } }
 
@@ -758,7 +771,10 @@
           state.affordable = Boolean(r.affordable);
           state.botUsername = r.botUsername;
           if (!r.enabled) {
-            return stateView("warn", "hourglass-split", L("off_title"), L("off_text"), [{ label: L("back_bot"), cls: "primary", onClick: openBot }]);
+            var back = fromCabinet ? { label: L("back_cabinet"), cls: "primary", icon: "arrow-left", onClick: openCabinet } : { label: L("back_bot"), cls: "primary", onClick: openBot };
+            return r.paused
+              ? stateView("warn", "pause-circle", L("paused_title"), L("paused_text"), [back])
+              : stateView("warn", "hourglass-split", L("off_title"), L("off_text"), [back]);
           }
           var resumed = loadFlow();
           if (resumed) {
